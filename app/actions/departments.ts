@@ -148,7 +148,8 @@ export async function getMyModeratedDepartments() {
     throw new Error(`Failed to fetch moderated departments: ${error.message}`)
   }
 
-  return (data || []).map(row => row.departments).filter(Boolean) as { id: string; name: string }[]
+  const departments = (data || []).map(row => row.departments).filter(Boolean)
+  return departments.flat() as { id: string; name: string }[]
 }
 
 export async function getMyModeratedDepartment() {

@@ -16,7 +16,7 @@ export async function submitFeedback(sessionId: string, feedback: FeedbackData) 
   // Get session to verify it exists and is published (public access allowed)
   const { data: session, error: sessionError } = await supabase
     .from('sessions')
-    .select('id, org_id, status')
+    .select('id, org_id, status, department_id')
     .eq('id', sessionId)
     .single()
 

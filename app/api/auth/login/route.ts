@@ -12,16 +12,16 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
-          get(name) {
+          get(name: string) {
             return request.cookies.get(name)?.value
           },
-          set(name, value, options) {
+          set(name: string, value: string, options?: any) {
             response.cookies.set(name, value, {
               ...options,
               sameSite: 'lax' as const,
             })
           },
-          remove(name, options) {
+          remove(name: string, options?: any) {
             response.cookies.set(name, '', {
               ...options,
               sameSite: 'lax' as const,

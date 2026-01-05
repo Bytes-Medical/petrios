@@ -438,7 +438,7 @@ export async function generateGroupCode(sessionId: string) {
   // Get session
   const { data: session } = await supabase
     .from('sessions')
-    .select('department_id, date_end, checkin_close_mins_after')
+    .select('department_id, date_end, checkin_close_mins_after, group_code_version')
     .eq('id', sessionId)
     .eq('org_id', orgId)
     .single()

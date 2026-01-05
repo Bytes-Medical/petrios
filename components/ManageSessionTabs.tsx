@@ -119,9 +119,9 @@ export function ManageSessionTabs({
                 <h2 className="text-xl font-mono font-bold mb-4">Group Code</h2>
                 <GroupCodeDisplay
                   sessionId={session.id}
-                  groupCodeVersion={session.group_code_version}
-                  groupCodeExpiresAt={session.group_code_expires_at}
-                  groupCodeEnabled={session.group_code_enabled}
+                  groupCodeVersion={session.group_code_version ?? null}
+                  groupCodeExpiresAt={session.group_code_expires_at ?? null}
+                  groupCodeEnabled={session.group_code_enabled ?? true}
                 />
               </Card>
             )}

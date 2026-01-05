@@ -45,8 +45,10 @@ export default async function SuperAdminPage() {
     {}
   )
   const departmentMembershipsByUser = memberships.reduce(
-    (acc: Record<string, { department_id: string; department_name: string; role: string }[]>, m) => {
-      const dept = m.departments ? { id: m.departments.id, name: m.departments.name } : departmentsById[m.department_id]
+    (acc: Record<string, { department_id: string; department_name: string; role: string }[]>, m: any) => {
+      const dept = (m.departments && !Array.isArray(m.departments)) 
+        ? { id: m.departments.id, name: m.departments.name } 
+        : departmentsById[m.department_id]
       if (!acc[m.user_id]) acc[m.user_id] = []
       acc[m.user_id].push({
         department_id: m.department_id,
@@ -58,11 +60,14 @@ export default async function SuperAdminPage() {
     {}
   )
   const organizationMembershipsByUser = orgMemberships.reduce(
-    (acc: Record<string, { org_id: string; org_name: string; role: string }[]>, m) => {
+    (acc: Record<string, { org_id: string; org_name: string; role: string }[]>, m: any) => {
       if (!acc[m.user_id]) acc[m.user_id] = []
+      const org = (m.organizations && !Array.isArray(m.organizations)) 
+        ? m.organizations 
+        : null
       acc[m.user_id].push({
         org_id: m.org_id,
-        org_name: m.organizations?.name || 'Unknown',
+        org_name: org?.name || 'Unknown',
         role: m.role,
       })
       return acc
@@ -113,7 +118,7 @@ export default async function SuperAdminPage() {
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Users</h2>
               <SuperAdminUsersPanel
-                users={users.map(user => ({ id: user.id, email: user.email }))}
+                users={users.map(user => ({ id: user.id, email: user.email || null }))}
                 superAdminIds={superAdminIds}
                 departments={departments.map(dept => ({ id: dept.id, name: dept.name }))}
                 departmentMembershipsByUser={departmentMembershipsByUser}

@@ -43,6 +43,8 @@ export async function GET(
 
     // Get org name
     const orgName = (certificate.organizations as any)?.name || 'Organization'
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin
+    const verifyUrl = `${baseUrl}/verify/${certificate.certificate_code}`
 
     // Generate PDF
     const pdfBuffer = await generateCertificatePDF({
@@ -56,9 +58,10 @@ export async function GET(
       role: certificate.certificate_role === 'ATTENDEE' ? 'Attendee' : 'Teacher',
       certificateCode: certificate.certificate_code,
       issuedDate: new Date(certificate.issued_at).toLocaleDateString(),
+      verifyUrl,
     })
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(pdfBuffer as any, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="certificate-${certificate.certificate_code}.pdf"`,
