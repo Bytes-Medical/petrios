@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-white text-black font-mono antialiased;
+  }
+  
+  /* Prevent horizontal scroll on mobile */
+  html {
+    overflow-x: hidden;
+  }
+  
+  /* Better text wrapping on mobile */
+  * {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+}

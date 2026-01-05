@@ -1,0 +1,86 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { markAttendance } from '@/app/actions/attendance'
+import type { Attendance, AttendanceStatus } from '@/lib/types'
+
+interface AttendanceListProps {
+  sessionId: string
+  attendance: Attendance[]
+  teachers: any[]
+}
+
+export function AttendanceList({ sessionId, attendance, teachers }: AttendanceListProps) {
+  const router = useRouter()
+  const [updating, setUpdating] = useState<string | null>(null)
+
+  async function handleMarkAttendance(userId: string, status: AttendanceStatus) {
+    setUpdating(userId)
+    try {
+      await markAttendance(sessionId, userId, status)
+      router.refresh()
+    } catch (error) {
+      console.error('Failed to mark attendance:', error)
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  if (attendance.length === 0) {
+    return <p className="font-mono text-sm text-gray-600">No attendance records yet.</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {attendance.map(record => (
+        <div
+          key={record.id}
+          className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 border border-gray-300"
+        >
+          <div className="flex-1 min-w-0">
+            <p className="font-mono text-sm break-words">
+              <strong>User:</strong> {record.user_id}
+            </p>
+            <p className="font-mono text-sm text-gray-600">
+              Status: {record.status}
+              {record.primary_source && <> | Source: {record.primary_source}</>}
+            </p>
+            {record.first_evidence_at && (
+              <p className="font-mono text-xs text-gray-500">
+                First evidence: {new Date(record.first_evidence_at).toLocaleString()}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            {record.user_id && (
+              <>
+                <button
+                  onClick={() => handleMarkAttendance(record.user_id!, 'PRESENT')}
+                  disabled={updating === record.user_id}
+                  className="px-3 py-1 border border-black bg-white text-black font-mono text-xs hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Present
+                </button>
+                <button
+                  onClick={() => handleMarkAttendance(record.user_id!, 'ABSENT')}
+                  disabled={updating === record.user_id}
+                  className="px-3 py-1 border border-black bg-white text-black font-mono text-xs hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Absent
+                </button>
+                <button
+                  onClick={() => handleMarkAttendance(record.user_id!, 'LATE')}
+                  disabled={updating === record.user_id}
+                  className="px-3 py-1 border border-black bg-white text-black font-mono text-xs hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Late
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
