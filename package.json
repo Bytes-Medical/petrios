@@ -1,7 +1,9 @@
 {
   "name": "byte-teaching",
   "version": "0.1.0",
-  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "author": "Akanimoh Osutuk",
+  "description": "Teaching management platform for NHS trainees",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
