@@ -168,4 +168,38 @@ This application is ready for deployment on Vercel:
 
 ## License
 
-MIT
+Copyright (C) 2026 Akanimoh Osutuk.
+
+Byte Teaching is licensed under the **GNU Affero General Public License
+v3.0 or later (AGPL-3.0-or-later)**. See [`LICENSE`](./LICENSE) for the
+full license text and [`NOTICE`](./NOTICE) for attribution requirements.
+
+**What this means in practice:**
+
+- You are free to use, read, modify, self-host, and distribute this
+  software, including for internal commercial use inside your
+  organisation.
+- If you modify it and either redistribute it **or run the modified
+  version as a network service** (e.g. a SaaS offering), AGPL section 13
+  requires you to make the complete corresponding source code available
+  to users of that service under the same license.
+- You must preserve copyright notices and the `NOTICE` file, and
+  reasonably attribute the original project and author in any
+  distribution or user-facing "about" surface.
+
+### Commercial licensing
+
+The AGPL terms may be incompatible with closed-source embedding,
+proprietary derivative products, or operating a managed service without
+sharing modifications. The copyright holder retains full rights to the
+original work and can offer separate **commercial licenses** for these
+use cases.
+
+For commercial licensing inquiries, contact the copyright holder
+(Akanimoh Osutuk).
+
+### Contributing
+
+Contributions are welcome. By submitting a patch you agree to the
+Developer Certificate of Origin (DCO) — see [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+for details.

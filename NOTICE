@@ -1,0 +1,57 @@
+Byte Teaching — Teaching Management Platform for NHS Trainees
+Copyright (C) 2026 Akanimoh Osutuk
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public
+License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+--------------------------------------------------------------------------
+Attribution requirement
+--------------------------------------------------------------------------
+
+If you redistribute, modify, or run this software as a network service,
+you must:
+
+  1. Preserve this NOTICE file and the LICENSE file in your distribution.
+
+  2. Make the complete corresponding source code of any modified version
+     available under AGPL-3.0-or-later to anyone who interacts with it
+     over a network (see AGPL-3.0 section 13 — the "network use is
+     distribution" clause).
+
+  3. Prominently attribute "Byte Teaching" and the original copyright
+     holder, Akanimoh Osutuk, in user-facing documentation, "about"
+     pages, or any other reasonable location where users would expect
+     to see credit for included software.
+
+--------------------------------------------------------------------------
+Commercial licensing
+--------------------------------------------------------------------------
+
+The AGPL-3.0-or-later terms above govern use of this software by third
+parties. As sole copyright holder, Akanimoh Osutuk retains full rights
+to the original work and may offer this software under separate
+commercial licensing terms to parties who do not wish to comply with the
+AGPL — for example, to embed it in proprietary software, or to operate
+it as a managed service without publishing modifications.
+
+For commercial licensing inquiries, contact the copyright holder.
+
+--------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------
+
+This project depends on third-party open source packages whose licenses
+are listed in their respective directories under node_modules/. Notable
+runtime dependencies include Next.js, React, Supabase client libraries,
+@react-pdf/renderer, Schedule-X, Resend, and Tailwind CSS. See
+package.json for the full list.
