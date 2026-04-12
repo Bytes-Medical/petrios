@@ -118,6 +118,27 @@ export function DepartmentInviteLinksPanel({ links }: DepartmentInviteLinksPanel
 
             <div className="mb-4 space-y-2">
               <label className="block font-mono text-xs uppercase tracking-[0.2em] text-gray-500">
+                Department Code
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="border border-black bg-gray-50 px-4 py-2 font-mono text-2xl font-bold tracking-[0.3em]">
+                  {link.department_code}
+                </span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => handleCopy(link.department_code)}
+                >
+                  Copy
+                </Button>
+              </div>
+              <p className="font-mono text-xs text-gray-500">
+                Trainees can join at /join/dept using this code
+              </p>
+            </div>
+
+            <div className="mb-4 space-y-2">
+              <label className="block font-mono text-xs uppercase tracking-[0.2em] text-gray-500">
                 Invite Link
               </label>
               <input

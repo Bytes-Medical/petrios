@@ -61,10 +61,12 @@ function buildCallbackLink(
 }
 
 interface BeginDepartmentOnboardingInput {
-  inviteCode: string
+  inviteCode?: string
+  departmentCode?: string
   email: string
   firstName: string
   lastName: string
+  grade?: string
   confirmOrgSwitch?: boolean
 }
 
@@ -116,7 +118,7 @@ async function getManagedDepartmentsForCurrentUser(orgId: string) {
 
 async function ensureInviteLinksForDepartments(
   orgId: string,
-  departments: { id: string; name: string }[]
+  departments: { id: string; name: string; department_code: string }[]
 ): Promise<ManagedDepartmentInviteLink[]> {
   if (departments.length === 0) return []
 
@@ -148,6 +150,7 @@ async function ensureInviteLinksForDepartments(
       return {
         department_id: department.id,
         department_name: department.name,
+        department_code: department.department_code,
         invite_code: inviteLink.invite_code,
         invite_url: `${appUrl}/join/${inviteLink.invite_code}`,
         rotated_at: inviteLink.rotated_at,
@@ -157,11 +160,12 @@ async function ensureInviteLinksForDepartments(
 }
 
 async function upsertPendingOnboardingRequest(
-  invite: InviteLookupRecord,
+  invite: { id: string; org_id: string; department_id: string },
   input: {
     email: string
     firstName: string
     lastName: string
+    grade?: string | null
     requestedUserId: string | null
     linkType: OnboardingLinkType
   }
@@ -190,6 +194,7 @@ async function upsertPendingOnboardingRequest(
     email: input.email,
     firstName: input.firstName,
     lastName: input.lastName,
+    grade: input.grade,
     requestedRole: DEFAULT_MEMBER_ROLE,
     linkType: input.linkType,
     requestedUserId: input.requestedUserId,
@@ -258,6 +263,7 @@ async function finalizeOnboardingRequest(
     departmentId: request.department_id,
     userId: currentUser.id,
     role: resolvedDepartmentRole,
+    grade: request.grade,
   })
 
   const firstName = normalizeName(request.first_name)
@@ -485,14 +491,43 @@ export async function removeOrgMember(memberUserId: string) {
   return { success: true }
 }
 
+export async function lookupDepartmentByCode(code: string) {
+  return onboardingDb.findDepartmentByCode(code)
+}
+
 export async function beginDepartmentOnboarding(
   input: BeginDepartmentOnboardingInput
 ): Promise<BeginDepartmentOnboardingResult> {
-  const invite = await onboardingDb.findInviteByCode(input.inviteCode)
+  // Resolve the department — either by invite code or 6-digit department code
+  let orgId: string
+  let departmentId: string
+  let inviteLinkId: string
+  let orgName: string
+  let departmentName: string
 
-  if (!invite || !invite.departments || !invite.organizations) {
-    throw new DbNotFoundError('Invite link not found')
+  if (input.departmentCode) {
+    const dept = await onboardingDb.findDepartmentByCode(input.departmentCode)
+    if (!dept) throw new DbNotFoundError('Department not found')
+    orgId = dept.org_id
+    departmentId = dept.department_id
+    inviteLinkId = dept.invite_link_id
+    orgName = dept.org_name
+    departmentName = dept.department_name
+  } else if (input.inviteCode) {
+    const invite = await onboardingDb.findInviteByCode(input.inviteCode)
+    if (!invite || !invite.departments || !invite.organizations) {
+      throw new DbNotFoundError('Invite link not found')
+    }
+    orgId = invite.org_id
+    departmentId = invite.department_id
+    inviteLinkId = invite.id
+    orgName = invite.organizations.name
+    departmentName = invite.departments.name
+  } else {
+    throw new Error('Either inviteCode or departmentCode is required')
   }
+
+  const inviteRef = { id: inviteLinkId, org_id: orgId, department_id: departmentId }
 
   const email = normalizeEmail(input.email)
   const firstName = normalizeName(input.firstName)
@@ -517,7 +552,7 @@ export async function beginDepartmentOnboarding(
 
   if (resolvedUserId) {
     const memberships = await onboardingDb.listUserOrganizationMemberships(resolvedUserId)
-    const conflicting = memberships.find((m) => m.org_id !== invite.org_id)
+    const conflicting = memberships.find((m) => m.org_id !== orgId)
     if (conflicting) {
       currentOrgName = conflicting.organization_name
     }
@@ -527,15 +562,16 @@ export async function beginDepartmentOnboarding(
     return {
       status: 'confirm-switch',
       currentOrgName,
-      targetOrgName: invite.organizations.name,
+      targetOrgName: orgName,
     }
   }
 
   const linkType: OnboardingLinkType = isVerifiedAccount ? 'magiclink' : 'invite'
-  const request = await upsertPendingOnboardingRequest(invite, {
+  const request = await upsertPendingOnboardingRequest(inviteRef, {
     email,
     firstName,
     lastName,
+    grade: input.grade,
     requestedUserId: resolvedUserId,
     linkType,
   })
@@ -597,14 +633,14 @@ export async function beginDepartmentOnboarding(
   const html =
     generatedLinkType === 'invite'
       ? buildDepartmentInviteActivationEmailHtml({
-          departmentName: invite.departments.name,
-          organizationName: invite.organizations.name,
+          departmentName,
+          organizationName: orgName,
           inviteUrl: actionLink,
           firstName,
         })
       : buildDepartmentJoinMagicLinkEmailHtml({
-          departmentName: invite.departments.name,
-          organizationName: invite.organizations.name,
+          departmentName,
+          organizationName: orgName,
           inviteUrl: actionLink,
           firstName,
         })
@@ -614,8 +650,8 @@ export async function beginDepartmentOnboarding(
     to: email,
     subject:
       generatedLinkType === 'invite'
-        ? `Activate your access to ${invite.departments.name}`
-        : `Join ${invite.departments.name}`,
+        ? `Activate your access to ${departmentName}`
+        : `Join ${departmentName}`,
     html,
   })
 

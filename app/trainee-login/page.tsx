@@ -24,16 +24,29 @@ export default function TraineeLoginPage() {
 
         <PasswordlessLoginForm />
 
-        <div className="mt-6 border-t border-black pt-6">
-          <p className="font-mono text-sm text-gray-600">
-            Moderator or admin account?
-          </p>
-          <Link
-            href="/login"
-            className="mt-3 inline-block border border-black bg-white px-4 py-3 font-mono text-sm text-black hover:bg-gray-50"
-          >
-            Go to Staff Login
-          </Link>
+        <div className="mt-6 border-t border-black pt-6 space-y-4">
+          <div>
+            <p className="font-mono text-sm text-gray-600">
+              New trainee? Join with your department code.
+            </p>
+            <Link
+              href="/join/dept"
+              className="mt-3 inline-block border border-black bg-black px-4 py-3 font-mono text-sm text-white hover:bg-gray-800"
+            >
+              Join a Department
+            </Link>
+          </div>
+          <div>
+            <p className="font-mono text-sm text-gray-600">
+              Moderator or admin account?
+            </p>
+            <Link
+              href="/login"
+              className="mt-3 inline-block border border-black bg-white px-4 py-3 font-mono text-sm text-black hover:bg-gray-50"
+            >
+              Go to Staff Login
+            </Link>
+          </div>
         </div>
       </div>
     </div>

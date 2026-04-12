@@ -246,11 +246,11 @@ export async function listDepartmentMemberUserIds(
 export async function listModeratedDepartments(
   userId: string,
   orgId: string
-): Promise<{ id: string; name: string }[]> {
+): Promise<{ id: string; name: string; department_code: string }[]> {
   const db = await getDb()
   const { data, error } = await db
     .from('department_members')
-    .select('departments:department_id (id, name)')
+    .select('departments:department_id (id, name, department_code)')
     .eq('user_id', userId)
     .eq('org_id', orgId)
     .eq('role', 'department_admin')
@@ -259,8 +259,8 @@ export async function listModeratedDepartments(
 
   type Row = {
     departments:
-      | { id: string; name: string }
-      | { id: string; name: string }[]
+      | { id: string; name: string; department_code: string }
+      | { id: string; name: string; department_code: string }[]
       | null
   }
 

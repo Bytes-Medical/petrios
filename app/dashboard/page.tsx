@@ -6,6 +6,8 @@ import { getSessionsForOrg, getCalendarSubscriptionUrl } from '@/app/actions/ses
 import Link from 'next/link'
 import { getDepartmentsForOrg, getMyModeratedDepartment } from '@/app/actions/departments'
 import { SessionCalendar } from '@/components/SessionCalendar'
+import { PersonalDashboard } from '@/components/PersonalDashboard'
+import { getMyDepartmentSessions, getMyFeedbackHistory, getMyAttendanceSummary } from '@/app/actions/trainee-dashboard'
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
@@ -33,13 +35,18 @@ export default async function DashboardPage() {
     )
   }
 
-  const [sessions, departments, moderatedDept, orgAdmin, calendarUrl] = await Promise.all([
+  const [sessions, departments, moderatedDept, orgAdmin, calendarUrl, mySessions, myFeedback, myAttendance] = await Promise.all([
     getSessionsForOrg(orgId),
     getDepartmentsForOrg(orgId),
     getMyModeratedDepartment(orgId),
     isOrgAdmin(orgId),
     getCalendarSubscriptionUrl(orgId),
+    getMyDepartmentSessions(),
+    getMyFeedbackHistory(),
+    getMyAttendanceSummary(),
   ])
+
+  const isTraineeOnly = !orgAdmin && !moderatedDept
 
   const primaryCreateHref = moderatedDept
     ? `/departments/${moderatedDept.id}/sessions/new`
@@ -50,6 +57,21 @@ export default async function DashboardPage() {
   const primaryManageHref = moderatedDept
     ? `/departments/${moderatedDept.id}/sessions`
     : '/departments'
+
+  // Trainee-only view: show just the personal dashboard
+  if (isTraineeOnly) {
+    return (
+      <div className="min-h-screen">
+        <NavShell />
+        <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
+          <div className="mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-mono font-bold mb-2">My Dashboard</h1>
+          </div>
+          <PersonalDashboard sessions={mySessions} feedback={myFeedback} attendance={myAttendance} />
+        </div>
+      </div>
+    )
+  }
 
   // If user is a moderator (not org admin), show simplified view
   if (moderatedDept && !orgAdmin) {
@@ -88,6 +110,11 @@ export default async function DashboardPage() {
               </div>
             </div>
             <SessionCalendar sessions={departmentSessions} subscriptionUrl={deptCalendarUrl} />
+          </section>
+
+          <section>
+            <h2 className="text-xl sm:text-2xl font-mono font-bold mb-4">My Activity</h2>
+            <PersonalDashboard sessions={mySessions} feedback={myFeedback} attendance={myAttendance} />
           </section>
         </div>
       </div>
@@ -150,6 +177,11 @@ export default async function DashboardPage() {
             </Link>
           </Card>
         </div>
+
+        <section className="mt-6 sm:mt-8">
+          <h2 className="text-xl sm:text-2xl font-mono font-bold mb-4">My Activity</h2>
+          <PersonalDashboard sessions={mySessions} feedback={myFeedback} attendance={myAttendance} />
+        </section>
       </div>
     </div>
   )

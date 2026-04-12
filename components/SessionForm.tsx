@@ -8,6 +8,7 @@ import { Select } from './Select'
 import { Button } from './Button'
 import { createSession } from '@/app/actions/sessions'
 import { assertValidSessionDates } from '@/lib/session-validation'
+import { SESSION_TYPES, SESSION_TYPE_LABELS } from '@/lib/types'
 
 interface SessionFormProps {
   departmentId: string
@@ -39,6 +40,7 @@ export function SessionForm({ departmentId, departmentName }: SessionFormProps) 
         date_start: dateStart,
         date_end: dateEnd,
         location_type: formData.get('location_type') as 'MS_TEAMS' | 'IN_PERSON' | 'HYBRID',
+        session_type: (formData.get('session_type') as string) || undefined,
       })
 
       router.push(`/departments/${departmentId}/sessions`)
@@ -88,6 +90,13 @@ export function SessionForm({ departmentId, departmentName }: SessionFormProps) 
         <option value="MS_TEAMS">MS Teams</option>
         <option value="IN_PERSON">In Person</option>
         <option value="HYBRID">Hybrid</option>
+      </Select>
+
+      <Select label="Session Type" name="session_type">
+        <option value="">General</option>
+        {SESSION_TYPES.map((t) => (
+          <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>
+        ))}
       </Select>
 
       <div className="flex flex-col sm:flex-row gap-4">

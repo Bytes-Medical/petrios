@@ -14,6 +14,7 @@ export interface InsertSessionInput {
   dateStart: string
   dateEnd: string
   locationType: LocationType
+  sessionType?: string | null
   createdBy: string
 }
 
@@ -29,6 +30,7 @@ export async function insertSession(input: InsertSessionInput): Promise<Session>
       date_start: input.dateStart,
       date_end: input.dateEnd,
       location_type: input.locationType,
+      session_type: input.sessionType ?? null,
       teams_meeting_url: null,
       status: 'DRAFT' as SessionStatus,
       tags: null,

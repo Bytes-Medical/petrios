@@ -17,6 +17,7 @@ export async function createSession(sessionData: {
   date_start: string
   date_end: string
   location_type: LocationType
+  session_type?: string
 }) {
   const userId = await requireAuth()
   const orgId = await requireOrg()
@@ -31,6 +32,7 @@ export async function createSession(sessionData: {
     dateStart: sessionData.date_start,
     dateEnd: sessionData.date_end,
     locationType: sessionData.location_type,
+    sessionType: sessionData.session_type ?? null,
     createdBy: userId,
   })
 

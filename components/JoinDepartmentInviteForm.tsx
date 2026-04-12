@@ -4,7 +4,9 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/Button'
 import { Input } from '@/components/Input'
+import { Select } from '@/components/Select'
 import { beginDepartmentOnboarding } from '@/app/actions/member-onboarding'
+import { TRAINEE_GRADES } from '@/lib/types'
 
 interface JoinDepartmentInviteFormProps {
   inviteCode: string
@@ -33,6 +35,7 @@ export function JoinDepartmentInviteForm({
   const [email, setEmail] = useState(initialEmail)
   const [firstName, setFirstName] = useState(initialFirstName)
   const [lastName, setLastName] = useState(initialLastName)
+  const [grade, setGrade] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -49,6 +52,7 @@ export function JoinDepartmentInviteForm({
         email,
         firstName,
         lastName,
+        grade: grade || undefined,
         confirmOrgSwitch,
       })
 
@@ -157,6 +161,16 @@ export function JoinDepartmentInviteForm({
             required
           />
         </div>
+        <Select
+          label="Grade"
+          value={grade}
+          onChange={(event) => setGrade(event.target.value)}
+        >
+          <option value="">Select your grade (optional)</option>
+          {TRAINEE_GRADES.map((g) => (
+            <option key={g} value={g}>{g}</option>
+          ))}
+        </Select>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button type="submit" disabled={loading}>
             {loading ? 'Processing...' : 'Join Department'}

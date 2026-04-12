@@ -182,6 +182,7 @@ export interface PendingOnboardingRequest {
   email: string
   first_name: string
   last_name: string
+  grade: string | null
   requested_role: UserRole
   link_type: OnboardingLinkType
   requested_user_id: string | null
@@ -261,6 +262,7 @@ export async function insertOnboardingRequest(input: {
   email: string
   firstName: string
   lastName: string
+  grade?: string | null
   requestedRole: UserRole
   linkType: OnboardingLinkType
   requestedUserId: string | null
@@ -275,6 +277,7 @@ export async function insertOnboardingRequest(input: {
       email: input.email,
       first_name: input.firstName,
       last_name: input.lastName,
+      grade: input.grade ?? null,
       requested_role: input.requestedRole,
       link_type: input.linkType,
       requested_user_id: input.requestedUserId,
@@ -512,19 +515,68 @@ export async function upsertDepartmentMember(input: {
   departmentId: string
   userId: string
   role: UserRole
+  grade?: string | null
 }): Promise<void> {
   const db = await getServiceDb()
-  const { error } = await db.from('department_members').upsert(
-    {
-      org_id: input.orgId,
-      department_id: input.departmentId,
-      user_id: input.userId,
-      role: input.role,
-    },
-    { onConflict: 'department_id,user_id' }
-  )
+  const row: Record<string, unknown> = {
+    org_id: input.orgId,
+    department_id: input.departmentId,
+    user_id: input.userId,
+    role: input.role,
+  }
+  if (input.grade !== undefined) row.grade = input.grade
+  const { error } = await db
+    .from('department_members')
+    .upsert(row, { onConflict: 'department_id,user_id' })
 
   if (error) throw toDbError('Failed to upsert department membership', error)
+}
+
+// -----------------------------------------------------------------------------
+// Department code lookup
+// -----------------------------------------------------------------------------
+
+export interface DepartmentCodeLookup {
+  department_id: string
+  department_name: string
+  department_code: string
+  org_id: string
+  org_name: string
+  invite_link_id: string
+}
+
+export async function findDepartmentByCode(
+  code: string
+): Promise<DepartmentCodeLookup | null> {
+  const db = await getServiceDb()
+  const normalizedCode = code.trim().replace(/\D/g, '')
+
+  const { data, error } = await db
+    .from('departments')
+    .select('id, name, department_code, org_id, organizations:org_id(id, name)')
+    .eq('department_code', normalizedCode)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to look up department code', error)
+  if (!data) return null
+
+  const org = Array.isArray(data.organizations) ? data.organizations[0] : data.organizations
+
+  // Also look up the invite link for this department (needed for onboarding requests)
+  const { data: inviteLink } = await db
+    .from('department_invite_links')
+    .select('id')
+    .eq('department_id', data.id)
+    .maybeSingle()
+
+  return {
+    department_id: data.id,
+    department_name: data.name,
+    department_code: data.department_code,
+    org_id: data.org_id,
+    org_name: org?.name ?? '',
+    invite_link_id: inviteLink?.id ?? '',
+  }
 }
 
 // -----------------------------------------------------------------------------

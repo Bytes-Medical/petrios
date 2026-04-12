@@ -9,11 +9,38 @@ export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED'
 export type OnboardingLinkType = 'invite' | 'magiclink'
 export type OnboardingRequestStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED'
 export type FeedbackFieldType = 'rating' | 'textarea' | 'text'
+export type TraineeGrade = 'FY1' | 'FY2' | 'ST1' | 'ST2' | 'ST3' | 'ST4' | 'ST5' | 'ST6' | 'ST7' | 'ST8' | 'Consultant'
+export type SessionType = 'STEPP' | 'CLINICAL_SKILLS' | 'SIMULATION' | 'ACADEMIC'
+
+export const TRAINEE_GRADES: TraineeGrade[] = ['FY1', 'FY2', 'ST1', 'ST2', 'ST3', 'ST4', 'ST5', 'ST6', 'ST7', 'ST8', 'Consultant']
+export const SESSION_TYPES: SessionType[] = ['STEPP', 'CLINICAL_SKILLS', 'SIMULATION', 'ACADEMIC']
+
+export const SESSION_TYPE_LABELS: Record<SessionType, string> = {
+  STEPP: 'STEPP',
+  CLINICAL_SKILLS: 'Clinical Skills',
+  SIMULATION: 'Simulation',
+  ACADEMIC: 'Academic',
+}
+
+export const SESSION_TYPE_COLORS: Record<SessionType, string> = {
+  STEPP: 'border-l-blue-500',
+  CLINICAL_SKILLS: 'border-l-green-500',
+  SIMULATION: 'border-l-orange-500',
+  ACADEMIC: 'border-l-purple-500',
+}
+
+export const SESSION_TYPE_BG_COLORS: Record<SessionType, string> = {
+  STEPP: 'bg-blue-100 text-blue-800',
+  CLINICAL_SKILLS: 'bg-green-100 text-green-800',
+  SIMULATION: 'bg-orange-100 text-orange-800',
+  ACADEMIC: 'bg-purple-100 text-purple-800',
+}
 
 export interface Department {
   id: string
   org_id: string
   name: string
+  department_code: string
   created_by: string
   created_at: string
   feedback_form_fields?: DepartmentFeedbackField[]
@@ -49,6 +76,7 @@ export interface DepartmentMember {
   department_id: string
   user_id: string
   role: UserRole
+  grade: TraineeGrade | null
   created_at: string
 }
 
@@ -58,6 +86,7 @@ export interface Profile {
   first_name: string | null
   last_name: string | null
   full_name: string | null
+  grade: TraineeGrade | null
   email_verified_at: string | null
   created_at: string
   updated_at: string
@@ -82,6 +111,7 @@ export interface MemberOnboardingRequest {
   email: string
   first_name: string
   last_name: string
+  grade: TraineeGrade | null
   requested_role: UserRole
   link_type: OnboardingLinkType
   status: OnboardingRequestStatus
@@ -94,6 +124,7 @@ export interface MemberOnboardingRequest {
 export interface ManagedDepartmentInviteLink {
   department_id: string
   department_name: string
+  department_code: string
   invite_code: string
   invite_url: string
   rotated_at: string | null
@@ -127,6 +158,7 @@ export interface Session {
   updated_at: string
   tags: string[] | null
   capacity: number | null
+  session_type: SessionType | null
   // Evidence-based attendance fields
   attendance_mode?: 'SELF_CHECKIN' | 'EVIDENCE_AGGREGATION'
   checkin_open_mins_before?: number
