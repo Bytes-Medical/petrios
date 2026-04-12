@@ -10,8 +10,9 @@ import {
 import { normalizeDepartmentFeedbackFields } from '@/lib/feedback-form'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import * as departmentsDb from '@/lib/db/departments'
+import { getServiceDb } from '@/lib/db/client'
 import { DbNotFoundError } from '@/lib/db'
-import type { UserRole } from '@/lib/types'
+import type { TraineeGrade, UserRole } from '@/lib/types'
 
 export async function createDepartment(name: string) {
   const userId = await requireAuth()
@@ -149,6 +150,56 @@ export async function leaveDepartment(departmentId: string) {
   revalidatePath('/departments')
   revalidatePath('/admin')
   return { success: true }
+}
+
+export interface DepartmentMemberWithProfile {
+  user_id: string
+  email: string
+  full_name: string | null
+  first_name: string | null
+  last_name: string | null
+  grade: TraineeGrade | null
+  role: UserRole
+  joined_at: string
+}
+
+export async function getDepartmentMembersWithProfiles(
+  departmentId: string
+): Promise<DepartmentMemberWithProfile[]> {
+  await requireDepartmentModerator(departmentId)
+  const orgId = await requireOrg()
+
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('department_members')
+    .select('user_id, role, grade, created_at, profiles:user_id(email, full_name, first_name, last_name)')
+    .eq('department_id', departmentId)
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw new Error(`Failed to fetch department members: ${error.message}`)
+
+  type Row = {
+    user_id: string
+    role: UserRole
+    grade: string | null
+    created_at: string
+    profiles: { email: string; full_name: string | null; first_name: string | null; last_name: string | null } | { email: string; full_name: string | null; first_name: string | null; last_name: string | null }[] | null
+  }
+
+  return ((data as Row[] | null) ?? []).map((row) => {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles
+    return {
+      user_id: row.user_id,
+      email: profile?.email ?? '',
+      full_name: profile?.full_name ?? null,
+      first_name: profile?.first_name ?? null,
+      last_name: profile?.last_name ?? null,
+      grade: row.grade as TraineeGrade | null,
+      role: row.role,
+      joined_at: row.created_at,
+    }
+  })
 }
 
 export async function removeDepartmentMember(

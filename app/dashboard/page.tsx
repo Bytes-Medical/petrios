@@ -24,11 +24,21 @@ export default async function DashboardPage() {
         <NavShell />
         <div className="max-w-4xl mx-auto px-4 py-8">
           <Card>
-            <h1 className="text-2xl font-mono font-bold mb-4">Organization Required</h1>
-            <p className="font-mono mb-4">Please create or join an organization to continue.</p>
-            <Link href="/admin" className="font-mono text-sm underline">
-              Go to Admin →
-            </Link>
+            <h1 className="text-2xl font-mono font-bold mb-4">Join a Department</h1>
+            <p className="font-mono mb-4">
+              Enter your 6-digit department code to get started.
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/join/dept"
+                className="border border-black bg-black px-4 py-3 text-center font-mono text-sm text-white hover:bg-gray-800"
+              >
+                Join with Department Code
+              </Link>
+              <Link href="/admin" className="font-mono text-sm underline self-center">
+                Admin? Create an organization →
+              </Link>
+            </div>
           </Card>
         </div>
       </div>

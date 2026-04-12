@@ -11,11 +11,14 @@ import {
   getDepartmentLeadSettings,
   getDepartmentsForOrg,
   getMyModeratedDepartments,
+  getDepartmentMembersWithProfiles,
 } from '@/app/actions/departments'
+import type { DepartmentMemberWithProfile } from '@/app/actions/departments'
 import {
   getManagedDepartmentInviteLinks,
   getOrgMembersForManagement,
 } from '@/app/actions/member-onboarding'
+import { DepartmentMembersPanel } from '@/components/DepartmentMembersPanel'
 import type { ManagedDepartmentInviteLink, ManagedOrgMember } from '@/lib/types'
 
 export default async function SettingsPage() {
@@ -61,6 +64,7 @@ export default async function SettingsPage() {
     editableDepartments.map(async (department) => ({
       department,
       settings: await getDepartmentLeadSettings(department.id),
+      members: await getDepartmentMembersWithProfiles(department.id),
     }))
   )
   const hasSettingsContent = orgManager || departmentSettings.length > 0
@@ -135,7 +139,7 @@ export default async function SettingsPage() {
             </Card>
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              {departmentSettings.map(({ department, settings }) => (
+              {departmentSettings.map(({ department, settings, members }) => (
                 <Card key={department.id}>
                   <div className="mb-5">
                     <h2 className="text-xl font-mono font-bold">{department.name}</h2>
@@ -145,10 +149,22 @@ export default async function SettingsPage() {
                     </p>
                   </div>
                   <div className="space-y-6">
-                    <FeedbackTemplatePanel
-                      departmentId={department.id}
-                      initialFields={settings.feedbackFormFields}
-                    />
+                    <div>
+                      <h3 className="mb-3 font-mono text-sm font-bold uppercase tracking-wider text-gray-500">
+                        Members
+                      </h3>
+                      <DepartmentMembersPanel
+                        departmentName={department.name}
+                        members={members}
+                      />
+                    </div>
+
+                    <div className="border-t border-black pt-6">
+                      <FeedbackTemplatePanel
+                        departmentId={department.id}
+                        initialFields={settings.feedbackFormFields}
+                      />
+                    </div>
 
                     <div className="border-t border-black pt-6">
                       <SignatureUploadPanel
