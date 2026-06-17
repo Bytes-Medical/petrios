@@ -99,7 +99,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="pointer-events-auto animate-site-toast-in border border-black bg-white px-4 py-3 shadow-[8px_8px_0_rgba(0,0,0,0.08)]"
+            className="pointer-events-auto animate-site-toast-in border border-black border-l-4 border-l-clay-600 bg-white px-4 py-3 shadow-[8px_8px_0_rgba(31,29,26,0.08)]"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">

@@ -13,6 +13,7 @@ import { EditSessionForm } from './EditSessionForm'
 import { AuditPanel } from './AuditPanel'
 import { ReleaseTeacherFeedbackPanel } from './ReleaseTeacherFeedbackPanel'
 import { Button } from './Button'
+import Link from 'next/link'
 import type { Session, TeacherInvitation } from '@/lib/types'
 
 interface ManageSessionTabsProps {
@@ -23,6 +24,7 @@ interface ManageSessionTabsProps {
   attendance: any[]
   emailHistory: { user_id: string; email_type: string; sent_at: string }[]
   invitations: TeacherInvitation[]
+  isPersonal?: boolean
 }
 
 export function ManageSessionTabs({
@@ -33,6 +35,7 @@ export function ManageSessionTabs({
   attendance,
   emailHistory,
   invitations,
+  isPersonal,
 }: ManageSessionTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'meeting' | 'teachers' | 'feedback' | 'audit' | 'certificates'>('overview')
   const [editMode, setEditMode] = useState(false)
@@ -63,6 +66,13 @@ export function ManageSessionTabs({
               {tab.label}
             </button>
           ))}
+          {/* The slide editor is a full-screen route, so this tab navigates to it. */}
+          <Link
+            href={`/sessions/${session.id}/slides`}
+            className="px-4 py-2 font-mono text-sm border-b-2 border-transparent hover:border-gray-400"
+          >
+            Slides
+          </Link>
         </div>
       </div>
 
@@ -120,6 +130,7 @@ export function ManageSessionTabs({
                 sessionId={session.id}
                 currentStatus={session.status}
                 dateEnd={session.date_end}
+                isPersonal={isPersonal}
               />
             </Card>
           </div>

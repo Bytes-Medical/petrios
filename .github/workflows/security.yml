@@ -1,0 +1,248 @@
+name: Security
+
+# Robust security bot. Runs on every push to main and on every PR.
+#
+# Policy: BLOCK PRs, NOTIFY on main.
+#   - On `pull_request`, any finding fails the check and gates the merge.
+#   - On `push` to main, the same scans run but only report (the commit already
+#     exists, so failing would just be noise). Each job derives this from
+#     `github.event_name` and only exits non-zero when the event is a PR.
+#
+# The repo is private with no GitHub Advanced Security, so nothing here relies
+# on uploading SARIF to the Security tab — every scanner fails its own job
+# directly instead.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: jobs only read the checkout. No security-events:write (would
+# need GHAS) and no write scopes at all.
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Secret scanning — highest value here given service-role / Resend keys.
+  #    TruffleHog is license-free and verifies whether a found secret is LIVE.
+  #    .env / .env.local are gitignored; this guards against accidental commits.
+  # ---------------------------------------------------------------------------
+  secrets:
+    name: Secret scan (TruffleHog)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so a PR can be scanned across its whole commit range,
+          # not just the tip.
+          fetch-depth: 0
+
+      - name: TruffleHog scan
+        uses: trufflesecurity/trufflehog@main
+        # The action exits non-zero when a verified (live) secret is found.
+        # Block PRs / notify on main: on a push the finding is reported but does
+        # not fail the job; on a PR it does.
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+        with:
+          # PR: scan only the commits the PR introduces (base..head).
+          # Push: action defaults to scanning the pushed range / full history.
+          base: ${{ github.event.pull_request.base.sha || '' }}
+          head: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Report verified (live) AND unknown secrets; failure gates PRs only.
+          extra_args: --results=verified,unknown
+
+  # ---------------------------------------------------------------------------
+  # 2. SAST — Semgrep. Next.js/React/TS/OWASP/secrets rulesets. No token needed,
+  #    works fully on private repos.
+  # ---------------------------------------------------------------------------
+  sast-semgrep:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Semgrep scan
+        run: |
+          set -o pipefail
+          # On a PR, --error makes Semgrep exit non-zero on any finding (gates
+          # the merge). On main we drop --error and never fail.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ERR="--error"
+          else
+            ERR=""
+          fi
+          semgrep scan $ERR \
+            --config p/javascript \
+            --config p/typescript \
+            --config p/react \
+            --config p/nextjs \
+            --config p/owasp-top-ten \
+            --config p/secrets \
+            --metrics off
+
+  # ---------------------------------------------------------------------------
+  # 3. SAST — CodeQL. Interprocedural taint analysis. upload:false avoids the
+  #    GHAS requirement on a private repo; we gate on the local SARIF instead.
+  # ---------------------------------------------------------------------------
+  sast-codeql:
+    name: SAST (CodeQL)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # security-and-quality has the broadest security coverage.
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          # No Security-tab upload (needs GHAS on private repos). Emit SARIF
+          # locally and gate on it below.
+          upload: false
+          output: codeql-results
+
+      - name: Gate on findings
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+        run: |
+          count=$(python3 - <<'PY'
+          import glob, json, sys
+          total = 0
+          for f in glob.glob("codeql-results/*.sarif"):
+              data = json.load(open(f))
+              for run in data.get("runs", []):
+                  for res in run.get("results", []):
+                      total += 1
+                      rule = res.get("ruleId", "?")
+                      msg = res.get("message", {}).get("text", "")
+                      loc = (res.get("locations") or [{}])[0].get("physicalLocation", {})
+                      art = loc.get("artifactLocation", {}).get("uri", "?")
+                      line = loc.get("region", {}).get("startLine", "?")
+                      print(f"::error file={art},line={line}::[{rule}] {msg}", file=sys.stderr)
+          print(total)
+          PY
+          )
+          echo "CodeQL findings: $count"
+          if [ "$count" -gt 0 ]; then
+            if [ "$IS_PR" = "true" ]; then
+              echo "Failing PR: CodeQL found $count issue(s)."
+              exit 1
+            fi
+            echo "::warning::CodeQL found $count issue(s) (reporting only on main)."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 4. Dependency audit — known CVEs. Dependabot only opens update PRs; this
+  #    actually fails the build on a vulnerable production dependency.
+  # ---------------------------------------------------------------------------
+  dependencies:
+    name: Dependency audit (npm)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm audit (production deps, high+critical)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npm audit --omit=dev --audit-level=high
+          else
+            npm audit --omit=dev --audit-level=high || \
+              echo "::warning::npm audit found high/critical vulnerabilities (reporting only on main)."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 5. Supabase RLS guard — every migration that CREATEs a table must also
+  #    ENABLE ROW LEVEL SECURITY on it. RLS is the only thing between trainee
+  #    data and the anon key. Service-role *usage* is intentionally widespread
+  #    and is deliberately NOT flagged (would be pure noise).
+  # ---------------------------------------------------------------------------
+  supabase-rls:
+    name: Supabase RLS guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need history to diff against the base and see which migrations the
+          # change actually touches.
+          fetch-depth: 0
+
+      - name: New tables must enable RLS
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # Only inspect migrations CHANGED by this push/PR — pre-existing RLS
+          # debt (tracked separately) must not block unrelated changes. A new
+          # table is OK if ANY migration in the repo enables RLS on it (this
+          # repo sometimes splits the CREATE and the ENABLE across files, e.g.
+          # attendance_evidence in 014 + 015_attendance_evidence_rls.sql).
+          base="$BASE_SHA"
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base=$(git rev-parse origin/main 2>/dev/null || echo "")
+          fi
+          if [ -n "$base" ]; then
+            changed=$(git diff --name-only "$base" "$HEAD_SHA" -- 'supabase/migrations/*.sql')
+          else
+            # No usable base (e.g. first push) — fall back to scanning all.
+            changed=$(ls supabase/migrations/*.sql 2>/dev/null)
+          fi
+
+          if [ -z "$changed" ]; then
+            echo "No migration changes to check."
+            exit 0
+          fi
+          echo "Checking migrations:"; echo "$changed"
+
+          failed=0
+          for f in $changed; do
+            [ -f "$f" ] || continue
+            tables=$(grep -ioE 'create table( if not exists)?[[:space:]]+[a-z0-9_."]+' "$f" \
+              | sed -E 's/.*create table( if not exists)?[[:space:]]+//I; s/"//g; s/^[a-z0-9_]+\.//I' \
+              | tr 'A-Z' 'a-z' | sort -u)
+            [ -z "$tables" ] && continue
+            for t in $tables; do
+              # Is RLS enabled on this table in ANY migration?
+              if ! grep -riE "alter table[[:space:]]+([a-z0-9_]+\.)?\"?${t}\"?[[:space:]]+enable row level security" supabase/migrations/ >/dev/null; then
+                echo "::error file=${f}::Table '${t}' is created without ENABLE ROW LEVEL SECURITY (not enabled in any migration)"
+                failed=1
+              fi
+            done
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            if [ "$IS_PR" = "true" ]; then
+              echo "Failing PR: one or more new tables lack RLS."
+              exit 1
+            fi
+            echo "::warning::One or more new tables lack RLS (reporting only on main)."
+          fi

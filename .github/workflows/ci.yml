@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # There is no test framework (see CLAUDE.md); the production build is the
+      # main correctness gate. Env values are placeholders — nothing in the
+      # build talks to Supabase or Resend (all env access in lib/ is lazy,
+      # inside request-time functions).
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+          NEXT_PUBLIC_APP_URL: https://ci-placeholder.invalid
+          RESEND_API_KEY: re_ci_placeholder
+
+  migrations:
+    name: Migration sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Migrations are applied in filename order (supabase db push / SQL
+      # editor). Catch the two mistakes that silently reorder or shadow them:
+      # a file that doesn't follow the NNN_ convention, and two files claiming
+      # the same number (easy to do on parallel branches).
+      - name: Filenames are numbered and unique
+        working-directory: supabase/migrations
+        run: |
+          failed=0
+
+          bad=$(ls *.sql | grep -vE '^[0-9]{3}_[a-z0-9_]+\.sql$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Migration filenames must match NNN_snake_case.sql:"
+            echo "$bad"
+            failed=1
+          fi
+
+          dups=$(ls *.sql | cut -c1-3 | sort | uniq -d)
+          if [ -n "$dups" ]; then
+            echo "::error::Duplicate migration number(s): $(echo $dups | tr '\n' ' ')"
+            ls *.sql | grep -E "^($(echo $dups | tr ' ' '|'))_"
+            failed=1
+          fi
+
+          exit $failed

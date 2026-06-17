@@ -40,9 +40,10 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // Public routes
-  const publicRoutes = ['/', '/login', '/trainee-login', '/signup', '/verify', '/join', '/join/callback']
-  const isPublicRoute = publicRoutes.some(route => 
-    request.nextUrl.pathname === route || 
+  const publicRoutes = ['/', '/login', '/trainee-login', '/signup', '/verify', '/join', '/join/callback', '/privacy']
+  const isPublicRoute = publicRoutes.some(route =>
+    request.nextUrl.pathname === route ||
+    request.nextUrl.pathname.startsWith('/login') ||
     request.nextUrl.pathname.startsWith('/verify/') ||
     request.nextUrl.pathname.startsWith('/join/') ||
     request.nextUrl.pathname.startsWith('/sessions/') && request.nextUrl.pathname.endsWith('/feedback') ||

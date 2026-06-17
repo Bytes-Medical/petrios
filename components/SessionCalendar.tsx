@@ -176,17 +176,17 @@ export function SessionCalendar({
       published: {
         colorName: 'published',
         lightColors: {
-          main: '#b91c1c',
-          container: '#ffe4e6',
-          onContainer: '#7f1d1d',
+          main: '#C25D3D',
+          container: '#F6E3DA',
+          onContainer: '#7E3A26',
         },
       },
       draft: {
         colorName: 'draft',
         lightColors: {
-          main: '#57534e',
-          container: '#f5f5f4',
-          onContainer: '#44403c',
+          main: '#7D7768',
+          container: '#F5F4EF',
+          onContainer: '#46413A',
         },
       },
     },
@@ -325,7 +325,7 @@ export function SessionCalendar({
           onClick={() => setSelectedSession(null)}
         >
           <div
-            className="my-auto w-full max-w-md border border-black bg-white shadow-[0_18px_60px_rgba(0,0,0,0.18)]"
+            className="my-auto w-full max-w-md border border-black bg-white shadow-[0_18px_60px_rgba(31,29,26,0.18)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="border-t-[6px] border-red-700 px-5 py-5">
@@ -423,7 +423,7 @@ export function SessionCalendar({
             />
 
             <div
-              className="relative overflow-hidden border border-black bg-white shadow-[8px_8px_0_rgba(0,0,0,0.08)]"
+              className="relative overflow-hidden border border-black bg-white shadow-[8px_8px_0_rgba(31,29,26,0.08)]"
               style={{ maxHeight: expandedDay.position.maxHeight }}
             >
               <div className="border-b border-black px-4 py-4 sm:px-5">
@@ -462,9 +462,9 @@ export function SessionCalendar({
                         style={isStriped
                           ? {
                               backgroundImage:
-                                'repeating-linear-gradient(-45deg, #000000 0, #000000 4px, #ffffff 4px, #ffffff 8px)',
+                                'repeating-linear-gradient(-45deg, #1F1D1A 0, #1F1D1A 4px, #FAF9F5 4px, #FAF9F5 8px)',
                             }
-                          : { backgroundColor: '#000000' }}
+                          : { backgroundColor: '#C25D3D' }}
                       />
 
                       <div className="w-20 shrink-0 pt-0.5 text-gray-700">

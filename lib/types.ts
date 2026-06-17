@@ -242,3 +242,78 @@ export interface Certificate {
   recipient_name: string | null
   created_at: string
 }
+
+// -----------------------------------------------------------------------------
+// Presentations (teaching slide decks)
+// -----------------------------------------------------------------------------
+
+export type SlideBlockType = 'text' | 'image' | 'shape'
+
+export type SlideShapeKind = 'rectangle' | 'ellipse' | 'rounded' | 'triangle'
+
+// Colour values may be a raw hex/CSS colour OR a theme token like `theme:accent1`
+// resolved at render via resolveColor() — so changing theme recolours decks and
+// existing hex values stay valid (backward-compatible).
+export interface SlideBlockStyle {
+  fontSize?: number
+  fontWeight?: 'normal' | 'bold'
+  italic?: boolean
+  align?: 'left' | 'center' | 'right'
+  color?: string
+  background?: string
+  highlight?: string
+  fontFamily?: string
+  lineHeight?: number
+  shape?: SlideShapeKind
+  borderColor?: string
+  borderWidth?: number
+  borderStyle?: 'solid' | 'dashed' | 'dotted'
+  radius?: number
+}
+
+export interface SlideGradient {
+  type: 'linear'
+  angle: number
+  stops: { color: string; pos: number }[]
+}
+
+// Block geometry is in stage pixels against a fixed design stage (see
+// lib/slides.ts SLIDE_STAGE_WIDTH/HEIGHT); the editor and present view scale the
+// whole stage to fit their container so layouts stay resolution-independent.
+export interface SlideBlock {
+  id: string
+  type: SlideBlockType
+  x: number
+  y: number
+  w: number
+  h: number
+  z: number
+  content: string // text for text blocks; image URL for image; '' for shape
+  html?: string // rich-text HTML (supersedes content when present)
+  rotation?: number // degrees
+  opacity?: number // 0..1
+  style?: SlideBlockStyle
+}
+
+export interface Slide {
+  id: string
+  background?: string
+  backgroundGradient?: SlideGradient
+  notes?: string
+  layout?: string
+  blocks: SlideBlock[]
+}
+
+export interface Presentation {
+  id: string
+  org_id: string
+  department_id: string
+  session_id: string | null
+  title: string
+  theme: string
+  slides: Slide[]
+  customColors?: string[]
+  created_by: string
+  created_at: string
+  updated_at: string
+}

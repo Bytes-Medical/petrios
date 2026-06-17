@@ -5,7 +5,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export function Input({ label, className = '', ...props }: InputProps) {
-  const inputStyles = 'w-full px-3 py-2 border border-black font-mono text-sm bg-white focus:outline-none focus:ring-1 focus:ring-black'
+  const inputStyles = 'w-full px-3 py-2 border border-black font-mono text-sm bg-white focus:outline-none focus:border-clay-600 focus:ring-1 focus:ring-clay-600'
   
   return (
     <div className="w-full">

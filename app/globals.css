@@ -3,8 +3,25 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --ink: #1f1d1a;
+    --paper: #f0eee6;
+    --clay: #d97757;
+  }
+
   body {
-    @apply bg-white text-black font-mono antialiased;
+    @apply bg-paper text-black font-mono antialiased;
+  }
+
+  ::selection {
+    background: var(--clay);
+    color: #faf9f5;
+  }
+
+  input,
+  textarea,
+  select {
+    caret-color: var(--clay);
   }
 
   /* Prevent horizontal scroll on mobile */
@@ -19,14 +36,20 @@
   }
 }
 
+/* Faint dot grid for hero/landing surfaces */
+.bg-dotgrid {
+  background-image: radial-gradient(rgba(31, 29, 26, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
 /* Schedule-X calendar overrides to match monospace design */
 .sx-calendar-wrapper {
   min-height: clamp(620px, 68vh, 820px);
 }
 
 .sx-calendar-wrapper .sx__calendar {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  border: 1px solid black;
+  font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  border: 1px solid var(--ink);
   border-radius: 0;
   min-height: 100%;
   box-shadow: none;
@@ -39,7 +62,7 @@
 }
 
 .sx-calendar-wrapper .sx__calendar-header {
-  border-bottom: 1px solid black;
+  border-bottom: 1px solid var(--ink);
   padding: 0.9rem 1rem;
   align-items: center;
   gap: 0.75rem;
@@ -135,10 +158,10 @@
 .sx-calendar-wrapper .sx__month-grid-day__events-more {
   width: calc(100% - 0.8rem);
   margin: 0.2rem 0.4rem 0;
-  border: 1px solid #d1d5db;
-  border-radius: 0.45rem;
-  background: #f3f4f6;
-  color: #374151;
+  border: 1px solid #cbc6ba;
+  border-radius: 0;
+  background: #f5f4ef;
+  color: #46413a;
   font-size: 0.8rem;
   line-height: 1;
   padding: 0.45rem 0.5rem;

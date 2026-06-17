@@ -5,7 +5,7 @@ import { getSession, getSessionTeachers } from '@/app/actions/sessions'
 import { getDepartment } from '@/app/actions/departments'
 import { getDepartmentMemberUsers } from '@/app/actions/departments'
 import { getAttendance } from '@/app/actions/attendance'
-import { isDepartmentModerator } from '@/lib/auth'
+import { isDepartmentModerator, isPersonalWorkspace } from '@/lib/auth'
 import { getTeacherEmailHistory } from '@/app/actions/emails'
 import { getSessionInvitations } from '@/app/actions/teacher-invitations'
 import Link from 'next/link'
@@ -41,6 +41,7 @@ export default async function ManageSessionPage({
   const attendance = await getAttendance(params.id)
   const emailHistory = await getTeacherEmailHistory(params.id)
   const invitations = await getSessionInvitations(params.id)
+  const isPersonal = await isPersonalWorkspace(orgId)
 
   return (
     <div className="min-h-screen">
@@ -62,6 +63,7 @@ export default async function ManageSessionPage({
           attendance={attendance}
           emailHistory={emailHistory}
           invitations={invitations}
+          isPersonal={isPersonal}
         />
       </div>
     </div>

@@ -12,12 +12,14 @@ interface PublishSessionPanelProps {
   sessionId: string
   currentStatus: SessionStatus
   dateEnd: string
+  isPersonal?: boolean
 }
 
 export function PublishSessionPanel({
   sessionId,
   currentStatus,
   dateEnd,
+  isPersonal,
 }: PublishSessionPanelProps) {
   const router = useRouter()
   const { showToast } = useToast()
@@ -62,7 +64,9 @@ export function PublishSessionPanel({
           Current status: <strong>{currentStatus}</strong>
         </p>
         <p className="font-mono text-sm text-gray-600 mb-4">
-          Published sessions are visible to all department members. Draft sessions are only visible to moderators.
+          {isPersonal
+            ? 'Draft sessions stay private while you prepare. Publish when the session is ready to run.'
+            : 'Published sessions are visible to all department members. Draft sessions are only visible to moderators.'}
         </p>
         {publishBlockedReason ? (
           <p className="font-mono text-sm text-gray-600">

@@ -8,10 +8,12 @@ import { getDepartmentsForOrg, getMyModeratedDepartment } from '@/app/actions/de
 import { SessionCalendar } from '@/components/SessionCalendar'
 import { PersonalDashboard } from '@/components/PersonalDashboard'
 import { getMyDepartmentSessions, getMyFeedbackHistory, getMyAttendanceSummary } from '@/app/actions/trainee-dashboard'
+import { ensurePersonalWorkspace } from '@/app/actions/personal-workspace'
+import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
-  
+
   if (!user) {
     redirect('/login')
   }
@@ -23,6 +25,29 @@ export default async function DashboardPage() {
   const orgId = await getCurrentOrgId()
 
   if (!orgId) {
+    // Individual (non-enterprise) sign-in: auto-provision a personal workspace
+    // so the user lands straight on the normal dashboard. Re-render via redirect
+    // because getCurrentOrgId() is request-cached and downstream actions call
+    // requireOrg(). The "Join a Department" screen below is only the fallback if
+    // provisioning fails. (redirect() must stay outside the try/catch — it works
+    // by throwing.)
+    //
+    // Gated by INDIVIDUAL_SIGNUP_ENABLED: in enterprise-only mode we skip this
+    // entirely so an org-less user (anyone can request a magic link) cannot
+    // self-provision a working account — they fall through to the join wall.
+    if (INDIVIDUAL_SIGNUP_ENABLED) {
+      let provisioned = false
+      try {
+        await ensurePersonalWorkspace()
+        provisioned = true
+      } catch (error) {
+        console.error('Personal workspace provisioning failed:', error)
+      }
+      if (provisioned) {
+        redirect('/dashboard')
+      }
+    }
+
     return (
       <div className="min-h-screen">
         <NavShell />

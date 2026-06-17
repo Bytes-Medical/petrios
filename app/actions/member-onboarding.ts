@@ -730,14 +730,25 @@ export async function sendPasswordlessLoginLink(emailInput: string) {
     next: '/dashboard',
   })
 
-  const resend = getResendClient()
-  const fromAddress =
-    process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
   const profile = await onboardingDb.findProfileByEmail(email)
   const firstName =
     (profile?.first_name && profile.first_name.trim()) ||
     (profile?.full_name && profile.full_name.trim().split(' ')[0]) ||
     null
+
+  // Resend's onboarding@resend.dev sender only delivers to the account owner's
+  // address until a custom domain is verified, which blocks local testing. In
+  // development (or when AUTH_DEV_LINKS=true) print the link so sign-in works
+  // for any email regardless of email delivery.
+  const devLinksEnabled =
+    process.env.NODE_ENV !== 'production' || process.env.AUTH_DEV_LINKS === 'true'
+  if (devLinksEnabled) {
+    console.log(`\n🔗 [auth] Sign-in link for ${email}:\n${inviteUrl}\n`)
+  }
+
+  const resend = getResendClient()
+  const fromAddress =
+    process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
 
   const { error: emailError } = await resend.emails.send({
     from: fromAddress,
@@ -750,12 +761,20 @@ export async function sendPasswordlessLoginLink(emailInput: string) {
   })
 
   if (emailError) {
+    if (devLinksEnabled) {
+      return {
+        success: true,
+        message: `Email delivery failed (${emailError.message}). Dev mode: open the sign-in link printed in the server console.`,
+      }
+    }
     throw new Error(`Failed to send sign-in email: ${emailError.message}`)
   }
 
   return {
     success: true,
-    message: 'Check your email for a sign-in link.',
+    message: devLinksEnabled
+      ? 'Sign-in link sent — also printed in the server console for local testing.'
+      : 'Check your email for a sign-in link.',
   }
 }
 

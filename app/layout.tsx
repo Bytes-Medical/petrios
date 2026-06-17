@@ -1,9 +1,13 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { IBM_Plex_Mono } from 'next/font/google'
 import { ToastProvider } from '@/components/ToastProvider'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-plex-mono',
+})
 
 export const metadata: Metadata = {
   title: 'Byte Teaching',
@@ -23,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${plexMono.variable} font-mono`}>
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

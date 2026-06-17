@@ -5,7 +5,7 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 }
 
 export function Textarea({ label, className = '', ...props }: TextareaProps) {
-  const textareaStyles = 'w-full px-3 py-2 border border-black font-mono text-sm bg-white focus:outline-none focus:ring-1 focus:ring-black resize-y'
+  const textareaStyles = 'w-full px-3 py-2 border border-black font-mono text-sm bg-white focus:outline-none focus:border-clay-600 focus:ring-1 focus:ring-clay-600 resize-y'
   
   return (
     <div className="w-full">

@@ -16,9 +16,10 @@ interface NavProps {
   adminLink?: AdminLink | null
   roleLabel?: string | null
   isSuperAdmin?: boolean
+  isPersonal?: boolean
 }
 
-export function Nav({ adminLink, roleLabel, isSuperAdmin: superAdmin }: NavProps) {
+export function Nav({ adminLink, roleLabel, isSuperAdmin: superAdmin, isPersonal }: NavProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
@@ -27,16 +28,21 @@ export function Nav({ adminLink, roleLabel, isSuperAdmin: superAdmin }: NavProps
 
   const navLinks = superAdmin
     ? [{ href: '/super-admin', label: 'Super Admin' }]
-    : [
-        { href: '/dashboard', label: 'Dashboard' },
-        { href: '/audit', label: 'Audit' },
-        { href: '/settings', label: 'Settings' },
-        ...(adminLink ? [adminLink] : []),
-      ]
+    : isPersonal
+      ? // Individual account: enterprise tools (Audit, Settings, Admin) don't apply.
+        [{ href: '/dashboard', label: 'Dashboard' }]
+      : [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/audit', label: 'Audit' },
+          { href: '/settings', label: 'Settings' },
+          ...(adminLink ? [adminLink] : []),
+        ]
 
   function getNavLinkClass(href: string) {
     const isActive = pathname === href || pathname.startsWith(`${href}/`)
-    return isActive ? 'underline underline-offset-4' : 'hover:underline'
+    return isActive
+      ? 'underline underline-offset-4 decoration-clay-600 decoration-2'
+      : 'hover:underline hover:underline-offset-4'
   }
 
   useEffect(() => {
@@ -68,14 +74,14 @@ export function Nav({ adminLink, roleLabel, isSuperAdmin: superAdmin }: NavProps
   }
 
   return (
-    <nav className="border-b border-black">
+    <nav className="border-b border-black bg-white">
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <Link href="/dashboard">
             <img
               src="/assets/byte_logo.png"
               alt="Byte Teaching"
-              className="h-10 sm:h-12 w-auto"
+              className="h-10 sm:h-12 w-auto mix-blend-multiply"
             />
           </Link>
           
@@ -98,7 +104,7 @@ export function Nav({ adminLink, roleLabel, isSuperAdmin: superAdmin }: NavProps
                     {user.email}
                   </span>
                   {roleLabel && (
-                    <span className="font-mono text-xs border border-black px-2 py-0.5 whitespace-nowrap">
+                    <span className="font-mono text-xs border border-clay-600 bg-clay-50 text-clay-800 px-2 py-0.5 whitespace-nowrap">
                       {roleLabel}
                     </span>
                   )}
@@ -142,7 +148,7 @@ export function Nav({ adminLink, roleLabel, isSuperAdmin: superAdmin }: NavProps
                     {user.email}
                   </p>
                   {roleLabel && (
-                    <span className="inline-block font-mono text-xs border border-black px-2 py-0.5 mt-1">
+                    <span className="inline-block font-mono text-xs border border-clay-600 bg-clay-50 text-clay-800 px-2 py-0.5 mt-1">
                       {roleLabel}
                     </span>
                   )}

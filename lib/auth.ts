@@ -62,6 +62,23 @@ export async function requireOrg() {
   return orgId
 }
 
+/** True when the current (or given) org is an auto-provisioned personal
+ *  workspace for an individual user, rather than an enterprise organization. */
+export async function isPersonalWorkspace(orgId?: string): Promise<boolean> {
+  const resolvedOrgId = orgId || (await getCurrentOrgId())
+  if (!resolvedOrgId) return false
+
+  const supabase = await createSupabaseClient()
+  const { data, error } = await supabase
+    .from('organizations')
+    .select('is_personal')
+    .eq('id', resolvedOrgId)
+    .maybeSingle()
+
+  if (error) return false
+  return !!data?.is_personal
+}
+
 export async function isOrgAdmin(orgId?: string) {
   const supabase = await createSupabaseClient()
   const userId = await getCurrentUserId()
