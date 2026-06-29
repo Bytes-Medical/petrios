@@ -735,10 +735,10 @@ export async function sendPasswordlessLoginLink(emailInput: string) {
     (profile?.full_name && profile.full_name.trim().split(' ')[0]) ||
     null
 
-  // MailerSend trial domains only deliver to the account owner's address until a
-  // custom sending domain is verified, which blocks local testing. In
-  // development (or when AUTH_DEV_LINKS=true) print the link so sign-in works
-  // for any email regardless of email delivery.
+  // Resend's sandbox sender (onboarding@resend.dev) only delivers to the account
+  // owner's address until a custom sending domain is verified, which blocks local
+  // testing. In development (or when AUTH_DEV_LINKS=true) print the link so
+  // sign-in works for any email regardless of email delivery.
   const devLinksEnabled =
     process.env.NODE_ENV !== 'production' || process.env.AUTH_DEV_LINKS === 'true'
   if (devLinksEnabled) {

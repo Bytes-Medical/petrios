@@ -1,36 +1,35 @@
 /**
- * Transactional email via MailerSend's REST API.
+ * Transactional email via Resend's REST API.
  *
- * Provider-neutral, shape-compatible with the Resend client this replaced, so
- * call sites read the same way:
+ * Provider-neutral wrapper, so call sites read the same regardless of provider:
  *
  *   const mailer = getEmailClient()
  *   const { data, error } = await mailer.emails.send({ from, to, subject, html })
  *   if (error) { ... error.message ... }
- *   // data?.id  -> MailerSend's x-message-id (stored where we kept resend_id)
+ *   // data?.id  -> Resend's email id (stored in the resend_id column)
  *
  * We talk to the REST endpoint directly with fetch rather than pulling in the
- * `mailersend` SDK — one fewer dependency (and dependency-vuln surface) and the
- * payload is trivial. Docs: https://developers.mailersend.com/api/v1/email.html
+ * `resend` SDK — one fewer dependency (and dependency-vuln surface) and the
+ * payload is trivial. Docs: https://resend.com/docs/api-reference/emails/send-email
  *
  * Config (server-only env):
- *   MAILERSEND_API_TOKEN  — API token from https://app.mailersend.com/api-tokens
- *   MAIL_FROM             — default sender as "Name <email@verified-domain>".
- *                           MailerSend only sends from a verified domain (trial
- *                           accounts get a test-*.mlsender.net domain), so there
- *                           is no shared sandbox sender like Resend's resend.dev.
+ *   RESEND_API_KEY  — API key from https://resend.com/api-keys ("re_..." prefix)
+ *   MAIL_FROM       — default sender as "Name <email@your-domain>". For zero-setup
+ *                     testing Resend offers a shared sandbox sender,
+ *                     "onboarding@resend.dev", which sends without verifying a
+ *                     domain but only delivers to your own account email.
  *
- * Local testing (so you're NOT limited to the trial's single admin recipient):
- *   - With no MAILERSEND_API_TOKEN set, development is a log-only sink: every
- *     send is printed to the server console and reported as success, so the
- *     whole app runs on any email with zero provider config. (Sign-in links are
- *     separately printed by sendPasswordlessLoginLink.)
+ * Local testing:
+ *   - With no RESEND_API_KEY set, development is a log-only sink: every send is
+ *     printed to the server console and reported as success, so the whole app
+ *     runs on any email with zero provider config. (Sign-in links are separately
+ *     printed by sendPasswordlessLoginLink.)
  *   - MAIL_DEV_REDIRECT="you@example.com" — when you DO want real rendered mail,
- *     set a token plus this and every recipient is rewritten to that one inbox.
+ *     set a key plus this and every recipient is rewritten to that one inbox.
  *   - EMAIL_DEV_MODE=true — force the console logging in a production-like build.
  */
 
-const MAILERSEND_ENDPOINT = 'https://api.mailersend.com/v1/email'
+const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
 interface EmailAttachment {
   filename: string
@@ -53,19 +52,10 @@ interface SendEmailResult {
   error: { message: string } | null
 }
 
-interface EmailAddress {
-  email: string
-  name?: string
-}
-
-/** Parse "Display Name <user@host>" (or a bare address) into MailerSend's shape. */
-function parseAddress(input: string): EmailAddress {
-  const match = input.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/)
-  if (match) {
-    const name = match[1].trim()
-    return name ? { email: match[2].trim(), name } : { email: match[2].trim() }
-  }
-  return { email: input.trim() }
+/** Pull the bare address out of "Display Name <user@host>" (or a bare address). */
+function parseEmail(input: string): string {
+  const match = input.match(/^\s*.*?\s*<\s*([^>]+)\s*>\s*$/)
+  return (match ? match[1] : input).trim()
 }
 
 function toBase64(content: Buffer | Uint8Array | string): string {
@@ -77,10 +67,10 @@ const isDev = process.env.NODE_ENV !== 'production'
 const DEV_PLACEHOLDER_FROM = 'dev@localhost'
 
 /**
- * Default sender. Reads MAIL_FROM, falling back to the legacy RESEND_FROM_EMAIL
- * during the transition. In production, throws if neither is set so a
- * misconfiguration fails loudly instead of sending from a bogus domain. In
- * development it falls back to a placeholder so local dev needs no email config.
+ * Default sender. Reads MAIL_FROM, falling back to the legacy RESEND_FROM_EMAIL.
+ * In production, throws if neither is set so a misconfiguration fails loudly
+ * instead of sending from a bogus domain. In development it falls back to a
+ * placeholder so local dev needs no email config.
  */
 export function getFromAddress(): string {
   const from = process.env.MAIL_FROM || process.env.RESEND_FROM_EMAIL
@@ -95,7 +85,7 @@ export function getEmailClient() {
   return {
     emails: {
       async send(params: SendEmailParams): Promise<SendEmailResult> {
-        const apiKey = process.env.MAILERSEND_API_TOKEN
+        const apiKey = process.env.RESEND_API_KEY
 
         // Optional dev redirect: funnel every recipient to one inbox you control
         // (e.g. to see rendered HTML/attachments) without spamming real users.
@@ -111,77 +101,67 @@ export function getEmailClient() {
           )
         }
 
-        const from = parseAddress(params.from)
-
         // Missing MAIL_FROM resolves to dev@localhost in development. That is
         // intentionally not a real sending address, so keep the app usable by
-        // treating it the same as the no-token dev sink instead of sending an
-        // invalid from.email to MailerSend.
-        if (isDev && from.email === DEV_PLACEHOLDER_FROM) {
+        // treating it the same as the no-key dev sink instead of sending an
+        // invalid from address to Resend.
+        if (isDev && parseEmail(params.from) === DEV_PLACEHOLDER_FROM) {
           console.log(
-            `   ↳ MAIL_FROM not set — dev sink, email not actually sent. Use MAIL_FROM with a verified MailerSend domain for real delivery.\n`
+            `   ↳ MAIL_FROM not set — dev sink, email not actually sent. Use MAIL_FROM with a Resend-verified domain (or onboarding@resend.dev) for real delivery.\n`
           )
           return { data: { id: null }, error: null }
         }
 
-        // No token: in dev this is a log-only sink so the whole app works on any
+        // No key: in dev this is a log-only sink so the whole app works on any
         // email with zero provider config; in production it's a hard error.
         if (!apiKey) {
           if (isDev) {
-            console.log('   ↳ MAILERSEND_API_TOKEN not set — dev sink, email not actually sent.\n')
+            console.log('   ↳ RESEND_API_KEY not set — dev sink, email not actually sent.\n')
             return { data: { id: null }, error: null }
           }
           return {
             data: null,
-            error: { message: 'MAILERSEND_API_TOKEN environment variable is required' },
+            error: { message: 'RESEND_API_KEY environment variable is required' },
           }
         }
 
-        const recipients = effectiveTo.map((email) => ({ email }))
-
         const body: Record<string, unknown> = {
-          from,
-          to: recipients,
+          from: params.from,
+          to: effectiveTo,
           subject: params.subject,
           html: params.html,
         }
         if (params.text) body.text = params.text
-        if (params.replyTo) body.reply_to = parseAddress(params.replyTo)
+        if (params.replyTo) body.reply_to = params.replyTo
         if (params.attachments?.length) {
           body.attachments = params.attachments.map((attachment) => ({
             filename: attachment.filename,
             content: toBase64(attachment.content),
-            disposition: 'attachment',
           }))
         }
 
         try {
-          const response = await fetch(MAILERSEND_ENDPOINT, {
+          const response = await fetch(RESEND_ENDPOINT, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${apiKey}`,
               'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
             },
             body: JSON.stringify(body),
           })
 
+          const payload = await response.json().catch(() => null)
+
           if (!response.ok) {
-            let message = `MailerSend request failed (${response.status})`
-            try {
-              const errBody = await response.json()
-              if (errBody?.message) message = errBody.message
-              if (errBody?.errors) {
-                message += `: ${JSON.stringify(errBody.errors)}`
-              }
-            } catch {
-              // non-JSON error body — keep the status-code message
-            }
+            const message =
+              payload?.message ||
+              payload?.error?.message ||
+              `Resend request failed (${response.status})`
             return { data: null, error: { message } }
           }
 
-          // MailerSend returns 202 Accepted with the id in this header.
-          return { data: { id: response.headers.get('x-message-id') }, error: null }
+          // Resend returns 200 with the email id in the JSON body.
+          return { data: { id: payload?.id ?? null }, error: null }
         } catch (err) {
           return {
             data: null,

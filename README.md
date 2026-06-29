@@ -47,14 +47,14 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 # Public app URL used in emailed sign-in and invite links
 NEXT_PUBLIC_APP_URL=https://your-production-domain.example
 
-# Email delivery (MailerSend — https://app.mailersend.com/api-tokens)
-MAILERSEND_API_TOKEN=your-mailersend-api-token
+# Email delivery (Resend — https://resend.com/api-keys)
+RESEND_API_KEY=your-resend-api-key
 MAIL_FROM=Byte Teaching <no-reply@your-verified-domain>
 
 # Local testing — both optional:
-#   Leave MAILERSEND_API_TOKEN unset in dev to log emails to the console
+#   Leave RESEND_API_KEY unset in dev to log emails to the console
 #   instead of sending (works for any recipient, no provider needed).
-#   Or set a token + MAIL_DEV_REDIRECT to funnel ALL mail to one inbox.
+#   Or set a key + MAIL_DEV_REDIRECT to funnel ALL mail to one inbox.
 # MAIL_DEV_REDIRECT=you@example.com
 ```
 
