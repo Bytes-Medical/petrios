@@ -177,7 +177,7 @@ export function FeedbackTemplatePanel({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
         <h3 className="font-mono font-bold text-sm">Feedback Form</h3>
         <p className="mt-2 font-mono text-xs text-gray-500">
@@ -222,40 +222,36 @@ export function FeedbackTemplatePanel({
           return (
             <div
               key={field.id}
-              className="block w-full border-2 border-black bg-gray-50"
+              className="w-full border-2 border-black bg-gray-50"
             >
               <div className="space-y-4 p-4">
                 <p className="font-mono text-[0.6rem] uppercase tracking-[0.2em] text-gray-500">
                   Field {index + 1} · Editing
                 </p>
 
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <div className="flex-1 min-w-0">
-                    <Input
-                      label="Question"
-                      type="text"
-                      value={field.label}
-                      onChange={(event) =>
-                        updateField(index, { label: event.target.value })
-                      }
-                      placeholder="Enter the question attendees should answer"
-                    />
-                  </div>
-                  <div className="sm:w-48">
-                    <Select
-                      label="Type"
-                      value={field.type}
-                      onChange={(event) =>
-                        updateField(index, {
-                          type: event.target.value as FeedbackFieldType,
-                        })
-                      }
-                    >
-                      <option value="rating">Scored question</option>
-                      <option value="textarea">Long answer</option>
-                      <option value="text">Short answer</option>
-                    </Select>
-                  </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_12rem]">
+                  <Input
+                    label="Question"
+                    type="text"
+                    value={field.label}
+                    onChange={(event) =>
+                      updateField(index, { label: event.target.value })
+                    }
+                    placeholder="Enter the question attendees should answer"
+                  />
+                  <Select
+                    label="Type"
+                    value={field.type}
+                    onChange={(event) =>
+                      updateField(index, {
+                        type: event.target.value as FeedbackFieldType,
+                      })
+                    }
+                  >
+                    <option value="rating">Scored question</option>
+                    <option value="textarea">Long answer</option>
+                    <option value="text">Short answer</option>
+                  </Select>
                 </div>
 
                 {field.type === 'rating' ? (
@@ -283,7 +279,7 @@ export function FeedbackTemplatePanel({
                 <div className="border-t border-gray-300" />
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       aria-label="Move field up"
@@ -307,7 +303,7 @@ export function FeedbackTemplatePanel({
                       aria-label="Remove field"
                       onClick={() => removeField(index)}
                       disabled={loading}
-                      className="ml-1 h-9 border border-black bg-white px-3 font-mono text-xs uppercase tracking-[0.14em] hover:bg-red-50 disabled:opacity-30"
+                      className="h-9 border border-black bg-white px-3 font-mono text-xs uppercase tracking-[0.14em] hover:bg-red-50 disabled:opacity-30"
                     >
                       Remove
                     </button>
@@ -335,7 +331,7 @@ export function FeedbackTemplatePanel({
         <p className="mb-3 font-mono text-[0.65rem] uppercase tracking-[0.2em] text-gray-500">
           Add Field
         </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <Button
             type="button"
             variant="secondary"
@@ -377,14 +373,16 @@ export function FeedbackTemplatePanel({
         </div>
       </div>
 
-      <Button
-        type="button"
-        onClick={handleSave}
-        disabled={loading}
-        className="w-full sm:w-auto"
-      >
-        {loading ? 'Saving...' : 'Save Feedback Form'}
-      </Button>
+      <div className="flex justify-end pt-2">
+        <Button
+          type="button"
+          onClick={handleSave}
+          disabled={loading}
+          className="w-full sm:w-auto"
+        >
+          {loading ? 'Saving...' : 'Save Feedback Form'}
+        </Button>
+      </div>
     </div>
   )
 }

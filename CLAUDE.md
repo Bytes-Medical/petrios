@@ -48,7 +48,7 @@ The attendance system is an append-only evidence aggregation pipeline (documente
 ### Key Subsystems
 
 - **Certificates**: PDF generation via `@react-pdf/renderer` in `lib/certificates/pdf.tsx`. Server action in `app/actions/certificates.ts`. Public verification at `/verify/[certificateId]`.
-- **Email**: Resend API (`lib/resend.ts`). Templates in `lib/email-templates.ts`. Used for teacher invitations.
+- **Email**: MailerSend REST API (`lib/email.ts`, a Resend-shaped `getEmailClient()` adapter over `fetch`). Templates in `lib/email-templates.ts`. Used for teacher invitations.
 - **Feedback**: Anonymous session feedback with QR code distribution. Stats endpoint at `/api/sessions/[id]/feedback/stats`.
 
 ### Environment Variables
@@ -58,7 +58,8 @@ NEXT_PUBLIC_SUPABASE_URL      # Supabase project URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY # Supabase anon key
 SUPABASE_SERVICE_ROLE_KEY     # Supabase service role key (server-only)
 NEXT_PUBLIC_APP_URL           # Public app URL used in emailed sign-in/invite links
-RESEND_API_KEY                # Resend email API key (server-only)
+MAILERSEND_API_TOKEN          # MailerSend API token (server-only)
+MAIL_FROM                     # Default sender, "Name <email@verified-domain>" (server-only)
 ```
 
 ### Database

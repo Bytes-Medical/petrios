@@ -16,7 +16,7 @@ import {
   getMyModeratedDepartments,
 } from '@/app/actions/departments'
 import { getAppUrl, getAppUrlFromHeaders } from '@/lib/app-url'
-import { getResendClient } from '@/lib/resend'
+import { getEmailClient, getFromAddress } from '@/lib/email'
 import {
   buildDepartmentInviteActivationEmailHtml,
   buildDepartmentJoinMagicLinkEmailHtml,
@@ -627,9 +627,8 @@ export async function beginDepartmentOnboarding(
     requestId: request.id,
   })
 
-  const resend = getResendClient()
-  const fromAddress =
-    process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
+  const mailer = getEmailClient()
+  const fromAddress = getFromAddress()
   const html =
     generatedLinkType === 'invite'
       ? buildDepartmentInviteActivationEmailHtml({
@@ -645,7 +644,7 @@ export async function beginDepartmentOnboarding(
           firstName,
         })
 
-  const { error: emailError } = await resend.emails.send({
+  const { error: emailError } = await mailer.emails.send({
     from: fromAddress,
     to: email,
     subject:
@@ -736,8 +735,8 @@ export async function sendPasswordlessLoginLink(emailInput: string) {
     (profile?.full_name && profile.full_name.trim().split(' ')[0]) ||
     null
 
-  // Resend's onboarding@resend.dev sender only delivers to the account owner's
-  // address until a custom domain is verified, which blocks local testing. In
+  // MailerSend trial domains only deliver to the account owner's address until a
+  // custom sending domain is verified, which blocks local testing. In
   // development (or when AUTH_DEV_LINKS=true) print the link so sign-in works
   // for any email regardless of email delivery.
   const devLinksEnabled =
@@ -746,11 +745,10 @@ export async function sendPasswordlessLoginLink(emailInput: string) {
     console.log(`\n🔗 [auth] Sign-in link for ${email}:\n${inviteUrl}\n`)
   }
 
-  const resend = getResendClient()
-  const fromAddress =
-    process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
+  const mailer = getEmailClient()
+  const fromAddress = getFromAddress()
 
-  const { error: emailError } = await resend.emails.send({
+  const { error: emailError } = await mailer.emails.send({
     from: fromAddress,
     to: email,
     subject: 'Your Byte Teaching sign-in link',

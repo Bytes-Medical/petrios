@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
-import { getResendClient } from '@/lib/resend'
+import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildInvitationEmailHtml } from '@/lib/email-templates'
 import type { Session } from '@/lib/types'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -55,12 +55,11 @@ export async function inviteExternalTeacher(sessionId: string, email: string) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   const rsvpUrl = `${baseUrl}/sessions/${sessionId}/teacher-rsvp/${inviteCode}`
 
-  const resend = getResendClient()
+  const mailer = getEmailClient()
   const htmlBody = buildInvitationEmailHtml(session as Session, departmentName, rsvpUrl)
-  const fromAddress =
-    process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
+  const fromAddress = getFromAddress()
 
-  const { data: emailResult, error: emailError } = await resend.emails.send({
+  const { data: emailResult, error: emailError } = await mailer.emails.send({
     from: fromAddress,
     to: normalizedEmail,
     subject: `You're invited to teach: ${session.title}`,

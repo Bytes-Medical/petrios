@@ -5,7 +5,7 @@ import { requireDepartmentModerator, requireOrg } from '@/lib/auth'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
 import { generateCertificateCode } from '@/lib/certificates/utils'
 import * as attendanceDb from '@/lib/db/attendance'
-import { getResendClient } from '@/lib/resend'
+import { getEmailClient, getFromAddress } from '@/lib/email'
 import {
   buildCertificateEmailHtml,
   buildTeacherFeedbackEmailHtml,
@@ -198,12 +198,11 @@ export async function submitFeedback(sessionId: string, feedback: FeedbackData) 
         leadName: department.lead_name || undefined,
       })
 
-      const resend = getResendClient()
-      const fromAddress =
-        process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
+      const mailer = getEmailClient()
+      const fromAddress = getFromAddress()
       const htmlBody = buildCertificateEmailHtml(session.title, recipientName)
 
-      await resend.emails.send({
+      await mailer.emails.send({
         from: fromAddress,
         to: email,
         subject: `Your Attendance Certificate — ${session.title}`,
@@ -453,9 +452,8 @@ export async function releaseTeacherFeedback(sessionId: string) {
     day: 'numeric',
   })
 
-  const resend = getResendClient()
-  const fromAddress =
-    process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
+  const mailer = getEmailClient()
+  const fromAddress = getFromAddress()
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
   let sentCount = 0
@@ -503,7 +501,7 @@ export async function releaseTeacherFeedback(sessionId: string) {
         comments,
       })
 
-      await resend.emails.send({
+      await mailer.emails.send({
         from: fromAddress,
         to: teacher.email,
         subject: `Teaching Feedback Released — ${session.title}`,
@@ -601,7 +599,7 @@ export async function releaseTeacherFeedback(sessionId: string) {
 
         const traineeHtml = buildCertificateEmailHtml(session.title, recipientName)
 
-        await resend.emails.send({
+        await mailer.emails.send({
           from: fromAddress,
           to: profile.email,
           subject: `Your Attendance Certificate — ${session.title}`,

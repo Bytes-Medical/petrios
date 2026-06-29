@@ -38,6 +38,8 @@ export async function GET(
       certificateCode: certificate.certificate_code,
       issuedDate: new Date(certificate.issued_at).toLocaleDateString(),
       verifyUrl,
+      leadName: certificate.departments?.lead_name || undefined,
+      issuerName: certificate.issued_by_name || undefined,
     })
 
     return new NextResponse(pdfBuffer as unknown as BodyInit, {

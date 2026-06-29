@@ -71,7 +71,7 @@ export default function PrivacyPolicyPage() {
               <p>We share data only with processors that help us run the service:</p>
               <ul className="list-disc space-y-1 pl-5">
                 <li><strong>Supabase</strong> — database, authentication, and file storage.</li>
-                <li><strong>Resend</strong> — sending sign-in and notification emails.</li>
+                <li><strong>MailerSend</strong> — sending sign-in and notification emails.</li>
               </ul>
               <p>We may disclose data where required by law.</p>
             </Section>

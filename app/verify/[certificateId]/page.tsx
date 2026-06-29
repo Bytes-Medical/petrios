@@ -1,4 +1,5 @@
 import { getCertificateByCode } from '@/app/actions/certificates'
+import { buildSignatories } from '@/lib/certificates/signatories'
 import Image from 'next/image'
 
 export default async function VerifyCertificatePage({
@@ -72,9 +73,12 @@ export default async function VerifyCertificatePage({
               {certificate.organizations?.name && (
                 <Detail label="Organisation" value={certificate.organizations.name} />
               )}
-              {certificate.departments?.lead_name && (
-                <Detail label="Teaching Lead" value={certificate.departments.lead_name} />
-              )}
+              {buildSignatories(
+                certificate.departments?.lead_name,
+                certificate.issued_by_name
+              ).map((s) => (
+                <Detail key={s.label} label={s.label} value={s.value} />
+              ))}
               <Detail
                 label="Issued"
                 value={new Date(certificate.issued_at).toLocaleDateString(

@@ -1,230 +1,233 @@
 import React from 'react'
-import { Document, Page, Text, View, StyleSheet, pdf, Image } from '@react-pdf/renderer'
+import path from 'path'
+import {
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  Font,
+  pdf,
+  Image,
+  Svg,
+  Circle,
+  Line,
+} from '@react-pdf/renderer'
 import QRCode from 'qrcode'
+import { buildSignatories } from './signatories'
 
 // ---------------------------------------------------------------------------
-// Colour palette — Memphis/geometric inspired
+// Fonts — IBM Plex Mono (the app face). react-pdf can't use next/font, so we
+// register the bundled .ttf weights from /public/fonts. `public/` is reliably
+// present on disk at runtime, unlike arbitrary files under lib/.
 // ---------------------------------------------------------------------------
 
-const PALETTE = {
-  lavender: '#d8d0e8',
-  pink: '#e8a0bf',
-  blue: '#5b8fb9',
-  navy: '#1e2a5e',
-  yellow: '#f2d388',
-  coral: '#e76f7a',
-  mint: '#7ecdb0',
-  white: '#ffffff',
-  dark: '#1a1a2e',
-  grey: '#6b7280',
-  lightGrey: '#d1d5db',
-}
+const fontDir = path.join(process.cwd(), 'public', 'fonts')
+
+Font.register({
+  family: 'IBM Plex Mono',
+  fonts: [
+    { src: path.join(fontDir, 'IBMPlexMono-Regular.ttf'), fontWeight: 400 },
+    { src: path.join(fontDir, 'IBMPlexMono-SemiBold.ttf'), fontWeight: 600 },
+    { src: path.join(fontDir, 'IBMPlexMono-Bold.ttf'), fontWeight: 700 },
+  ],
+})
+
+// Monospace: never hyphenate/break a word (keeps codes and names intact).
+Font.registerHyphenationCallback((word) => [word])
 
 // ---------------------------------------------------------------------------
-// Styles
+// Two-tone system — strict black & white. No colour, by design.
+// ---------------------------------------------------------------------------
+
+const INK = '#000000'
+const PAPER = '#ffffff'
+
+// ---------------------------------------------------------------------------
+// Styles  (252 x 144 pt — a 3.5" x 2" card)
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   page: {
-    width: 252,  // 3.5in * 72
-    height: 144, // 2in * 72
-    flexDirection: 'row',
-    fontFamily: 'Helvetica',
-    backgroundColor: PALETTE.lavender,
-    padding: 4,
+    width: 252,
+    height: 144,
+    backgroundColor: PAPER,
+    fontFamily: 'IBM Plex Mono',
+    color: INK,
+    padding: 7,
   },
 
-  // Left geometric panel
-  leftPanel: {
-    width: 72,
-    backgroundColor: PALETTE.navy,
-    borderRadius: 2,
-    position: 'relative',
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-    padding: 6,
-  },
-  certLabel: {
-    fontSize: 8,
-    fontWeight: 'bold',
-    color: PALETTE.white,
-    lineHeight: 1.1,
-  },
-  certSub: {
-    fontSize: 5,
-    color: PALETTE.yellow,
-    marginTop: 1,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-
-  // Geometric shapes (positioned absolutely) — scaled for business card
-  circle1: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: PALETTE.pink,
-  },
-  circle2: {
-    position: 'absolute',
-    top: 16,
-    right: -5,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: PALETTE.blue,
-    opacity: 0.8,
-  },
-  circle3: {
-    position: 'absolute',
-    top: 32,
-    left: 20,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: PALETTE.yellow,
-  },
-  triangle: {
-    position: 'absolute',
-    top: 8,
-    right: 12,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderBottomWidth: 10,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: PALETTE.yellow,
-  },
-  rect1: {
-    position: 'absolute',
-    top: 42,
-    left: 5,
-    width: 14,
-    height: 14,
-    backgroundColor: PALETTE.coral,
-    borderRadius: 2,
-  },
-  lines: {
-    position: 'absolute',
-    bottom: 35,
-    left: 10,
-    width: 12,
-    height: 16,
-    borderLeftWidth: 1.5,
-    borderLeftColor: PALETTE.yellow,
-    borderRightWidth: 1.5,
-    borderRightColor: PALETTE.yellow,
-  },
-  dotsCol: {
-    position: 'absolute',
-    top: 5,
-    right: 4,
-    flexDirection: 'column',
-    gap: 3,
-  },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: PALETTE.white,
-  },
-  halfCircle: {
-    position: 'absolute',
-    bottom: 25,
-    right: 0,
-    width: 16,
-    height: 32,
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
-    backgroundColor: PALETTE.mint,
-    opacity: 0.6,
-  },
-
-  // Right content panel
-  rightPanel: {
+  frame: {
     flex: 1,
-    backgroundColor: PALETTE.white,
-    borderRadius: 2,
-    marginLeft: 4,
-    padding: 8,
-    justifyContent: 'center',
+    position: 'relative',
+    border: 1.5,
+    borderColor: INK,
+    backgroundColor: PAPER,
+    overflow: 'hidden',
   },
+
+  content: {
+    flex: 1,
+    paddingTop: 6,
+    paddingHorizontal: 10,
+    paddingBottom: 35, // clear the absolute footer bar
+  },
+
+  // --- Masthead ---
+  masthead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  orgName: {
+    fontSize: 8,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    maxWidth: 150,
+  },
+  deptName: {
+    fontSize: 5,
+    fontWeight: 400,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: 2,
+    maxWidth: 150,
+  },
+  roleBlock: {
+    alignItems: 'flex-end',
+  },
+  roleChip: {
+    backgroundColor: INK,
+    color: PAPER,
+    fontSize: 5,
+    fontWeight: 700,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  serial: {
+    fontSize: 5,
+    fontWeight: 400,
+    letterSpacing: 0.5,
+    marginTop: 3,
+  },
+
+  // --- Rule (heavy + hairline, double) ---
+  ruleHeavy: {
+    height: 2,
+    backgroundColor: INK,
+    marginTop: 5,
+  },
+  ruleHair: {
+    height: 0.6,
+    backgroundColor: INK,
+    marginTop: 1.5,
+    marginBottom: 5,
+  },
+
+  // --- Hero ---
   presentedTo: {
     fontSize: 4.5,
-    color: PALETTE.grey,
-    letterSpacing: 1.5,
+    letterSpacing: 2,
     textTransform: 'uppercase',
     marginBottom: 3,
   },
   recipientName: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: PALETTE.dark,
-    marginBottom: 5,
+    fontWeight: 700,
+    letterSpacing: 0.3,
+    maxWidth: 165,
+    lineHeight: 1.05,
   },
-  divider: {
-    width: 20,
-    height: 1,
-    backgroundColor: PALETTE.coral,
-    marginBottom: 5,
+
+  // --- Body ---
+  forLine: {
+    fontSize: 5,
+    fontWeight: 600,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 4,
+    maxWidth: 165,
   },
   sessionTitle: {
-    fontSize: 5.5,
-    color: '#374151',
-    marginBottom: 2,
-    lineHeight: 1.3,
+    fontSize: 6,
+    fontWeight: 400,
+    marginTop: 2,
+    maxWidth: 165,
+    lineHeight: 1.25,
   },
   sessionDate: {
     fontSize: 5,
-    color: PALETTE.grey,
-    marginBottom: 8,
+    fontWeight: 600,
+    marginTop: 3,
   },
 
-  // Footer row: date + QR
-  footerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginTop: 'auto',
-  },
-  dateSection: {
-    alignItems: 'flex-start',
-  },
-  dateValue: {
-    fontSize: 5,
-    fontWeight: 'bold',
-    color: PALETTE.dark,
-    marginBottom: 1,
-  },
-  dateLabel: {
-    fontSize: 4,
-    color: PALETTE.grey,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  qrSection: {
+  // --- Stamp seal (the single eccentric mark) ---
+  seal: {
+    position: 'absolute',
+    top: 44,
+    right: 12,
     alignItems: 'center',
   },
-  qrCode: {
-    width: 28,
-    height: 28,
-    marginBottom: 1,
+  sealLabel: {
+    fontSize: 3.6,
+    fontWeight: 700,
+    letterSpacing: 1.6,
+    marginTop: 2,
   },
-  certCode: {
-    fontSize: 4,
-    fontFamily: 'Courier',
-    color: PALETTE.lightGrey,
-    letterSpacing: 0.5,
+
+  // --- Footer bar (inverted: white on black) ---
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 31,
+    backgroundColor: INK,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: 10,
+    paddingRight: 4,
+  },
+  footerLeft: {
+    flex: 1,
+    paddingRight: 6,
+    justifyContent: 'center',
+  },
+  footerSig: {
+    color: PAPER,
+    fontSize: 4.8,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+  },
+  footerSigSub: {
+    color: PAPER,
+    fontSize: 4.4,
+    fontWeight: 400,
+    letterSpacing: 0.3,
+    marginTop: 1.5,
+  },
+  footerMeta: {
+    color: PAPER,
+    fontSize: 4.4,
+    fontWeight: 400,
+    letterSpacing: 0.3,
+    marginTop: 1.5,
+  },
+  qrTile: {
+    backgroundColor: PAPER,
+    padding: 2,
+  },
+  qrImg: {
+    width: 18,
+    height: 18,
   },
 })
 
 // ---------------------------------------------------------------------------
-// Data interface
+// Data interface  (unchanged — call sites already supply all of this)
 // ---------------------------------------------------------------------------
 
 export interface CertificateData {
@@ -238,7 +241,65 @@ export interface CertificateData {
   issuedDate: string
   verifyUrl: string
   leadName?: string
+  issuerName?: string
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Keep long values from overflowing the tiny card. */
+const trim = (s: string, max: number) =>
+  s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s
+
+/** Scale the hero name down as it gets longer so it never overflows. */
+function recipientFontSize(name: string): number {
+  const n = name.length
+  if (n <= 14) return 16
+  if (n <= 20) return 13
+  if (n <= 28) return 11
+  return 9
+}
+
+/** Small square registration / crop mark, à la print proofs. */
+const CornerMark = ({
+  v,
+  h,
+}: {
+  v: 'top' | 'bottom'
+  h: 'left' | 'right'
+}) => (
+  <View
+    style={{
+      position: 'absolute',
+      [v]: 3,
+      [h]: 3,
+      width: 7,
+      height: 7,
+    }}
+  >
+    <View
+      style={{
+        position: 'absolute',
+        [v]: 0,
+        [h]: 0,
+        width: 7,
+        height: 1,
+        backgroundColor: INK,
+      }}
+    />
+    <View
+      style={{
+        position: 'absolute',
+        [v]: 0,
+        [h]: 0,
+        width: 1,
+        height: 7,
+        backgroundColor: INK,
+      }}
+    />
+  </View>
+)
 
 // ---------------------------------------------------------------------------
 // Document component
@@ -252,55 +313,88 @@ const CertificateDocument = ({
   qrCodeDataUrl: string
 }) => {
   const isTeacher = data.role === 'Teacher'
-  const roleLabel = isTeacher ? 'OF TEACHING' : 'OF ATTENDANCE'
+  const roleLabel = isTeacher ? 'TEACHER' : 'ATTENDEE'
+  const forLabel = isTeacher ? 'For delivering' : 'For attending'
+  const serial = data.certificateCode.slice(0, 4).toUpperCase()
+  const signatories = buildSignatories(data.leadName, data.issuerName)
 
   return (
     <Document>
-      <Page size={[252, 144]} style={styles.page}>
-        {/* Left geometric panel */}
-        <View style={styles.leftPanel}>
-          {/* Geometric shapes */}
-          <View style={styles.circle1} />
-          <View style={styles.circle2} />
-          <View style={styles.circle3} />
-          <View style={styles.triangle} />
-          <View style={styles.rect1} />
-          <View style={styles.lines} />
-          <View style={styles.halfCircle} />
-          <View style={styles.dotsCol}>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <View key={i} style={styles.dot} />
-            ))}
+      <Page size={[252, 144]} style={styles.page} wrap={false}>
+        <View style={styles.frame}>
+          {/* registration marks */}
+          <CornerMark v="top" h="left" />
+          <CornerMark v="top" h="right" />
+          <CornerMark v="bottom" h="left" />
+          <CornerMark v="bottom" h="right" />
+
+          {/* stamp seal */}
+          <View style={styles.seal}>
+            <Svg width={42} height={42}>
+              <Circle cx={21} cy={21} r={20} stroke={INK} strokeWidth={1} fill="none" />
+              <Circle cx={21} cy={21} r={15.5} stroke={INK} strokeWidth={0.5} fill="none" />
+              {/* six-arm asterisk */}
+              <Line x1={21} y1={11} x2={21} y2={31} stroke={INK} strokeWidth={1.4} />
+              <Line x1={12.3} y1={16} x2={29.7} y2={26} stroke={INK} strokeWidth={1.4} />
+              <Line x1={29.7} y1={16} x2={12.3} y2={26} stroke={INK} strokeWidth={1.4} />
+            </Svg>
+            <Text style={styles.sealLabel}>VERIFIED</Text>
           </View>
 
-          {/* Title text at bottom of panel */}
-          <Text style={styles.certLabel}>CERTIFICATE</Text>
-          <Text style={styles.certSub}>{roleLabel}</Text>
-        </View>
-
-        {/* Right content panel */}
-        <View style={styles.rightPanel}>
-          <Text style={styles.presentedTo}>This certificate is presented to</Text>
-          <Text style={styles.recipientName}>{data.recipientName}</Text>
-          <View style={styles.divider} />
-          <Text style={styles.sessionTitle}>
-            {isTeacher ? 'For delivering' : 'For attending'} the teaching session:{'\n'}
-            {data.sessionTitle}
-          </Text>
-          <Text style={styles.sessionDate}>{data.sessionDate}</Text>
-
-          {/* Footer: date + QR */}
-          <View style={styles.footerRow}>
-            <View style={styles.dateSection}>
-              <Text style={styles.dateValue}>{data.issuedDate}</Text>
-              <Text style={styles.dateLabel}>Date</Text>
+          <View style={styles.content}>
+            {/* masthead */}
+            <View style={styles.masthead}>
+              <View>
+                <Text style={styles.orgName}>{trim(data.orgName, 26)}</Text>
+                <Text style={styles.deptName}>{trim(data.departmentName, 30)}</Text>
+              </View>
+              <View style={styles.roleBlock}>
+                <Text style={styles.roleChip}>{roleLabel}</Text>
+                <Text style={styles.serial}>№ {serial}</Text>
+              </View>
             </View>
-            <View style={styles.qrSection}>
-              {qrCodeDataUrl ? (
-                <Image src={qrCodeDataUrl} style={styles.qrCode} />
-              ) : null}
-              <Text style={styles.certCode}>{data.certificateCode}</Text>
+
+            {/* double rule */}
+            <View style={styles.ruleHeavy} />
+            <View style={styles.ruleHair} />
+
+            {/* hero */}
+            <Text style={styles.presentedTo}>Presented to</Text>
+            <Text
+              style={[
+                styles.recipientName,
+                { fontSize: recipientFontSize(data.recipientName) },
+              ]}
+            >
+              {data.recipientName}
+            </Text>
+
+            {/* body */}
+            <Text style={styles.forLine}>{forLabel} the teaching session</Text>
+            <Text style={styles.sessionTitle}>{trim(data.sessionTitle, 78)}</Text>
+            <Text style={styles.sessionDate}>{data.sessionDate}</Text>
+          </View>
+
+          {/* inverted footer bar: signatories + issue record + QR */}
+          <View style={styles.footer}>
+            <View style={styles.footerLeft}>
+              {signatories.map((s, i) => (
+                <Text
+                  key={s.label}
+                  style={i === 0 ? styles.footerSig : styles.footerSigSub}
+                >
+                  {s.label.toUpperCase()} · {trim(s.value, 30)}
+                </Text>
+              ))}
+              <Text style={styles.footerMeta}>
+                {data.certificateCode} · ISSUED {data.issuedDate}
+              </Text>
             </View>
+            {qrCodeDataUrl ? (
+              <View style={styles.qrTile}>
+                <Image src={qrCodeDataUrl} style={styles.qrImg} />
+              </View>
+            ) : null}
           </View>
         </View>
       </Page>
@@ -315,8 +409,8 @@ const CertificateDocument = ({
 export async function generateCertificatePDF(data: CertificateData): Promise<Buffer> {
   const qrCodeDataUrl = await QRCode.toDataURL(data.verifyUrl, {
     width: 160,
-    margin: 1,
-    color: { dark: '#1a1a2e', light: '#ffffff' },
+    margin: 0,
+    color: { dark: '#000000', light: '#ffffff' },
   })
 
   const doc = <CertificateDocument data={data} qrCodeDataUrl={qrCodeDataUrl} />

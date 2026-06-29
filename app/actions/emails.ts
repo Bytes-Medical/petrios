@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
-import { getResendClient } from '@/lib/resend'
+import { getEmailClient, getFromAddress } from '@/lib/email'
 import type { EmailType, Session } from '@/lib/types'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -45,17 +45,16 @@ export async function sendTeacherEmail(
   const departmentName =
     (await teacherInvitationsDb.findDepartmentName(session.department_id)) || ''
 
-  const resend = getResendClient()
+  const mailer = getEmailClient()
   const subject =
     emailType === 'INVITATION'
       ? `You're invited to teach: ${session.title}`
       : `Reminder: Upcoming session - ${session.title}`
 
   const htmlBody = buildEmailHtml(session, departmentName, emailType)
-  const fromAddress =
-    process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
+  const fromAddress = getFromAddress()
 
-  const { data: emailResult, error: emailError } = await resend.emails.send({
+  const { data: emailResult, error: emailError } = await mailer.emails.send({
     from: fromAddress,
     to: teacherEmail,
     subject,

@@ -240,6 +240,8 @@ export interface Certificate {
   pdf_storage_path: string | null
   certificate_code: string
   recipient_name: string | null
+  issued_by: string | null
+  issued_by_name: string | null
   created_at: string
 }
 

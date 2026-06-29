@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Input } from './Input'
+import { DateTimePicker } from './DateTimePicker'
 import { Textarea } from './Textarea'
 import { Select } from './Select'
 import { Button } from './Button'
@@ -14,12 +15,6 @@ interface EditSessionFormProps {
   session: Session
   onCancel: () => void
   onSave: () => void
-}
-
-function toDatetimeLocal(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export function EditSessionForm({ session, onCancel, onSave }: EditSessionFormProps) {
@@ -81,18 +76,16 @@ export function EditSessionForm({ session, onCancel, onSave }: EditSessionFormPr
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Input
+        <DateTimePicker
           label="Start Date & Time"
           name="date_start"
-          type="datetime-local"
-          defaultValue={toDatetimeLocal(session.date_start)}
+          defaultValue={session.date_start}
           required
         />
-        <Input
+        <DateTimePicker
           label="End Date & Time"
           name="date_end"
-          type="datetime-local"
-          defaultValue={toDatetimeLocal(session.date_end)}
+          defaultValue={session.date_end}
           required
         />
       </div>

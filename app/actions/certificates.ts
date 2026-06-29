@@ -22,10 +22,16 @@ export async function generateCertificate(
     throw new DbNotFoundError('Session not found')
   }
 
-  // Auth-plane: fetching the current user's email for the certificate body.
+  // Auth-plane: the current user is the moderator generating this certificate.
   // Stays on a direct Supabase client until the auth provider is swapped.
   const supabase = await createSupabaseClient()
   const { data: userData } = await supabase.auth.getUser()
+
+  // Snapshot the issuing moderator so verification can show who certified it,
+  // even if their account/name changes later.
+  const issuerName =
+    userData?.user?.user_metadata?.full_name || userData?.user?.email || null
+  const issuedBy = userData?.user?.id || null
 
   const certificateCode = generateCertificateCode()
 
@@ -42,6 +48,8 @@ export async function generateCertificate(
     certificateCode,
     issuedDate: new Date().toLocaleDateString(),
     verifyUrl,
+    leadName: session.departments?.lead_name || undefined,
+    issuerName: issuerName || undefined,
   })
 
   const certificate = await certificatesDb.insertCertificate({
@@ -51,6 +59,8 @@ export async function generateCertificate(
     userId,
     role,
     certificateCode,
+    issuedBy,
+    issuedByName: issuerName,
   })
 
   revalidatePath('/certificates')
@@ -170,6 +180,7 @@ export async function downloadMyCertificateForSession(sessionId: string) {
     }),
     verifyUrl,
     leadName: session.lead_name || undefined,
+    issuerName: certificate.issued_by_name || undefined,
   })
 
   // Return base64 for client-side download

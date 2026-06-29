@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireSuperAdmin } from '@/lib/auth'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
-import { getResendClient } from '@/lib/resend'
+import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildModeratorWelcomeEmailHtml } from '@/lib/email-templates'
 import { getAppUrl } from '@/lib/app-url'
 import * as superAdminsDb from '@/lib/db/super-admins'
@@ -223,10 +223,10 @@ export async function createModeratorAccount(input: {
     const appUrl = getAppUrl()
     const callbackUrl = `${appUrl}/join/callback?token_hash=${linkData.properties.hashed_token}&type=magiclink&mode=login&next=/dashboard`
 
-    const resend = getResendClient()
-    const fromAddress = process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
+    const mailer = getEmailClient()
+    const fromAddress = getFromAddress()
 
-    await resend.emails.send({
+    await mailer.emails.send({
       from: fromAddress,
       to: email,
       subject: `You've been added as a moderator — ${dept.name}`,
@@ -253,10 +253,10 @@ export async function createModeratorAccount(input: {
   // If existing user, send notification email
   if (existingProfile) {
     const appUrl = getAppUrl()
-    const resend = getResendClient()
-    const fromAddress = process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
+    const mailer = getEmailClient()
+    const fromAddress = getFromAddress()
 
-    await resend.emails.send({
+    await mailer.emails.send({
       from: fromAddress,
       to: email,
       subject: `You've been added as a moderator — ${dept.name}`,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { generateCertificateCode } from '@/lib/certificates/utils'
-import { getResendClient } from '@/lib/resend'
+import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildCertificateEmailHtml } from '@/lib/email-templates'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as certificatesDb from '@/lib/db/certificates'
@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = await createSupabaseServiceClient()
-  const resend = getResendClient()
-  const fromAddress = process.env.RESEND_FROM_EMAIL || 'Byte Teaching <onboarding@resend.dev>'
+  const mailer = getEmailClient()
+  const fromAddress = getFromAddress()
 
   let processedCount = 0
 
@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
 
           const html = buildCertificateEmailHtml(session.title, recipientName)
 
-          await resend.emails.send({
+          await mailer.emails.send({
             from: fromAddress,
             to: profile.email,
             subject: `Your Attendance Certificate — ${session.title}`,

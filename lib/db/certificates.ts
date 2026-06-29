@@ -34,6 +34,8 @@ export async function insertCertificate(input: {
   role: CertificateRole
   certificateCode: string
   recipientName?: string
+  issuedBy?: string | null
+  issuedByName?: string | null
 }): Promise<Certificate> {
   const db = await getDb()
 
@@ -47,6 +49,12 @@ export async function insertCertificate(input: {
   }
   if (input.recipientName !== undefined) {
     row.recipient_name = input.recipientName
+  }
+  if (input.issuedBy !== undefined) {
+    row.issued_by = input.issuedBy
+  }
+  if (input.issuedByName !== undefined) {
+    row.issued_by_name = input.issuedByName
   }
 
   const { data, error } = await db
@@ -81,7 +89,7 @@ export async function listMyCertificates(
 
 export interface CertificateForDownload extends Certificate {
   sessions: { id: string; title: string; date_start: string } | null
-  departments: { id: string; name: string } | null
+  departments: { id: string; name: string; lead_name?: string | null } | null
   organizations: { id: string; name: string } | null
 }
 
@@ -99,7 +107,7 @@ export async function findCertificateForDownload(
     .select(
       `*,
        sessions:session_id (id, title, date_start),
-       departments:department_id (id, name),
+       departments:department_id (id, name, lead_name),
        organizations:org_id (id, name)`
     )
     .eq('id', id)
@@ -155,7 +163,7 @@ export interface SessionWithCertificateContext {
   date_end: string
   status: string
   require_feedback_for_certificate?: boolean
-  departments: { id: string; name: string } | null
+  departments: { id: string; name: string; lead_name?: string | null } | null
   organizations: { id: string; name: string } | null
 }
 
@@ -172,7 +180,7 @@ export async function findSessionForCertificate(
     .from('sessions')
     .select(
       `*,
-       departments:department_id (id, name),
+       departments:department_id (id, name, lead_name),
        organizations:org_id (id, name)`
     )
     .eq('id', sessionId)
@@ -230,12 +238,12 @@ export async function hasUserSubmittedFeedback(
 export async function findCertificateByUserAndSession(
   userId: string,
   sessionId: string
-): Promise<{ certificate_code: string; certificate_role: string; issued_at: string; recipient_name: string | null } | null> {
+): Promise<{ certificate_code: string; certificate_role: string; issued_at: string; recipient_name: string | null; issued_by_name: string | null } | null> {
   const { getServiceDb } = await import('./client')
   const db = await getServiceDb()
   const { data, error } = await db
     .from('certificates')
-    .select('certificate_code, certificate_role, issued_at, recipient_name')
+    .select('certificate_code, certificate_role, issued_at, recipient_name, issued_by_name')
     .eq('user_id', userId)
     .eq('session_id', sessionId)
     .maybeSingle()
