@@ -103,6 +103,69 @@ export function buildCertificateEmailHtml(
   `
 }
 
+interface SessionReminderEmailParams {
+  recipientName: string
+  sessionTitle: string
+  departmentName: string
+  dateStr: string
+  startTime: string
+  endTime: string
+  locationLabel: string
+  meetingUrl: string | null
+  sessionUrl: string
+}
+
+export function buildSessionReminderEmailHtml(params: SessionReminderEmailParams): string {
+  const {
+    recipientName,
+    sessionTitle,
+    departmentName,
+    dateStr,
+    startTime,
+    endTime,
+    locationLabel,
+    meetingUrl,
+    sessionUrl,
+  } = params
+
+  const meetingRow = meetingUrl
+    ? `
+      <tr>
+        <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Join link:</td>
+        <td style="padding:8px 0;"><a href="${meetingUrl}" style="color:#000;">${meetingUrl}</a></td>
+      </tr>
+    `
+    : ''
+
+  return `
+    <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
+      <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Teaching Session Tomorrow</h2>
+      <p style="margin:20px 0;">Dear ${recipientName},</p>
+      <p style="margin:20px 0;">A reminder that <strong>${sessionTitle}</strong> (${departmentName}) is coming up.</p>
+
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+        <tr>
+          <td style="padding:8px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">When:</td>
+          <td style="padding:8px 0;">${dateStr}, ${startTime}&ndash;${endTime}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Where:</td>
+          <td style="padding:8px 0;">${locationLabel}</td>
+        </tr>
+        ${meetingRow}
+      </table>
+
+      <p style="margin:20px 0;">
+        <a href="${sessionUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">View Session</a>
+      </p>
+
+      <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
+        This email was sent via Byte Teaching.
+      </p>
+    </div>
+  `
+}
+
 export function buildInvitationEmailHtml(
   session: Session,
   departmentName: string,

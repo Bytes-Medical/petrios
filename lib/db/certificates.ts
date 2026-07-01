@@ -67,6 +67,36 @@ export async function insertCertificate(input: {
   return data as Certificate
 }
 
+/**
+ * Service-role: used by the post-session cron, which runs without a user
+ * session (RLS would reject the insert). The caller is the CRON_SECRET-
+ * authenticated route issuing attendee certificates.
+ */
+export async function insertCertificateAsSystem(input: {
+  orgId: string
+  departmentId: string
+  sessionId: string
+  userId: string
+  role: CertificateRole
+  certificateCode: string
+  recipientName: string
+}): Promise<void> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+
+  const { error } = await db.from('certificates').insert({
+    org_id: input.orgId,
+    department_id: input.departmentId,
+    session_id: input.sessionId,
+    user_id: input.userId,
+    certificate_role: input.role,
+    certificate_code: input.certificateCode,
+    recipient_name: input.recipientName,
+  })
+
+  if (error) throw toDbError('Failed to create certificate', error)
+}
+
 export async function listMyCertificates(
   orgId: string,
   userId: string

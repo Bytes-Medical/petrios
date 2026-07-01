@@ -8,9 +8,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.109.1",
     "@react-pdf/renderer": "^3.4.4",
     "@schedule-x/calendar": "^4.3.1",
     "@schedule-x/events-service": "^4.3.1",
@@ -27,6 +30,8 @@
     "@tiptap/react": "^3.23.6",
     "@tiptap/starter-kit": "^3.23.6",
     "@types/qrcode": "^1.5.6",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "ical-generator": "^10.1.0",
     "isomorphic-dompurify": "^3.14.0",
     "next": "^14.2.35",
@@ -34,6 +39,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-rnd": "^10.5.3",
+    "tailwind-merge": "^3.6.0",
     "temporal-polyfill": "^0.3.0",
     "zod": "^3.22.4"
   },
@@ -46,6 +52,7 @@
     "eslint-config-next": "14.2.5",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.9"
   }
 }

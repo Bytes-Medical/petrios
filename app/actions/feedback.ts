@@ -23,6 +23,8 @@ import type {
   FeedbackAnswerInput,
   SubmittedFeedbackAnswer,
 } from '@/lib/types'
+import { isClaudeConfigured } from '@/lib/ai/claude'
+import { summarizeFeedback } from '@/lib/ai/feedback-summary'
 import * as feedbackDb from '@/lib/db/feedback'
 import * as onboardingDb from '@/lib/db/onboarding'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -622,5 +624,53 @@ export async function releaseTeacherFeedback(sessionId: string) {
     sentCount,
     totalTeachers: allTeachers.length,
     traineesSent,
+  }
+}
+
+/**
+ * AI summary of a session's anonymous feedback (moderators only).
+ * Returns { summary: null, error } when unconfigured or empty rather than
+ * throwing, so the panel can render a friendly message.
+ */
+export async function summarizeSessionFeedback(
+  sessionId: string
+): Promise<{ summary: string | null; error: string | null }> {
+  const orgId = await requireOrg()
+
+  const scope = await sessionsDb.findSessionScope(sessionId, orgId)
+  if (!scope) {
+    throw new DbNotFoundError('Session not found')
+  }
+  await requireDepartmentModerator(scope.department_id)
+
+  const session = await sessionsDb.getSessionOrThrow(sessionId, orgId)
+  const feedback = await feedbackDb.listSessionFeedback(orgId, sessionId)
+
+  if (feedback.length === 0) {
+    return { summary: null, error: 'No feedback has been submitted yet.' }
+  }
+
+  if (!isClaudeConfigured()) {
+    return {
+      summary: null,
+      error: 'AI summaries are not configured — set ANTHROPIC_API_KEY on the server.',
+    }
+  }
+
+  try {
+    const summary = await summarizeFeedback({
+      sessionTitle: session.title,
+      rows: feedback,
+    })
+    if (!summary) {
+      return { summary: null, error: 'The AI returned an empty summary. Try again.' }
+    }
+    return { summary, error: null }
+  } catch (err) {
+    console.error(`Failed to summarize feedback for session ${sessionId}:`, err)
+    return {
+      summary: null,
+      error: err instanceof Error ? err.message : 'Failed to generate the summary.',
+    }
   }
 }

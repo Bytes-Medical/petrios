@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { SessionType } from '@/lib/types'
 import { SESSION_TYPE_LABELS, SESSION_TYPE_COLORS, SESSION_TYPE_BG_COLORS } from '@/lib/types'
 import type { SessionWithDetails } from '@/lib/db/trainee-dashboard'
+import { Badge } from '@/components/Badge'
 import { CertificateDownloadButton } from '@/components/CertificateDownloadButton'
 
 interface SessionsPanelProps {
@@ -68,17 +69,17 @@ function SessionCard({ session }: { session: SessionWithDetails }) {
       )}
       {session.my_attendance_status && (
         <div className="mt-2 flex items-center gap-2">
-          <span
-            className={`inline-block px-2 py-0.5 font-mono text-xs ${
+          <Badge
+            variant={
               session.my_attendance_status === 'PRESENT'
-                ? 'bg-green-100 text-green-800'
+                ? 'success'
                 : session.my_attendance_status === 'LATE'
-                  ? 'bg-yellow-100 text-yellow-800'
-                  : 'bg-red-100 text-red-800'
-            }`}
+                  ? 'warning'
+                  : 'danger'
+            }
           >
             {session.my_attendance_status}
-          </span>
+          </Badge>
           {(session.my_attendance_status === 'PRESENT' || session.my_attendance_status === 'LATE') && (
             <CertificateDownloadButton sessionId={session.id} />
           )}

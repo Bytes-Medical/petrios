@@ -136,6 +136,91 @@ export async function listSessionEvidence(
 }
 
 // -----------------------------------------------------------------------------
+// System (cron) variants — service-role, no user session
+// -----------------------------------------------------------------------------
+
+/**
+ * Service-role: used by the post-session cron, which runs without a user
+ * session (RLS would reject every query). The caller is the CRON_SECRET-
+ * authenticated route; it operates on sessions it selected itself.
+ */
+export async function evidenceExistsAsSystem(input: {
+  sessionId: string
+  userId: string
+  source: EvidenceSource
+}): Promise<boolean> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('attendance_evidence')
+    .select('id')
+    .eq('session_id', input.sessionId)
+    .eq('user_id', input.userId)
+    .eq('source', input.source)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to check evidence', error)
+  return !!data
+}
+
+/** Service-role: see evidenceExistsAsSystem. */
+export async function insertAttendanceEvidenceAsSystem(input: {
+  orgId: string
+  sessionId: string
+  departmentId: string
+  userId: string
+  source: EvidenceSource
+  observedAt: string
+  metadata: EvidenceMetadata
+}): Promise<void> {
+  const db = await getServiceDb()
+  const { error } = await db.from('attendance_evidence').insert({
+    org_id: input.orgId,
+    session_id: input.sessionId,
+    department_id: input.departmentId,
+    user_id: input.userId,
+    source: input.source,
+    observed_at: input.observedAt,
+    metadata: input.metadata,
+  })
+
+  if (error) throw toDbError('Failed to add attendance evidence', error)
+}
+
+/** Service-role: see evidenceExistsAsSystem. */
+export async function listSessionEvidenceAsSystem(
+  sessionId: string
+): Promise<AttendanceEvidence[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('attendance_evidence')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('observed_at', { ascending: true })
+
+  if (error) throw toDbError('Failed to list session evidence', error)
+  return (data as AttendanceEvidence[] | null) ?? []
+}
+
+/** Service-role: see evidenceExistsAsSystem. */
+export async function listAttendeeUserIdsByStatusAsSystem(
+  sessionId: string,
+  statuses: AttendanceStatus[]
+): Promise<string[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('attendance')
+    .select('user_id')
+    .eq('session_id', sessionId)
+    .in('status', statuses)
+    .not('user_id', 'is', null)
+
+  if (error) throw toDbError('Failed to list session attendees', error)
+  return ((data as { user_id: string | null }[] | null) ?? [])
+    .map((r) => r.user_id)
+    .filter((id): id is string => !!id)
+}
+
+// -----------------------------------------------------------------------------
 // Attendance computation (upserts)
 // -----------------------------------------------------------------------------
 

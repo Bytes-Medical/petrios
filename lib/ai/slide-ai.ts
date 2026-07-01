@@ -1,9 +1,12 @@
 import { SLIDE_STAGE_WIDTH as W } from '@/lib/slides'
 import type { Slide, SlideBlock } from '@/lib/types'
+import { askClaude, isClaudeConfigured } from '@/lib/ai/claude'
 
 // The model produces *semantic* slides (no geometry). A deterministic layout
 // step (layoutGeneratedSlides) turns these into positioned blocks, so model
-// output stays simple and reliable even for small models like Meditron-7B.
+// output stays simple and reliable across providers. Claude (ANTHROPIC_API_KEY)
+// is preferred; an OpenAI-compatible endpoint (SLIDE_AI_BASE_URL) is the
+// self-hosted alternative.
 export type GeneratedLayout = 'title' | 'bullets' | 'section' | 'statement'
 
 export interface GeneratedSlide {
@@ -69,14 +72,14 @@ function buildUserPrompt(req: AuthorRequest): string {
   return `Create a teaching deck of 8-12 slides on the topic: "${req.prompt}". Target audience: NHS trainees.`
 }
 
-interface ChatMessage {
-  role: 'system' | 'user'
-  content: string
-}
+/** Calls the configured model: Claude when ANTHROPIC_API_KEY is set, else an
+ *  OpenAI-compatible chat endpoint (vLLM/TGI/Ollama/OpenAI). Returns null when
+ *  neither is configured so callers can fall back offline. */
+async function callModel(system: string, user: string): Promise<string | null> {
+  if (isClaudeConfigured()) {
+    return askClaude({ system, prompt: user, maxTokens: 8192 })
+  }
 
-/** Calls an OpenAI-compatible chat endpoint (vLLM/TGI/Ollama/OpenAI). Returns
- *  null when no endpoint is configured so callers can fall back offline. */
-async function callModel(messages: ChatMessage[]): Promise<string | null> {
   const baseUrl = process.env.SLIDE_AI_BASE_URL
   if (!baseUrl) return null
 
@@ -90,7 +93,10 @@ async function callModel(messages: ChatMessage[]): Promise<string | null> {
     },
     body: JSON.stringify({
       model: process.env.SLIDE_AI_MODEL || 'epfl-llm/meditron-7b',
-      messages,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
       temperature: 0.4,
       max_tokens: 2048,
     }),
@@ -233,10 +239,7 @@ export function layoutGeneratedSlides(gen: GeneratedSlide[], _themeId: string): 
 /** Generate or edit a deck. Uses the configured model endpoint, or an offline
  *  starter outline when none is set. */
 export async function authorDeck(req: AuthorRequest): Promise<AuthorResult> {
-  const raw = await callModel([
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: buildUserPrompt(req) },
-  ])
+  const raw = await callModel(SYSTEM_PROMPT, buildUserPrompt(req))
 
   const usedModel = raw != null
   const gen = usedModel ? parseGeneratedSlides(raw as string) : stubGenerate(req)
@@ -246,7 +249,7 @@ export async function authorDeck(req: AuthorRequest): Promise<AuthorResult> {
       slides: req.currentSlides ?? [],
       message: usedModel
         ? 'No changes were proposed.'
-        : 'AI editing needs a model endpoint — set SLIDE_AI_BASE_URL (e.g. your Meditron server).',
+        : 'AI editing needs a model — set ANTHROPIC_API_KEY (Claude) or SLIDE_AI_BASE_URL (self-hosted).',
       usedModel,
     }
   }
@@ -254,7 +257,7 @@ export async function authorDeck(req: AuthorRequest): Promise<AuthorResult> {
   const slides = layoutGeneratedSlides(gen, req.theme)
   const message = usedModel
     ? `Drafted ${slides.length} slide${slides.length === 1 ? '' : 's'}. Review for clinical accuracy before teaching.`
-    : `Generated a ${slides.length}-slide starter outline. This is a placeholder — connect Meditron via SLIDE_AI_BASE_URL for researched content.`
+    : `Generated a ${slides.length}-slide starter outline. This is a placeholder — set ANTHROPIC_API_KEY (Claude) for researched content.`
 
   return { slides, message, usedModel }
 }

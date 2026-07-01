@@ -347,9 +347,21 @@ export async function searchOrgMemberProfiles(
   return (profiles ?? []) as OrgMemberProfile[]
 }
 
-export async function listSessionsNeedingReport(): Promise<
-  { id: string; org_id: string; department_id: string; title: string; date_start: string; date_end: string }[]
-> {
+export interface SessionNeedingReport {
+  id: string
+  org_id: string
+  department_id: string
+  title: string
+  date_start: string
+  date_end: string
+  checkin_open_mins_before: number | null
+  checkin_close_mins_after: number | null
+  feedback_valid_mins_after_end: number | null
+  late_after_mins: number | null
+  attendance_locked: boolean | null
+}
+
+export async function listSessionsNeedingReport(): Promise<SessionNeedingReport[]> {
   const { getServiceDb } = await import('./client')
   const db = await getServiceDb()
 
@@ -357,7 +369,9 @@ export async function listSessionsNeedingReport(): Promise<
 
   const { data, error } = await db
     .from('sessions')
-    .select('id, org_id, department_id, title, date_start, date_end')
+    .select(
+      'id, org_id, department_id, title, date_start, date_end, checkin_open_mins_before, checkin_close_mins_after, feedback_valid_mins_after_end, late_after_mins, attendance_locked'
+    )
     .eq('status', 'PUBLISHED')
     .lte('date_end', cutoff)
     .is('report_sent_at', null)
@@ -365,7 +379,76 @@ export async function listSessionsNeedingReport(): Promise<
     .limit(10)
 
   if (error) throw toDbError('Failed to list sessions needing report', error)
-  return data ?? []
+  return (data as SessionNeedingReport[] | null) ?? []
+}
+
+export interface SessionNeedingReminder {
+  id: string
+  org_id: string
+  department_id: string
+  title: string
+  date_start: string
+  date_end: string
+  location_type: string
+  teams_meeting_url: string | null
+}
+
+/**
+ * Service-role: used by the session-reminder cron, which runs without a user
+ * session. Published sessions starting within the next 24 hours that have
+ * not been reminded yet.
+ */
+export async function listSessionsNeedingReminder(): Promise<SessionNeedingReminder[]> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+
+  const now = new Date()
+  const windowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+
+  const { data, error } = await db
+    .from('sessions')
+    .select('id, org_id, department_id, title, date_start, date_end, location_type, teams_meeting_url')
+    .eq('status', 'PUBLISHED')
+    .gt('date_start', now.toISOString())
+    .lte('date_start', windowEnd.toISOString())
+    .is('reminder_sent_at', null)
+    .order('date_start', { ascending: true })
+    .limit(20)
+
+  if (error) throw toDbError('Failed to list sessions needing reminder', error)
+  return (data as SessionNeedingReminder[] | null) ?? []
+}
+
+/** Service-role: see listSessionsNeedingReminder. */
+export async function markSessionReminderSent(sessionId: string): Promise<void> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+
+  const { error } = await db
+    .from('sessions')
+    .update({ reminder_sent_at: new Date().toISOString() })
+    .eq('id', sessionId)
+
+  if (error) throw toDbError('Failed to mark session reminder sent', error)
+}
+
+/**
+ * Service-role: used by the post-session cron, which runs without a user
+ * session. The caller is the CRON_SECRET-authenticated route.
+ */
+export async function listSessionTeacherIdsAsSystem(
+  sessionId: string
+): Promise<string[]> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+
+  const { data, error } = await db
+    .from('session_teachers')
+    .select('user_id')
+    .eq('session_id', sessionId)
+
+  if (error) throw toDbError('Failed to list session teachers', error)
+  return ((data as { user_id: string }[] | null) ?? []).map((r) => r.user_id)
 }
 
 export async function markSessionReportSent(sessionId: string): Promise<void> {

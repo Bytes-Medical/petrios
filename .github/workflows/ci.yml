@@ -34,10 +34,12 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
-      # There is no test framework (see CLAUDE.md); the production build is the
-      # main correctness gate. Env values are placeholders — nothing in the
-      # build talks to Supabase or Resend (all env access in lib/ is lazy,
-      # inside request-time functions).
+      - name: Test
+        run: npm test
+
+      # Env values are placeholders — nothing in the build talks to Supabase
+      # or Resend (all env access in lib/ is lazy, inside request-time
+      # functions).
       - name: Build
         run: npm run build
         env:

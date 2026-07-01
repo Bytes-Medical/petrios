@@ -7,6 +7,7 @@ import { ManageTeachersPanel } from './ManageTeachersPanel'
 import { PublishSessionPanel } from './PublishSessionPanel'
 import { CertificateGenerationPanel } from './CertificateGenerationPanel'
 import { FeedbackAnalysisPanel } from './FeedbackAnalysisPanel'
+import { FeedbackSummaryPanel } from './FeedbackSummaryPanel'
 import { DepartmentQRCodePanel } from './DepartmentQRCodePanel'
 import { FeedbackListPanel } from './FeedbackListPanel'
 import { EditSessionForm } from './EditSessionForm'
@@ -165,6 +166,10 @@ export function ManageSessionTabs({
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Feedback Analysis</h2>
               <FeedbackAnalysisPanel sessionId={session.id} />
+            </Card>
+            <Card>
+              <h2 className="text-xl font-mono font-bold mb-4">AI Summary</h2>
+              <FeedbackSummaryPanel sessionId={session.id} />
             </Card>
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Feedback Responses</h2>

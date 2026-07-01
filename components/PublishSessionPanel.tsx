@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { useToast } from './ToastProvider'
 import { updateSessionStatus } from '@/app/actions/sessions'
@@ -60,8 +61,19 @@ export function PublishSessionPanel({
   return (
     <div className="space-y-4">
       <div>
-        <p className="font-mono text-sm mb-4">
-          Current status: <strong>{currentStatus}</strong>
+        <p className="font-mono text-sm mb-4 flex items-center gap-2">
+          Current status:{' '}
+          <Badge
+            variant={
+              currentStatus === 'PUBLISHED'
+                ? 'success'
+                : currentStatus === 'CANCELLED'
+                  ? 'danger'
+                  : 'default'
+            }
+          >
+            {currentStatus}
+          </Badge>
         </p>
         <p className="font-mono text-sm text-gray-600 mb-4">
           {isPersonal

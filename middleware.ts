@@ -36,7 +36,6 @@ export async function middleware(request: NextRequest) {
   // Refresh session if expired
   const {
     data: { user },
-    error: authError,
   } = await supabase.auth.getUser()
 
   // Public routes
@@ -51,16 +50,6 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.match(/^\/departments\/[^/]+\/feedback$/)
   )
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
-
-  // Log for debugging (remove in production)
-  if (request.nextUrl.pathname === '/dashboard') {
-    console.log('Middleware check for /dashboard:', {
-      hasUser: !!user,
-      userEmail: user?.email,
-      authError: authError?.message,
-      cookies: request.cookies.getAll().map(c => c.name),
-    })
-  }
 
   if (!user && !isPublicRoute && !isApiRoute) {
     const url = request.nextUrl.clone()

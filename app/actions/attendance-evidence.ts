@@ -11,6 +11,10 @@ import * as sessionsDb from '@/lib/db/sessions'
 import * as attendanceDb from '@/lib/db/attendance'
 import type { EvidenceSource, EvidenceMetadata } from '@/lib/db/attendance'
 import { DbNotFoundError } from '@/lib/db'
+import {
+  computeAttendanceFromEvidence,
+  isWithinEvidenceWindow,
+} from '@/lib/attendance/compute'
 
 // Re-export so existing `import type { EvidenceSource } from './attendance-evidence'`
 // callers stay working after the DAL move.
@@ -84,35 +88,7 @@ export async function addEvidence(
 
   // Validate time windows
   const now = new Date()
-  const checkInStart = new Date(
-    new Date(session.date_start).getTime() -
-      (session.checkin_open_mins_before || 15) * 60 * 1000
-  )
-  const checkInEnd = new Date(
-    new Date(session.date_start).getTime() +
-      (session.checkin_close_mins_after || 45) * 60 * 1000
-  )
-  const feedbackEnd = new Date(
-    new Date(session.date_end).getTime() +
-      (session.feedback_valid_mins_after_end || 120) * 60 * 1000
-  )
-
-  let isValidTime = false
-  switch (source) {
-    case 'SELF_CHECKIN':
-    case 'GROUP_CODE':
-      isValidTime = now >= checkInStart && now <= checkInEnd
-      break
-    case 'FEEDBACK':
-      isValidTime = now >= checkInStart && now <= feedbackEnd
-      break
-    case 'TEACHER':
-    case 'TEAMS':
-      isValidTime = true
-      break
-  }
-
-  if (!isValidTime) {
+  if (!isWithinEvidenceWindow(source, now, session)) {
     throw new Error(`Time window closed for ${source} evidence`)
   }
 
@@ -171,75 +147,7 @@ export async function recomputeAttendance(
     externalEmail,
   })
 
-  // Filter to valid evidence based on time windows
-  const validEvidence = allEvidence.filter((ev) => {
-    const observedAt = new Date(ev.observed_at)
-    const checkInStart = new Date(
-      new Date(session.date_start).getTime() -
-        (session.checkin_open_mins_before || 15) * 60 * 1000
-    )
-    const checkInEnd = new Date(
-      new Date(session.date_start).getTime() +
-        (session.checkin_close_mins_after || 45) * 60 * 1000
-    )
-    const feedbackEnd = new Date(
-      new Date(session.date_end).getTime() +
-        (session.feedback_valid_mins_after_end || 120) * 60 * 1000
-    )
-
-    switch (ev.source) {
-      case 'SELF_CHECKIN':
-      case 'GROUP_CODE':
-        return observedAt >= checkInStart && observedAt <= checkInEnd
-      case 'FEEDBACK':
-        return observedAt >= checkInStart && observedAt <= feedbackEnd
-      case 'TEACHER':
-      case 'TEAMS':
-        return true
-      default:
-        return false
-    }
-  })
-
-  if (validEvidence.length === 0) {
-    // No valid evidence = ABSENT
-    return attendanceDb.upsertAttendance({
-      orgId,
-      sessionId,
-      departmentId: session.department_id,
-      userId,
-      externalEmail,
-      status: 'ABSENT',
-      primarySource: null,
-      firstEvidenceAt: null,
-    })
-  }
-
-  // Priority: TEACHER > TEAMS > FEEDBACK > GROUP_CODE > SELF_CHECKIN
-  const priority: Record<EvidenceSource, number> = {
-    TEACHER: 5,
-    TEAMS: 4,
-    FEEDBACK: 3,
-    GROUP_CODE: 2,
-    SELF_CHECKIN: 1,
-  }
-
-  const sortedEvidence = validEvidence.sort((a, b) => {
-    const priorityDiff = priority[b.source] - priority[a.source]
-    if (priorityDiff !== 0) return priorityDiff
-    return new Date(a.observed_at).getTime() - new Date(b.observed_at).getTime()
-  })
-
-  const primaryEvidence = sortedEvidence[0]
-  const firstEvidenceAt = new Date(primaryEvidence.observed_at)
-  const sessionStart = new Date(session.date_start)
-  const lateAfterMins = session.late_after_mins || 10
-
-  const isLate = firstEvidenceAt > new Date(sessionStart.getTime() + lateAfterMins * 60 * 1000)
-  const status = isLate ? 'LATE' : 'PRESENT'
-
-  const statusOverride = primaryEvidence.metadata?.status_override
-  const finalStatus = statusOverride || status
+  const computed = computeAttendanceFromEvidence(allEvidence, session)
 
   return attendanceDb.upsertAttendance({
     orgId,
@@ -247,9 +155,9 @@ export async function recomputeAttendance(
     departmentId: session.department_id,
     userId,
     externalEmail,
-    status: finalStatus,
-    primarySource: primaryEvidence.source,
-    firstEvidenceAt: firstEvidenceAt.toISOString(),
+    status: computed.status,
+    primarySource: computed.primarySource,
+    firstEvidenceAt: computed.firstEvidenceAt,
   })
 }
 

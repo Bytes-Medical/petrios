@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { generateCertificateCode } from '@/lib/certificates/utils'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildCertificateEmailHtml } from '@/lib/email-templates'
+import { computeAttendanceFromEvidence } from '@/lib/attendance/compute'
 import * as sessionsDb from '@/lib/db/sessions'
+import * as attendanceDb from '@/lib/db/attendance'
 import * as certificatesDb from '@/lib/db/certificates'
+import * as onboardingDb from '@/lib/db/onboarding'
 
 export async function GET(request: NextRequest) {
   // Auth: check secret token
@@ -19,7 +21,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: 'No sessions to process', processed: 0 })
   }
 
-  const supabase = await createSupabaseServiceClient()
   const mailer = getEmailClient()
   const fromAddress = getFromAddress()
 
@@ -27,144 +28,100 @@ export async function GET(request: NextRequest) {
 
   for (const session of sessions) {
     try {
-      // 1. Mark teachers as PRESENT (TEACHER evidence)
-      const { data: teachers } = await supabase
-        .from('session_teachers')
-        .select('user_id')
-        .eq('session_id', session.id)
-
-      if (teachers) {
-        for (const teacher of teachers) {
-          // Check if evidence already exists
-          const { data: existing } = await supabase
-            .from('attendance_evidence')
-            .select('id')
-            .eq('session_id', session.id)
-            .eq('user_id', teacher.user_id)
-            .eq('source', 'TEACHER')
-            .maybeSingle()
-
-          if (!existing) {
-            await supabase.from('attendance_evidence').insert({
-              org_id: session.org_id,
-              session_id: session.id,
-              department_id: session.department_id,
-              user_id: teacher.user_id,
-              source: 'TEACHER',
-              observed_at: session.date_start,
-              metadata: { assigned_as_teacher: true },
-            })
-          }
+      // 1. Record TEACHER evidence for assigned teachers (idempotent)
+      const teacherIds = await sessionsDb.listSessionTeacherIdsAsSystem(session.id)
+      for (const teacherId of teacherIds) {
+        const exists = await attendanceDb.evidenceExistsAsSystem({
+          sessionId: session.id,
+          userId: teacherId,
+          source: 'TEACHER',
+        })
+        if (!exists) {
+          await attendanceDb.insertAttendanceEvidenceAsSystem({
+            orgId: session.org_id,
+            sessionId: session.id,
+            departmentId: session.department_id,
+            userId: teacherId,
+            source: 'TEACHER',
+            observedAt: session.date_start,
+            metadata: { assigned_as_teacher: true },
+          })
         }
       }
 
-      // 2. Recompute attendance for this session
-      // Get all evidence and upsert attendance records
-      const { data: evidence } = await supabase
-        .from('attendance_evidence')
-        .select('user_id, external_email, source, observed_at')
-        .eq('session_id', session.id)
+      // 2. Recompute attendance with the same evidence semantics as the
+      //    interactive pipeline (lib/attendance/compute). Locked sessions
+      //    keep their existing computed rows.
+      if (!session.attendance_locked) {
+        const evidence = await attendanceDb.listSessionEvidenceAsSystem(session.id)
 
-      if (evidence) {
-        const userAttendance = new Map<string, { source: string; observedAt: string }>()
-
-        const sourcePriority: Record<string, number> = {
-          TEACHER: 5, TEAMS: 4, FEEDBACK: 3, GROUP_CODE: 2, SELF_CHECKIN: 1,
-        }
-
-        for (const e of evidence) {
-          const key = e.user_id || e.external_email || ''
+        const byAttendee = new Map<string, typeof evidence>()
+        for (const ev of evidence) {
+          const key = ev.user_id ? `u:${ev.user_id}` : ev.external_email ? `e:${ev.external_email}` : null
           if (!key) continue
-
-          const existing = userAttendance.get(key)
-          if (!existing || (sourcePriority[e.source] ?? 0) > (sourcePriority[existing.source] ?? 0)) {
-            userAttendance.set(key, { source: e.source, observedAt: e.observed_at })
-          }
+          const list = byAttendee.get(key)
+          if (list) list.push(ev)
+          else byAttendee.set(key, [ev])
         }
 
-        for (const [key, att] of userAttendance.entries()) {
-          const isUserId = !key.includes('@')
-          const status = 'PRESENT'
+        for (const [key, attendeeEvidence] of Array.from(byAttendee.entries())) {
+          const isUserId = key.startsWith('u:')
+          const identifier = key.slice(2)
+          const computed = computeAttendanceFromEvidence(attendeeEvidence, session)
 
-          await supabase.from('attendance').upsert(
-            {
-              org_id: session.org_id,
-              session_id: session.id,
-              user_id: isUserId ? key : null,
-              external_email: isUserId ? null : key,
-              status,
-              primary_source: att.source,
-              first_evidence_at: att.observedAt,
-              computed_at: new Date().toISOString(),
-            },
-            { onConflict: isUserId ? 'session_id,user_id' : 'session_id,external_email' }
-          )
+          await attendanceDb.upsertAttendance({
+            orgId: session.org_id,
+            sessionId: session.id,
+            departmentId: session.department_id,
+            userId: isUserId ? identifier : null,
+            externalEmail: isUserId ? null : identifier,
+            status: computed.status,
+            primarySource: computed.primarySource,
+            firstEvidenceAt: computed.firstEvidenceAt,
+          })
         }
       }
 
-      // 3. Get attendees (registered users with PRESENT status)
-      const { data: attendees } = await supabase
-        .from('attendance')
-        .select('user_id')
-        .eq('session_id', session.id)
-        .not('user_id', 'is', null)
-        .eq('status', 'PRESENT')
+      // 3. Attendees who were actually there (LATE still attended)
+      const attendeeIds = await attendanceDb.listAttendeeUserIdsByStatusAsSystem(
+        session.id,
+        ['PRESENT', 'LATE']
+      )
 
-      if (!attendees || attendees.length === 0) {
+      if (attendeeIds.length === 0) {
         await sessionsDb.markSessionReportSent(session.id)
         processedCount++
         continue
       }
 
-      // 4. Get department + org names
-      const { data: dept } = await supabase
-        .from('departments')
-        .select('name, lead_name')
-        .eq('id', session.department_id)
-        .single()
+      const profiles = await onboardingDb.listProfilesForUsers(attendeeIds)
+      const profileByUserId = new Map(profiles.map((p) => [p.user_id, p]))
 
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('name')
-        .eq('id', session.org_id)
-        .single()
-
-      const sessionDate = new Date(session.date_start).toLocaleDateString('en-GB', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-      })
-
-      // 6. Send report to each attendee
-      for (const attendee of attendees) {
+      // 4. Issue certificates and email each attendee
+      for (const attendeeId of attendeeIds) {
         try {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('email, full_name, first_name, last_name')
-            .eq('user_id', attendee.user_id)
-            .single()
-
+          const profile = profileByUserId.get(attendeeId)
           if (!profile?.email) continue
 
-          const recipientName = profile.full_name ||
+          const recipientName =
+            profile.full_name ||
             [profile.first_name, profile.last_name].filter(Boolean).join(' ') ||
             profile.email
 
-          // Generate certificate
-          const certificateCode = generateCertificateCode()
-
-          // Check if certificate already exists
           const existingCert = await certificatesDb.findCertificateByUserAndSession(
-            attendee.user_id, session.id
+            attendeeId,
+            session.id
           )
 
           if (!existingCert) {
-            await supabase.from('certificates').insert({
-              org_id: session.org_id,
-              department_id: session.department_id,
-              session_id: session.id,
-              user_id: attendee.user_id,
-              certificate_role: 'ATTENDEE',
-              certificate_code: certificateCode,
-              recipient_name: recipientName,
+            await certificatesDb.insertCertificateAsSystem({
+              orgId: session.org_id,
+              departmentId: session.department_id,
+              sessionId: session.id,
+              userId: attendeeId,
+              role: 'ATTENDEE',
+              certificateCode: generateCertificateCode(),
+              recipientName,
             })
           }
 
@@ -177,11 +134,11 @@ export async function GET(request: NextRequest) {
             html,
           })
         } catch (err) {
-          console.error(`Failed to send report to attendee ${attendee.user_id}:`, err)
+          console.error(`Failed to send report to attendee ${attendeeId}:`, err)
         }
       }
 
-      // 7. Mark session as processed
+      // 5. Mark session as processed
       await sessionsDb.markSessionReportSent(session.id)
       processedCount++
     } catch (err) {
