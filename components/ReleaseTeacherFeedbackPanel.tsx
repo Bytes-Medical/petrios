@@ -51,7 +51,7 @@ export function ReleaseTeacherFeedbackPanel({
       <p className="font-mono text-sm text-gray-600">
         Send each teacher a feedback summary email with their teaching certificate attached.
         This will generate a <strong>Teacher</strong> certificate and email it along with the
-        session's feedback statistics and attendee comments.
+        session&apos;s feedback statistics and attendee comments.
       </p>
 
       <div className="font-mono text-sm">
