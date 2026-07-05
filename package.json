@@ -43,6 +43,17 @@
     "temporal-polyfill": "^0.3.0",
     "zod": "^3.22.4"
   },
+  "overrides": {
+    "@supabase/ssr": {
+      "cookie": "^0.7.0"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^9.0.7"
+    },
+    "@next/eslint-plugin-next": {
+      "glob": "^10.5.0"
+    }
+  },
   "devDependencies": {
     "@types/node": "^20.11.5",
     "@types/react": "^18.2.48",
