@@ -13,7 +13,7 @@ import type { OrgMemberProfile } from '@/lib/db/sessions'
 
 interface ManageTeachersPanelProps {
   sessionId: string
-  currentTeachers: { id: string; user_id: string }[]
+  currentTeachers: { id: string; user_id: string; status?: string }[]
   departmentMembers: { id: string; email: string | null }[]
   emailHistory: { user_id: string; email_type: string; sent_at: string }[]
   invitations: TeacherInvitation[]
@@ -312,7 +312,10 @@ export function ManageTeachersPanel({
 
               return (
                 <li key={teacher.id} className="p-3 border border-gray-300 space-y-2">
-                  <span className="font-mono text-sm font-bold">{member?.email || teacher.user_id}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-sm font-bold">{member?.email || teacher.user_id}</span>
+                    {teacher.status ? statusBadge(teacher.status) : null}
+                  </div>
 
                   <div className="font-mono text-xs text-gray-500 space-y-0.5">
                     {lastInvitation ? (

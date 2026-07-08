@@ -8,7 +8,6 @@ import {
 } from '@/lib/session-validation'
 import type { LocationType, Session, SessionStatus } from '@/lib/types'
 import * as sessionsDb from '@/lib/db/sessions'
-import * as attendanceDb from '@/lib/db/attendance'
 import { DbNotFoundError } from '@/lib/db'
 
 export async function createSession(sessionData: {
@@ -107,28 +106,16 @@ export async function addSessionTeacher(sessionId: string, userId: string) {
     throw new Error('User is not a member of this department')
   }
 
+  // Assignments start PENDING; TEACHER attendance evidence is recorded when
+  // the teacher accepts (app/actions/teaching-assignments.ts), not here —
+  // marking a teacher PRESENT at invite time would be wrong once they can
+  // decline.
   const teacher = await sessionsDb.insertSessionTeacher({
     orgId,
     sessionId,
     userId,
+    invitedBy: await requireAuth(),
   })
-
-  // Auto-mark teacher as PRESENT via TEACHER evidence
-  try {
-    await attendanceDb.insertAttendanceEvidence({
-      orgId,
-      sessionId,
-      departmentId: scope.department_id,
-      userId,
-      externalEmail: null,
-      source: 'TEACHER',
-      observedAt: new Date().toISOString(),
-      metadata: { assigned_as_teacher: true },
-      createdBy: await requireAuth(),
-    })
-  } catch {
-    // Non-fatal — evidence may already exist
-  }
 
   revalidatePath(`/sessions/${sessionId}/manage`)
   revalidatePath(`/sessions/${sessionId}`)

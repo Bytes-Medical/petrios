@@ -14,8 +14,8 @@ import { EditSessionForm } from './EditSessionForm'
 import { AuditPanel } from './AuditPanel'
 import { ReleaseTeacherFeedbackPanel } from './ReleaseTeacherFeedbackPanel'
 import { Button } from './Button'
-import Link from 'next/link'
 import type { Session, TeacherInvitation } from '@/lib/types'
+import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
 
 interface ManageSessionTabsProps {
   session: Session
@@ -67,13 +67,6 @@ export function ManageSessionTabs({
               {tab.label}
             </button>
           ))}
-          {/* The slide editor is a full-screen route, so this tab navigates to it. */}
-          <Link
-            href={`/sessions/${session.id}/slides`}
-            className="px-4 py-2 font-mono text-sm border-b-2 border-transparent hover:border-gray-400"
-          >
-            Slides
-          </Link>
         </div>
       </div>
 
@@ -99,7 +92,11 @@ export function ManageSessionTabs({
                 <div className="space-y-2 font-mono text-sm">
                   <p><strong>Title:</strong> {session.title}</p>
                   <p className="break-words">
-                    <strong>Date:</strong> <span className="block sm:inline">{new Date(session.date_start).toLocaleString('en-GB')}</span> - <span className="block sm:inline">{new Date(session.date_end).toLocaleString('en-GB')}</span>
+                    <strong>Date:</strong> <span className="block sm:inline">{new Date(session.date_start).toLocaleString('en-GB')}</span>
+                  </p>
+                  <p>
+                    <strong>Duration:</strong>{' '}
+                    {formatDuration(exactDurationFromDates(session.date_start, session.date_end))}
                   </p>
                   <p><strong>Location:</strong> {session.location_type}</p>
                   {session.teams_meeting_url && (
@@ -111,7 +108,6 @@ export function ManageSessionTabs({
                     </p>
                   )}
                   <p><strong>Status:</strong> {session.status}</p>
-                  {session.capacity && <p><strong>Capacity:</strong> {session.capacity}</p>}
                   {session.tags && session.tags.length > 0 && (
                     <p><strong>Tags:</strong> {session.tags.join(', ')}</p>
                   )}

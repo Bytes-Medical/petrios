@@ -257,6 +257,7 @@ export async function insertSessionTeacher(input: {
   orgId: string
   sessionId: string
   userId: string
+  invitedBy: string
 }): Promise<SessionTeacher> {
   const db = await getDb()
   const { data, error } = await db
@@ -265,12 +266,83 @@ export async function insertSessionTeacher(input: {
       org_id: input.orgId,
       session_id: input.sessionId,
       user_id: input.userId,
+      status: 'PENDING',
+      invited_by: input.invitedBy,
     })
     .select()
     .single()
 
   if (error) throw toDbError('Failed to add session teacher', error)
   return data as SessionTeacher
+}
+
+export async function findSessionTeacher(
+  sessionId: string,
+  userId: string,
+  orgId: string
+): Promise<SessionTeacher | null> {
+  const db = await getDb()
+  const { data, error } = await db
+    .from('session_teachers')
+    .select('*')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .eq('org_id', orgId)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to fetch session teacher', error)
+  return (data as SessionTeacher | null) ?? null
+}
+
+/**
+ * Service-role: a teacher responding to their own PENDING assignment. The
+ * calling action verified auth.uid() === userId; RLS deliberately has no
+ * UPDATE policy on session_teachers (a row-level policy cannot restrict which
+ * columns change, so a self-service policy would let a teacher re-point the
+ * row). Only flips rows that are still PENDING.
+ */
+export async function updateSessionTeacherResponse(input: {
+  sessionId: string
+  userId: string
+  status: 'ACCEPTED' | 'DECLINED'
+}): Promise<SessionTeacher | null> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+
+  const { data, error } = await db
+    .from('session_teachers')
+    .update({
+      status: input.status,
+      responded_at: new Date().toISOString(),
+    })
+    .eq('session_id', input.sessionId)
+    .eq('user_id', input.userId)
+    .eq('status', 'PENDING')
+    .select()
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to update teaching response', error)
+  return (data as SessionTeacher | null) ?? null
+}
+
+/**
+ * Service-role: used by the session-reminder cron, which runs without a user
+ * session. Only teachers who accepted the assignment.
+ */
+export async function listAcceptedSessionTeacherUserIdsAsSystem(
+  sessionId: string
+): Promise<string[]> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+
+  const { data, error } = await db
+    .from('session_teachers')
+    .select('user_id')
+    .eq('session_id', sessionId)
+    .eq('status', 'ACCEPTED')
+
+  if (error) throw toDbError('Failed to list accepted session teachers', error)
+  return ((data as { user_id: string }[] | null) ?? []).map((r) => r.user_id)
 }
 
 export async function deleteSessionTeacher(input: {

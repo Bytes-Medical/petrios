@@ -8,10 +8,16 @@ import { getDepartmentsForOrg, getMyModeratedDepartment } from '@/app/actions/de
 import { SessionCalendar } from '@/components/SessionCalendar'
 import { PersonalDashboard } from '@/components/PersonalDashboard'
 import { getMyDepartmentSessions, getMyFeedbackHistory, getMyAttendanceSummary } from '@/app/actions/trainee-dashboard'
+import { getMyTeachingAssignments } from '@/app/actions/teaching-assignments'
+import { TeachingAssignmentsPanel } from '@/components/TeachingAssignmentsPanel'
 import { ensurePersonalWorkspace } from '@/app/actions/personal-workspace'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: { tab?: string }
+}) {
   const user = await getCurrentUser()
 
   if (!user) {
@@ -74,7 +80,7 @@ export default async function DashboardPage() {
     )
   }
 
-  const [sessions, departments, moderatedDept, orgAdmin, calendarUrl, mySessions, myFeedback, myAttendance] = await Promise.all([
+  const [sessions, departments, moderatedDept, orgAdmin, calendarUrl, mySessions, myFeedback, myAttendance, myTeaching] = await Promise.all([
     getSessionsForOrg(orgId),
     getDepartmentsForOrg(orgId),
     getMyModeratedDepartment(orgId),
@@ -83,7 +89,10 @@ export default async function DashboardPage() {
     getMyDepartmentSessions(),
     getMyFeedbackHistory(),
     getMyAttendanceSummary(),
+    getMyTeachingAssignments(),
   ])
+
+  const pendingTeaching = myTeaching.filter((t) => t.status === 'PENDING')
 
   const isTraineeOnly = !orgAdmin && !moderatedDept
 
@@ -106,7 +115,15 @@ export default async function DashboardPage() {
           <div className="mb-6 sm:mb-8">
             <h1 className="text-2xl sm:text-3xl font-mono font-bold mb-2">My Dashboard</h1>
           </div>
-          <PersonalDashboard sessions={mySessions} feedback={myFeedback} attendance={myAttendance} />
+          <PersonalDashboard
+            sessions={mySessions}
+            feedback={myFeedback}
+            attendance={myAttendance}
+            teaching={myTeaching}
+            orgSessions={sessions}
+            calendarUrl={calendarUrl}
+            initialTab={searchParams?.tab}
+          />
         </div>
       </div>
     )
@@ -124,6 +141,15 @@ export default async function DashboardPage() {
             <h1 className="text-2xl sm:text-3xl font-mono font-bold mb-2">{moderatedDept.name}</h1>
             <p className="font-mono text-sm text-gray-600">Moderator Dashboard</p>
           </div>
+
+          {pendingTeaching.length > 0 && (
+            <section className="mb-6 sm:mb-8">
+              <Card>
+                <h2 className="text-xl font-mono font-bold mb-4">Teaching Invitations</h2>
+                <TeachingAssignmentsPanel assignments={pendingTeaching} />
+              </Card>
+            </section>
+          )}
 
           <section className="mb-6 sm:mb-8">
             <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -162,6 +188,15 @@ export default async function DashboardPage() {
       <NavShell />
       <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
         <h1 className="text-2xl sm:text-3xl font-mono font-bold mb-6 sm:mb-8">Dashboard</h1>
+
+        {pendingTeaching.length > 0 && (
+          <section className="mb-6 sm:mb-8">
+            <Card>
+              <h2 className="text-xl font-mono font-bold mb-4">Teaching Invitations</h2>
+              <TeachingAssignmentsPanel assignments={pendingTeaching} />
+            </Card>
+          </section>
+        )}
 
         <section className="mb-6 sm:mb-8">
           <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

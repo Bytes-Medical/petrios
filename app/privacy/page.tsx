@@ -35,7 +35,7 @@ export default function PrivacyPolicyPage() {
               <p>
                 Byte Teaching is a teaching-management platform for NHS educators and trainees. It
                 lets organisers schedule teaching sessions, record attendance, collect feedback,
-                issue certificates, and build teaching slides.
+                and issue certificates.
               </p>
             </Section>
 
@@ -46,7 +46,6 @@ export default function PrivacyPolicyPage() {
                 <li><strong>Teaching activity</strong> — sessions you create or attend, and attendance evidence (QR/group-code check-ins, teacher confirmations).</li>
                 <li><strong>Feedback</strong> — session feedback, which is collected anonymously.</li>
                 <li><strong>Certificates</strong> — records of certificates issued to teachers and attendees.</li>
-                <li><strong>Content you create</strong> — presentations/slides, including any images you upload.</li>
                 <li><strong>Technical data</strong> — a session cookie used to keep you signed in.</li>
               </ul>
             </Section>
@@ -74,14 +73,6 @@ export default function PrivacyPolicyPage() {
                 <li><strong>Resend</strong> — sending sign-in and notification emails.</li>
               </ul>
               <p>We may disclose data where required by law.</p>
-            </Section>
-
-            <Section title="Image uploads">
-              <p>
-                Images you upload to slides are stored in a publicly-readable storage bucket so they
-                can be displayed and presented. Do not upload patient-identifiable information or
-                confidential images.
-              </p>
             </Section>
 
             <Section title="Retention">

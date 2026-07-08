@@ -9,10 +9,10 @@ export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED'
 export type OnboardingLinkType = 'invite' | 'magiclink'
 export type OnboardingRequestStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED'
 export type FeedbackFieldType = 'rating' | 'textarea' | 'text'
-export type TraineeGrade = 'FY1' | 'FY2' | 'ST1' | 'ST2' | 'ST3' | 'ST4' | 'ST5' | 'ST6' | 'ST7' | 'ST8' | 'Consultant'
+export type TraineeGrade = 'Level 1 Trainee' | 'Level 2 Trainee' | 'Consultant'
 export type SessionType = 'STEPP' | 'CLINICAL_SKILLS' | 'SIMULATION' | 'ACADEMIC'
 
-export const TRAINEE_GRADES: TraineeGrade[] = ['FY1', 'FY2', 'ST1', 'ST2', 'ST3', 'ST4', 'ST5', 'ST6', 'ST7', 'ST8', 'Consultant']
+export const TRAINEE_GRADES: TraineeGrade[] = ['Level 1 Trainee', 'Level 2 Trainee', 'Consultant']
 export const SESSION_TYPES: SessionType[] = ['STEPP', 'CLINICAL_SKILLS', 'SIMULATION', 'ACADEMIC']
 
 export const SESSION_TYPE_LABELS: Record<SessionType, string> = {
@@ -184,6 +184,21 @@ export interface SessionTeacher {
   org_id: string
   session_id: string
   user_id: string
+  status: InvitationStatus
+  invited_by: string | null
+  responded_at: string | null
+}
+
+export interface AppNotification {
+  id: string
+  org_id: string
+  user_id: string
+  type: string
+  title: string
+  body: string | null
+  link: string | null
+  read_at: string | null
+  created_at: string
 }
 
 export interface Attendance {
@@ -246,77 +261,3 @@ export interface Certificate {
   created_at: string
 }
 
-// -----------------------------------------------------------------------------
-// Presentations (teaching slide decks)
-// -----------------------------------------------------------------------------
-
-export type SlideBlockType = 'text' | 'image' | 'shape'
-
-export type SlideShapeKind = 'rectangle' | 'ellipse' | 'rounded' | 'triangle'
-
-// Colour values may be a raw hex/CSS colour OR a theme token like `theme:accent1`
-// resolved at render via resolveColor() — so changing theme recolours decks and
-// existing hex values stay valid (backward-compatible).
-export interface SlideBlockStyle {
-  fontSize?: number
-  fontWeight?: 'normal' | 'bold'
-  italic?: boolean
-  align?: 'left' | 'center' | 'right'
-  color?: string
-  background?: string
-  highlight?: string
-  fontFamily?: string
-  lineHeight?: number
-  shape?: SlideShapeKind
-  borderColor?: string
-  borderWidth?: number
-  borderStyle?: 'solid' | 'dashed' | 'dotted'
-  radius?: number
-}
-
-export interface SlideGradient {
-  type: 'linear'
-  angle: number
-  stops: { color: string; pos: number }[]
-}
-
-// Block geometry is in stage pixels against a fixed design stage (see
-// lib/slides.ts SLIDE_STAGE_WIDTH/HEIGHT); the editor and present view scale the
-// whole stage to fit their container so layouts stay resolution-independent.
-export interface SlideBlock {
-  id: string
-  type: SlideBlockType
-  x: number
-  y: number
-  w: number
-  h: number
-  z: number
-  content: string // text for text blocks; image URL for image; '' for shape
-  html?: string // rich-text HTML (supersedes content when present)
-  rotation?: number // degrees
-  opacity?: number // 0..1
-  style?: SlideBlockStyle
-}
-
-export interface Slide {
-  id: string
-  background?: string
-  backgroundGradient?: SlideGradient
-  notes?: string
-  layout?: string
-  blocks: SlideBlock[]
-}
-
-export interface Presentation {
-  id: string
-  org_id: string
-  department_id: string
-  session_id: string | null
-  title: string
-  theme: string
-  slides: Slide[]
-  customColors?: string[]
-  created_by: string
-  created_at: string
-  updated_at: string
-}

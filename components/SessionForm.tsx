@@ -7,8 +7,10 @@ import { DateTimePicker } from './DateTimePicker'
 import { Textarea } from './Textarea'
 import { Select } from './Select'
 import { Button } from './Button'
+import { DurationSelect } from './DurationSelect'
 import { createSession } from '@/app/actions/sessions'
 import { assertValidSessionDates } from '@/lib/session-validation'
+import { computeDateEnd } from '@/lib/session-duration'
 
 interface SessionFormProps {
   departmentId: string
@@ -29,7 +31,7 @@ export function SessionForm({ departmentId, departmentName }: SessionFormProps) 
 
     try {
       const dateStart = new Date(formData.get('date_start') as string).toISOString()
-      const dateEnd = new Date(formData.get('date_end') as string).toISOString()
+      const dateEnd = computeDateEnd(dateStart, Number(formData.get('duration')))
 
       assertValidSessionDates(dateStart, dateEnd)
 
@@ -76,11 +78,7 @@ export function SessionForm({ departmentId, departmentName }: SessionFormProps) 
           name="date_start"
           required
         />
-        <DateTimePicker
-          label="End Date & Time"
-          name="date_end"
-          required
-        />
+        <DurationSelect name="duration" required />
       </div>
 
       <Select label="Location Type" name="location_type" required>

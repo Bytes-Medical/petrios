@@ -145,3 +145,24 @@ export async function findDepartmentName(
   if (error) throw toDbError('Failed to fetch department name', error)
   return (data as { name: string } | null)?.name ?? null
 }
+
+/**
+ * Service-role: used by the session-reminder cron, which runs without a user
+ * session. External teachers who accepted their invitation for this session.
+ */
+export async function listAcceptedInvitationRecipientsAsSystem(
+  sessionId: string
+): Promise<{ email: string; first_name: string | null; last_name: string | null }[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('teacher_invitations')
+    .select('email, first_name, last_name')
+    .eq('session_id', sessionId)
+    .eq('status', 'ACCEPTED')
+
+  if (error) throw toDbError('Failed to list accepted invitations', error)
+  return (
+    (data as { email: string; first_name: string | null; last_name: string | null }[] | null) ??
+    []
+  )
+}

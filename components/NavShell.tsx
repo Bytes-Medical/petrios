@@ -1,6 +1,8 @@
 import { Nav } from '@/components/Nav'
 import { getCurrentUserId, isSuperAdmin, isPersonalWorkspace } from '@/lib/auth'
 import * as organizationsDb from '@/lib/db/organizations'
+import * as notificationsDb from '@/lib/db/notifications'
+import type { AppNotification } from '@/lib/types'
 
 export async function NavShell() {
   const userId = await getCurrentUserId()
@@ -8,6 +10,20 @@ export async function NavShell() {
   let adminLink: { href: string; label: string } | null = null
   let roleLabel: string | null = null
   let isPersonal = false
+  let notifications: AppNotification[] = []
+  let unreadCount = 0
+
+  if (userId) {
+    try {
+      ;[notifications, unreadCount] = await Promise.all([
+        notificationsDb.listMyNotifications(userId),
+        notificationsDb.countUnreadNotifications(userId),
+      ])
+    } catch (error) {
+      // Non-fatal — the nav renders without the bell contents.
+      console.error('Failed to load notifications:', error)
+    }
+  }
 
   if (userId) {
     if (superAdmin) {
@@ -31,6 +47,8 @@ export async function NavShell() {
       roleLabel={roleLabel}
       isSuperAdmin={superAdmin}
       isPersonal={isPersonal}
+      notifications={notifications}
+      unreadCount={unreadCount}
     />
   )
 }

@@ -1,4 +1,4 @@
-import type { AttendanceStatus, SessionType } from '@/lib/types'
+import type { AttendanceStatus, InvitationStatus, SessionType } from '@/lib/types'
 import { getServiceDb } from './client'
 import { toDbError } from './errors'
 
@@ -17,6 +17,17 @@ export interface SessionWithDetails {
   department_id: string
   teacher_names: string[]
   my_attendance_status: AttendanceStatus | null
+  my_teaching_status: InvitationStatus | null
+}
+
+export interface TeachingAssignment {
+  session_id: string
+  title: string
+  date_start: string
+  date_end: string
+  location_type: string
+  department_name: string
+  status: InvitationStatus
 }
 
 export interface FeedbackHistoryEntry {
@@ -88,12 +99,19 @@ export async function listSessionsForUserDepartments(
   // Fetch teachers for all sessions
   const { data: teacherRows } = await db
     .from('session_teachers')
-    .select('session_id, user_id, profiles:user_id(full_name, first_name, last_name)')
+    .select('session_id, user_id, status, profiles:user_id(full_name, first_name, last_name)')
     .in('session_id', sessionIds)
 
   const teacherMap = new Map<string, string[]>()
+  const myTeachingMap = new Map<string, InvitationStatus>()
   if (teacherRows) {
     for (const t of teacherRows) {
+      if (t.user_id === userId) {
+        myTeachingMap.set(t.session_id, t.status as InvitationStatus)
+      }
+      // Declined teachers aren't teaching the session — keep them out of the
+      // displayed faculty list.
+      if (t.status === 'DECLINED') continue
       const profile = Array.isArray(t.profiles) ? t.profiles[0] : t.profiles
       const name =
         profile?.full_name ||
@@ -136,6 +154,7 @@ export async function listSessionsForUserDepartments(
       department_id: s.department_id,
       teacher_names: teacherMap.get(s.id) || [],
       my_attendance_status: attendanceMap.get(s.id) || null,
+      my_teaching_status: myTeachingMap.get(s.id) || null,
     }
 
     if (s.date_start > now) {
@@ -148,6 +167,51 @@ export async function listSessionsForUserDepartments(
   past.reverse() // most recent first
 
   return { upcoming, past }
+}
+
+// -----------------------------------------------------------------------------
+// Teaching assignments (sessions the user was invited to teach)
+// -----------------------------------------------------------------------------
+
+export async function listTeachingAssignmentsForUser(
+  userId: string,
+  orgId: string
+): Promise<TeachingAssignment[]> {
+  const db = await getServiceDb()
+
+  const { data, error } = await db
+    .from('session_teachers')
+    .select(
+      'session_id, status, sessions:session_id(title, date_start, date_end, location_type, status, departments:department_id(name))'
+    )
+    .eq('org_id', orgId)
+    .eq('user_id', userId)
+
+  if (error) throw toDbError('Failed to fetch teaching assignments', error)
+  if (!data) return []
+
+  const assignments: TeachingAssignment[] = []
+  for (const row of data) {
+    const session = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions
+    if (!session || session.status === 'CANCELLED') continue
+    const dept = session.departments
+      ? Array.isArray(session.departments)
+        ? session.departments[0]
+        : session.departments
+      : null
+    assignments.push({
+      session_id: row.session_id,
+      title: session.title,
+      date_start: session.date_start,
+      date_end: session.date_end,
+      location_type: session.location_type,
+      department_name: dept?.name ?? '',
+      status: row.status as InvitationStatus,
+    })
+  }
+
+  assignments.sort((a, b) => a.date_start.localeCompare(b.date_start))
+  return assignments
 }
 
 // -----------------------------------------------------------------------------

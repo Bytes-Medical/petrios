@@ -48,7 +48,7 @@ The attendance system is an append-only evidence aggregation pipeline (documente
 - **Certificates**: PDF generation via `@react-pdf/renderer` in `lib/certificates/pdf.tsx`. Server action in `app/actions/certificates.ts`. Public verification at `/verify/[certificateId]`.
 - **Email**: Resend REST API (`lib/email.ts`, a `getEmailClient()` adapter over `fetch`). Templates in `lib/email-templates.ts`. Used for teacher invitations, session reminders, and certificates.
 - **Feedback**: Anonymous session feedback with QR code distribution. Stats endpoint at `/api/sessions/[id]/feedback/stats`. AI summaries via `summarizeSessionFeedback` in `app/actions/feedback.ts`.
-- **AI (Claude)**: `lib/ai/claude.ts` wraps `@anthropic-ai/sdk` (Claude Fable 5 with a server-side fallback to Opus 4.8). Used by AI slide generation (`lib/ai/slide-ai.ts`, which also supports an OpenAI-compatible endpoint via `SLIDE_AI_*`) and feedback summarization (`lib/ai/feedback-summary.ts`). All AI features degrade gracefully when no key is configured.
+- **AI (Claude)**: `lib/ai/claude.ts` wraps `@anthropic-ai/sdk` (Claude Fable 5 with a server-side fallback to Opus 4.8). Used by feedback summarization (`lib/ai/feedback-summary.ts`). Degrades gracefully when no key is configured.
 - **Cron jobs**: `app/api/cron/post-session-reports` (certificates + report emails after sessions end) and `app/api/cron/session-reminders` (reminder emails ~24h before a session). Both are idempotent via watermark columns (`report_sent_at`, `reminder_sent_at`) and authenticated with `?secret=CRON_SECRET`.
 
 ### Environment Variables
@@ -61,10 +61,7 @@ NEXT_PUBLIC_APP_URL           # Public app URL used in emailed sign-in/invite li
 RESEND_API_KEY                # Resend API key (server-only)
 MAIL_FROM                     # Default sender, "Name <email@verified-domain>" (server-only)
 CRON_SECRET                   # Shared secret for /api/cron/* routes (server-only)
-ANTHROPIC_API_KEY             # Claude API key for AI slides + feedback summaries (server-only, optional)
-SLIDE_AI_BASE_URL             # Optional OpenAI-compatible endpoint for slide AI (fallback provider)
-SLIDE_AI_API_KEY              # Bearer token for SLIDE_AI_BASE_URL (optional)
-SLIDE_AI_MODEL                # Model name for SLIDE_AI_BASE_URL (default epfl-llm/meditron-7b)
+ANTHROPIC_API_KEY             # Claude API key for AI feedback summaries (server-only, optional)
 ```
 
 ### Database

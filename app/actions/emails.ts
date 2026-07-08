@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
+import { getAppUrl } from '@/lib/app-url'
 import type { EmailType, Session } from '@/lib/types'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -122,6 +123,16 @@ function buildEmailHtml(
       ? 'You have been invited to teach a session'
       : 'This is a reminder about an upcoming session you are teaching'
 
+  // Invitations need a response: deep-link to the dashboard Teaching tab
+  // where the teacher can accept or decline.
+  const respondSection =
+    emailType === 'INVITATION'
+      ? `<p style="margin:20px 0;">
+           <a href="${getAppUrl()}/dashboard?tab=teaching" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Respond to invitation</a>
+         </p>
+         <p style="font-size:12px;color:#666;">Sign in and accept the invitation to confirm you are teaching this session.</p>`
+      : ''
+
   const teamsSection = session.teams_meeting_url
     ? `<tr>
          <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Teams Link:</td>
@@ -167,6 +178,7 @@ function buildEmailHtml(
         ${teamsSection}
         ${descriptionSection}
       </table>
+      ${respondSection}
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
         This email was sent via Byte Teaching.
       </p>

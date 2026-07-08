@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { Button } from './Button'
+import { NotificationsBell } from './NotificationsBell'
 import type { User } from '@supabase/supabase-js'
+import type { AppNotification } from '@/lib/types'
 
 interface AdminLink {
   href: string
@@ -17,9 +19,18 @@ interface NavProps {
   roleLabel?: string | null
   isSuperAdmin?: boolean
   isPersonal?: boolean
+  notifications?: AppNotification[]
+  unreadCount?: number
 }
 
-export function Nav({ adminLink, roleLabel, isSuperAdmin: superAdmin, isPersonal }: NavProps) {
+export function Nav({
+  adminLink,
+  roleLabel,
+  isSuperAdmin: superAdmin,
+  isPersonal,
+  notifications = [],
+  unreadCount = 0,
+}: NavProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
@@ -99,6 +110,12 @@ export function Nav({ adminLink, roleLabel, isSuperAdmin: superAdmin, isPersonal
             </div>
             <div className="flex items-center gap-4 ml-4">
               {!loading && user && (
+                <NotificationsBell
+                  notifications={notifications}
+                  unreadCount={unreadCount}
+                />
+              )}
+              {!loading && user && (
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm text-gray-600 truncate max-w-[150px]">
                     {user.email}
@@ -116,14 +133,22 @@ export function Nav({ adminLink, roleLabel, isSuperAdmin: superAdmin, isPersonal
             </div>
           </div>
 
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 border border-black"
-            aria-label="Toggle menu"
-          >
-            <span className="font-mono text-sm">{mobileMenuOpen ? '✕' : '☰'}</span>
-          </button>
+          {/* Mobile: bell + menu button */}
+          <div className="md:hidden flex items-center gap-2">
+            {!loading && user && (
+              <NotificationsBell
+                notifications={notifications}
+                unreadCount={unreadCount}
+              />
+            )}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 border border-black"
+              aria-label="Toggle menu"
+            >
+              <span className="font-mono text-sm">{mobileMenuOpen ? '✕' : '☰'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Mobile Navigation */}

@@ -4,11 +4,13 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Input } from './Input'
 import { DateTimePicker } from './DateTimePicker'
+import { DurationSelect } from './DurationSelect'
 import { Textarea } from './Textarea'
 import { Select } from './Select'
 import { Button } from './Button'
 import { updateSession } from '@/app/actions/sessions'
 import { assertValidSessionDates } from '@/lib/session-validation'
+import { computeDateEnd, exactDurationFromDates } from '@/lib/session-duration'
 import type { Session } from '@/lib/types'
 
 interface EditSessionFormProps {
@@ -22,6 +24,11 @@ export function EditSessionForm({ session, onCancel, onSave }: EditSessionFormPr
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Prefill with the stored duration; if it's off the 30-minute grid (legacy
+  // data) it's surfaced as an extra option so saving an unrelated edit never
+  // silently shifts date_end.
+  const storedDuration = exactDurationFromDates(session.date_start, session.date_end)
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
@@ -30,9 +37,8 @@ export function EditSessionForm({ session, onCancel, onSave }: EditSessionFormPr
     const formData = new FormData(e.currentTarget)
 
     try {
-      const capacityVal = formData.get('capacity')?.toString()
       const dateStart = new Date(formData.get('date_start') as string).toISOString()
-      const dateEnd = new Date(formData.get('date_end') as string).toISOString()
+      const dateEnd = computeDateEnd(dateStart, Number(formData.get('duration')))
 
       assertValidSessionDates(dateStart, dateEnd)
 
@@ -42,7 +48,6 @@ export function EditSessionForm({ session, onCancel, onSave }: EditSessionFormPr
         date_start: dateStart,
         date_end: dateEnd,
         location_type: formData.get('location_type') as 'MS_TEAMS' | 'IN_PERSON' | 'HYBRID',
-        capacity: capacityVal ? parseInt(capacityVal, 10) : null,
       })
 
       router.refresh()
@@ -82,30 +87,19 @@ export function EditSessionForm({ session, onCancel, onSave }: EditSessionFormPr
           defaultValue={session.date_start}
           required
         />
-        <DateTimePicker
-          label="End Date & Time"
-          name="date_end"
-          defaultValue={session.date_end}
+        <DurationSelect
+          name="duration"
+          defaultMinutes={storedDuration || 60}
+          extraOptionMinutes={storedDuration || undefined}
           required
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Select label="Location Type" name="location_type" defaultValue={session.location_type} required>
-          <option value="MS_TEAMS">MS Teams</option>
-          <option value="IN_PERSON">In Person</option>
-          <option value="HYBRID">Hybrid</option>
-        </Select>
-
-        <Input
-          label="Capacity"
-          name="capacity"
-          type="number"
-          min={1}
-          defaultValue={session.capacity ?? ''}
-          placeholder="No limit"
-        />
-      </div>
+      <Select label="Location Type" name="location_type" defaultValue={session.location_type} required>
+        <option value="MS_TEAMS">MS Teams</option>
+        <option value="IN_PERSON">In Person</option>
+        <option value="HYBRID">Hybrid</option>
+      </Select>
 
       <div className="flex flex-col sm:flex-row gap-4">
         <Button type="submit" disabled={loading} className="w-full sm:w-auto">

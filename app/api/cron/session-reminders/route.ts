@@ -5,6 +5,7 @@ import { getAppUrl } from '@/lib/app-url'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as departmentsDb from '@/lib/db/departments'
 import * as onboardingDb from '@/lib/db/onboarding'
+import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
 
 const LOCATION_LABELS: Record<string, string> = {
   MS_TEAMS: 'Microsoft Teams (Online)',
@@ -38,11 +39,18 @@ export async function GET(request: NextRequest) {
 
   for (const session of sessions) {
     try {
-      const memberIds = await departmentsDb.listDepartmentMemberUserIds(
-        session.department_id
-      )
+      // Recipients: department members plus anyone teaching the session who
+      // accepted — registered teachers from other departments and external
+      // (invitation-only) teachers alike.
+      const [memberIds, acceptedTeacherIds, externalTeachers] = await Promise.all([
+        departmentsDb.listDepartmentMemberUserIds(session.department_id),
+        sessionsDb.listAcceptedSessionTeacherUserIdsAsSystem(session.id),
+        teacherInvitationsDb.listAcceptedInvitationRecipientsAsSystem(session.id),
+      ])
 
-      if (memberIds.length === 0) {
+      const userIds = Array.from(new Set([...memberIds, ...acceptedTeacherIds]))
+
+      if (userIds.length === 0 && externalTeachers.length === 0) {
         await sessionsDb.markSessionReminderSent(session.id)
         processedCount++
         continue
@@ -50,8 +58,19 @@ export async function GET(request: NextRequest) {
 
       const [department, profiles] = await Promise.all([
         departmentsDb.findDepartmentPublic(session.department_id),
-        onboardingDb.listProfilesForUsers(memberIds),
+        onboardingDb.listProfilesForUsers(userIds),
       ])
+
+      // External accepted teachers, deduped (case-insensitively) against
+      // registered recipients so nobody gets the reminder twice.
+      const registeredEmails = new Set(
+        profiles
+          .map((p) => p.email?.toLowerCase())
+          .filter((e): e is string => !!e)
+      )
+      const externalRecipients = externalTeachers.filter(
+        (t) => t.email && !registeredEmails.has(t.email.toLowerCase())
+      )
 
       const startDate = new Date(session.date_start)
       const endDate = new Date(session.date_end)
@@ -101,6 +120,40 @@ export async function GET(request: NextRequest) {
         } catch (err) {
           console.error(
             `Failed to send reminder to ${profile.user_id} for session ${session.id}:`,
+            err
+          )
+        }
+      }
+
+      for (const teacher of externalRecipients) {
+        try {
+          const recipientName =
+            [teacher.first_name, teacher.last_name].filter(Boolean).join(' ') ||
+            teacher.email
+
+          const html = buildSessionReminderEmailHtml({
+            recipientName,
+            sessionTitle: session.title,
+            departmentName: department?.name ?? 'your department',
+            dateStr,
+            startTime,
+            endTime,
+            locationLabel:
+              LOCATION_LABELS[session.location_type] ?? session.location_type,
+            meetingUrl: session.teams_meeting_url,
+            sessionUrl: `${appUrl}/sessions/${session.id}`,
+          })
+
+          await mailer.emails.send({
+            from: fromAddress,
+            to: teacher.email,
+            subject: `Reminder: ${session.title} — ${dateStr}`,
+            html,
+          })
+          emailsSent++
+        } catch (err) {
+          console.error(
+            `Failed to send reminder to external teacher ${teacher.email} for session ${session.id}:`,
             err
           )
         }

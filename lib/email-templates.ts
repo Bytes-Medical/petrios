@@ -103,6 +103,35 @@ export function buildCertificateEmailHtml(
   `
 }
 
+interface TeacherResponseEmailParams {
+  teacherName: string
+  accepted: boolean
+  sessionTitle: string
+  dateStr: string
+  manageUrl: string
+}
+
+export function buildTeacherResponseEmailHtml(params: TeacherResponseEmailParams): string {
+  const { teacherName, accepted, sessionTitle, dateStr, manageUrl } = params
+  const verb = accepted ? 'accepted' : 'declined'
+
+  return `
+    <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
+      <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Teaching invitation ${verb}</h2>
+      <p style="margin:20px 0;">
+        <strong>${teacherName}</strong> has ${verb} your invitation to teach
+        <strong>${sessionTitle}</strong> on ${dateStr}.
+      </p>
+      <p style="margin:20px 0;">
+        <a href="${manageUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">View Session</a>
+      </p>
+      <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
+        This email was sent via Byte Teaching.
+      </p>
+    </div>
+  `
+}
+
 interface SessionReminderEmailParams {
   recipientName: string
   sessionTitle: string

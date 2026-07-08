@@ -67,6 +67,16 @@ function SessionCard({ session }: { session: SessionWithDetails }) {
           Faculty: {session.teacher_names.join(', ')}
         </p>
       )}
+      {session.my_teaching_status === 'ACCEPTED' && (
+        <div className="mt-2">
+          <Badge variant="clay">Teaching</Badge>
+        </div>
+      )}
+      {session.my_teaching_status === 'PENDING' && (
+        <div className="mt-2">
+          <Badge variant="warning">Teaching — respond</Badge>
+        </div>
+      )}
       {session.my_attendance_status && (
         <div className="mt-2 flex items-center gap-2">
           <Badge

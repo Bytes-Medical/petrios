@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { DatePicker } from './DatePicker'
 
 interface DateTimePickerProps {
   label?: string
@@ -64,13 +65,11 @@ export function DateTimePicker({
     <div className="w-full">
       {label && <label className="block mb-1 text-sm font-mono">{label}</label>}
       <div className="flex items-stretch gap-2">
-        <input
-          type="date"
-          className={`${fieldStyles} min-w-0 flex-[2]`}
+        <DatePicker
+          className="min-w-0 flex-[2]"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
-          required={required}
-          aria-label={label ? `${label} — date` : 'Date'}
+          onChange={setDate}
+          ariaLabel={label ? `${label} — date` : 'Date'}
         />
         <select
           className={`${fieldStyles} min-w-0 flex-1`}
