@@ -1,17 +1,17 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { CLAUDE_MODEL, isClaudeConfigured } from '@/lib/ai/claude'
+import { LLM_MODEL, isLlmConfigured } from '@/lib/ai/llm'
 import { hashPrompt } from './gateway'
 import type { OpsRun } from './run'
 import type { OpsTool, ToolContext } from './tools'
 
 /**
- * The assistant's tool-use loop. This is the ONE sanctioned Anthropic call
- * site outside lib/ai/claude.ts — tool use needs the raw message stream, so
- * it can't go through askClaude. It still follows every gateway rule: audit
- * steps per model call (prompt hash + tokens, no raw text), refusal
- * handling, and a hard iteration cap.
+ * The assistant's tool-use loop. This is the ONE sanctioned OpenAI call site
+ * outside lib/ai/llm.ts — tool calling needs the raw message stream, so it
+ * can't go through askLlm. It still follows every gateway rule: audit steps
+ * per model call (prompt hash + tokens, no raw text), refusal handling, and
+ * a hard iteration cap.
  */
 
+const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions'
 const MAX_ITERATIONS = 8
 const MAX_TOKENS = 4096
 
@@ -25,6 +25,24 @@ export interface AgentLoopResult {
   toolTrace: { name: string; ok: boolean }[]
 }
 
+interface OpenAiToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}
+
+interface OpenAiAssistantMessage {
+  role: 'assistant'
+  content: string | null
+  refusal?: string | null
+  tool_calls?: OpenAiToolCall[]
+}
+
+type ChatMessage =
+  | { role: 'system' | 'user' | 'assistant'; content: string }
+  | OpenAiAssistantMessage
+  | { role: 'tool'; tool_call_id: string; content: string }
+
 export async function runAgentLoop(input: {
   system: string
   history: ChatTurn[]
@@ -33,95 +51,100 @@ export async function runAgentLoop(input: {
   ctx: ToolContext
   run: OpsRun
 }): Promise<AgentLoopResult> {
-  if (!isClaudeConfigured()) {
+  if (!isLlmConfigured()) {
     return {
-      text: 'The AI assistant is not configured yet — an administrator needs to set ANTHROPIC_API_KEY.',
+      text: 'The AI assistant is not configured yet — an administrator needs to set OPENAI_API_KEY.',
       toolTrace: [],
     }
   }
 
-  const client = new Anthropic()
   const toolTrace: { name: string; ok: boolean }[] = []
 
   const apiTools = input.tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    input_schema: tool.inputSchema as Anthropic.Beta.BetaTool['input_schema'],
+    type: 'function' as const,
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema,
+    },
   }))
 
-  const messages: Anthropic.Beta.BetaMessageParam[] = [
+  const messages: ChatMessage[] = [
+    { role: 'system', content: input.system },
     ...input.history.map((turn) => ({ role: turn.role, content: turn.content })),
-    { role: 'user' as const, content: input.userMessage },
+    { role: 'user', content: input.userMessage },
   ]
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    const response = await client.beta.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: MAX_TOKENS,
-      betas: ['server-side-fallback-2026-06-01'],
-      fallbacks: [{ model: 'claude-opus-4-8' }],
-      system: input.system,
-      messages,
-      tools: apiTools,
+    const response = await fetch(OPENAI_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        max_completion_tokens: MAX_TOKENS,
+        messages,
+        tools: apiTools,
+      }),
     })
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      throw new Error(`OpenAI request failed (${response.status}): ${detail.slice(0, 300)}`)
+    }
+
+    const data = (await response.json()) as {
+      model?: string
+      choices?: { message?: OpenAiAssistantMessage; finish_reason?: string }[]
+      usage?: { prompt_tokens?: number; completion_tokens?: number }
+    }
 
     await input.run.logLlm({
       name: `assistant:turn:${iteration + 1}`,
       purpose: 'assistant',
-      model: response.model ?? CLAUDE_MODEL,
+      model: data.model ?? LLM_MODEL,
       promptHash: hashPrompt(input.system, JSON.stringify(messages.at(-1)?.content ?? '')),
-      inputTokens: response.usage?.input_tokens ?? null,
-      outputTokens: response.usage?.output_tokens ?? null,
+      inputTokens: data.usage?.prompt_tokens ?? null,
+      outputTokens: data.usage?.completion_tokens ?? null,
     })
 
-    if (response.stop_reason === 'refusal') {
-      return {
-        text: 'I can’t help with that request.',
-        toolTrace,
-      }
+    const choice = data.choices?.[0]
+    const message = choice?.message
+    if (!message || message.refusal || choice?.finish_reason === 'content_filter') {
+      return { text: 'I can’t help with that request.', toolTrace }
     }
 
-    const toolUses = response.content.filter(
-      (block): block is Anthropic.Beta.BetaToolUseBlock => block.type === 'tool_use'
-    )
-
-    if (toolUses.length === 0 || response.stop_reason !== 'tool_use') {
-      let text = ''
-      for (const block of response.content) {
-        if (block.type === 'text') text += block.text
-      }
-      return { text: text || 'Done.', toolTrace }
+    const toolCalls = message.tool_calls ?? []
+    if (toolCalls.length === 0) {
+      return { text: message.content || 'Done.', toolTrace }
     }
 
-    // Execute every requested tool; return ALL results in ONE user message.
-    const results: Anthropic.Beta.BetaToolResultBlockParam[] = []
-    for (const toolUse of toolUses) {
-      const tool = input.tools.find((t) => t.name === toolUse.name)
+    // Execute every requested tool and answer each call with a tool message.
+    messages.push(message)
+    for (const toolCall of toolCalls) {
+      const tool = input.tools.find((t) => t.name === toolCall.function.name)
       let resultContent: string
       let ok = false
       if (!tool) {
-        resultContent = `Unknown tool: ${toolUse.name}`
+        resultContent = `Unknown tool: ${toolCall.function.name}`
       } else {
         try {
-          const result = await tool.handler(input.ctx, toolUse.input)
+          const args: unknown = toolCall.function.arguments
+            ? JSON.parse(toolCall.function.arguments)
+            : {}
+          const result = await tool.handler(input.ctx, args)
           resultContent = JSON.stringify(result).slice(0, 20000)
           ok = true
         } catch (err) {
           resultContent = `Tool error: ${err instanceof Error ? err.message : 'failed'}`
         }
       }
-      toolTrace.push({ name: toolUse.name, ok })
-      await input.run.log(`assistant:tool:${toolUse.name}`, { ok })
-      results.push({
-        type: 'tool_result',
-        tool_use_id: toolUse.id,
-        content: resultContent,
-        is_error: !ok,
-      })
+      toolTrace.push({ name: toolCall.function.name, ok })
+      await input.run.log(`assistant:tool:${toolCall.function.name}`, { ok })
+      messages.push({ role: 'tool', tool_call_id: toolCall.id, content: resultContent })
     }
-
-    messages.push({ role: 'assistant', content: response.content })
-    messages.push({ role: 'user', content: results })
   }
 
   return {

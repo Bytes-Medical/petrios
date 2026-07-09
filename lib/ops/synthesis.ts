@@ -3,7 +3,7 @@ import type { OpsFeedbackSynthesis, SubmittedFeedbackAnswer } from '@/lib/types'
 import * as feedbackDb from '@/lib/db/feedback'
 import * as opsDb from '@/lib/db/ops'
 import type { OpsSessionRow } from '@/lib/db/ops-reads'
-import { CLAUDE_MODEL } from '@/lib/ai/claude'
+import { LLM_MODEL } from '@/lib/ai/llm'
 import { containsWelfareSignal, stripNameLikeTokens } from './anonymize'
 import { averageRating } from './format'
 import { opsInference } from './gateway'
@@ -182,6 +182,6 @@ export async function runSynthesisForSession(
     requiresHumanReview: clean.requires_human_review,
     responseCount: rows.length,
     averageRating: avgRating,
-    model: CLAUDE_MODEL,
+    model: LLM_MODEL,
   })
 }

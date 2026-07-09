@@ -1,4 +1,4 @@
-import { askClaude } from '@/lib/ai/claude'
+import { askLlm } from '@/lib/ai/llm'
 import type { StoredFeedbackRow } from '@/lib/db/feedback'
 
 const SYSTEM_PROMPT = `You summarise anonymous attendee feedback on NHS postgraduate teaching sessions for the session organiser and teacher.
@@ -48,7 +48,7 @@ function buildPrompt(input: FeedbackSummaryInput): string {
 export async function summarizeFeedback(
   input: FeedbackSummaryInput
 ): Promise<string | null> {
-  const text = await askClaude({
+  const text = await askLlm({
     system: SYSTEM_PROMPT,
     prompt: buildPrompt(input),
     maxTokens: 2048,

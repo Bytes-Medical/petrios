@@ -23,7 +23,7 @@ import type {
   FeedbackAnswerInput,
   SubmittedFeedbackAnswer,
 } from '@/lib/types'
-import { isClaudeConfigured } from '@/lib/ai/claude'
+import { isLlmConfigured } from '@/lib/ai/llm'
 import { summarizeFeedback } from '@/lib/ai/feedback-summary'
 import * as feedbackDb from '@/lib/db/feedback'
 import * as onboardingDb from '@/lib/db/onboarding'
@@ -650,10 +650,10 @@ export async function summarizeSessionFeedback(
     return { summary: null, error: 'No feedback has been submitted yet.' }
   }
 
-  if (!isClaudeConfigured()) {
+  if (!isLlmConfigured()) {
     return {
       summary: null,
-      error: 'AI summaries are not configured — set ANTHROPIC_API_KEY on the server.',
+      error: 'AI summaries are not configured — set OPENAI_API_KEY on the server.',
     }
   }
 
