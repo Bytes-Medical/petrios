@@ -10,6 +10,7 @@ import { viewDay, viewWeek, viewMonthGrid } from '@schedule-x/calendar'
 import { createEventsServicePlugin } from '@schedule-x/events-service'
 import '@schedule-x/theme-default/dist/index.css'
 import { formatTimeHM } from '@/lib/date-picker'
+import { sessionMeetingUrl } from '@/lib/jitsi'
 import type { Session, SlotEvent } from '@/lib/types'
 
 type ExpandedDay = {
@@ -145,6 +146,7 @@ function formatSessionDuration(session: Session) {
 function getLocationLabel(session: Session) {
   if (session.location_type === 'HYBRID') return 'Hybrid session'
   if (session.location_type === 'MS_TEAMS') return session.teams_meeting_url ? 'Microsoft Teams' : 'Online'
+  if (session.location_type === 'JITSI') return 'Byte Meet video'
   return 'In person'
 }
 
@@ -449,9 +451,19 @@ export function SessionCalendar({
               </div>
 
               <div className="mb-5 flex flex-wrap gap-3">
-                {selectedSession.teams_meeting_url ? (
+                {/* Byte Meet joins go via the session page: the embedded room
+                    there also records the member's self check-in. */}
+                {selectedSession.location_type === 'JITSI' ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/sessions/${selectedSession.id}`)}
+                    className="border border-black bg-black px-4 py-3 font-mono text-sm text-white hover:bg-gray-800"
+                  >
+                    Join video room
+                  </button>
+                ) : sessionMeetingUrl(selectedSession) ? (
                   <a
-                    href={selectedSession.teams_meeting_url}
+                    href={sessionMeetingUrl(selectedSession)!}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="border border-black bg-black px-4 py-3 font-mono text-sm text-white hover:bg-gray-800"
@@ -477,9 +489,9 @@ export function SessionCalendar({
                 <div className="border-b border-gray-200 pb-4">
                   <p className="mb-1 text-xs uppercase tracking-[0.18em] text-gray-500">Location</p>
                   <p>{getLocationLabel(selectedSession)}</p>
-                  {selectedSession.teams_meeting_url ? (
+                  {sessionMeetingUrl(selectedSession) ? (
                     <a
-                      href={selectedSession.teams_meeting_url}
+                      href={sessionMeetingUrl(selectedSession)!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="mt-2 inline-block text-xs underline"
@@ -618,7 +630,7 @@ export function SessionCalendar({
                         </p>
                         <div className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-gray-500">
                           <span className="truncate">{getLocationLabel(session)}</span>
-                          {session.teams_meeting_url ? <span className="shrink-0">↗</span> : null}
+                          {sessionMeetingUrl(session) ? <span className="shrink-0">↗</span> : null}
                         </div>
                       </div>
                     </button>
