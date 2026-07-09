@@ -4,19 +4,12 @@ import { getCurrentUser, getCurrentOrgId, requireDepartmentModerator } from '@/l
 import { NavShell } from '@/components/NavShell'
 import { ScheduleManagerPanel } from '@/components/ScheduleManagerPanel'
 import { SessionCalendar } from '@/components/SessionCalendar'
-import { getDepartmentSlots } from '@/app/actions/teaching-slots'
-import { getAddressBook } from '@/app/actions/contacts'
+import { getDepartmentSlots, getPublishAudienceMeta } from '@/app/actions/teaching-slots'
 import { getSessionsForOrg, getCalendarSubscriptionUrl } from '@/app/actions/sessions'
-import { getDepartmentsForOrg, getDepartmentMembersWithProfiles } from '@/app/actions/departments'
-import { getOrgMembersForManagement } from '@/app/actions/member-onboarding'
+import { getDepartmentsForOrg } from '@/app/actions/departments'
+import { dayKeyFromIso } from '@/lib/date-picker'
 
 export const dynamic = 'force-dynamic'
-
-function dayKeyOf(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
 
 export default async function DepartmentSchedulePage({
   params,
@@ -35,26 +28,23 @@ export default async function DepartmentSchedulePage({
     redirect('/dashboard')
   }
 
-  const [slots, addressBook, sessions, departments, deptMembers, orgMembers, calendarUrl] =
-    await Promise.all([
-      getDepartmentSlots(params.id),
-      getAddressBook(),
-      getSessionsForOrg(orgId),
-      getDepartmentsForOrg(orgId),
-      getDepartmentMembersWithProfiles(params.id),
-      getOrgMembersForManagement(),
-      getCalendarSubscriptionUrl(orgId, params.id),
-    ])
+  const [slots, audienceMeta, sessions, departments, calendarUrl] = await Promise.all([
+    getDepartmentSlots(params.id),
+    getPublishAudienceMeta(params.id),
+    getSessionsForOrg(orgId),
+    getDepartmentsForOrg(orgId),
+    getCalendarSubscriptionUrl(orgId, params.id),
+  ])
 
   const department = departments.find((d) => d.id === params.id)
   const departmentSessions = sessions.filter((s) => s.department_id === params.id)
 
   const busyDayKeys = Array.from(
     new Set([
-      ...departmentSessions.map((s) => dayKeyOf(s.date_start)),
+      ...departmentSessions.map((s) => dayKeyFromIso(s.date_start)),
       ...slots
         .filter((s) => s.status === 'OPEN' || s.status === 'CLAIMED')
-        .map((s) => dayKeyOf(s.date_start)),
+        .map((s) => dayKeyFromIso(s.date_start)),
     ])
   )
 
@@ -93,9 +83,9 @@ export default async function DepartmentSchedulePage({
         <ScheduleManagerPanel
           departmentId={params.id}
           slots={slots}
-          groups={addressBook.groups}
-          deptMemberCount={deptMembers.length}
-          orgMemberCount={orgMembers.length}
+          groups={audienceMeta.groups}
+          deptMemberCount={audienceMeta.deptMemberCount}
+          orgMemberCount={audienceMeta.orgMemberCount}
           busyDayKeys={busyDayKeys}
         />
 

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Badge } from './Badge'
 import { Button } from './Button'
 import { Input } from './Input'
 import { ContactPicker, type ContactSelection } from './ContactPicker'
@@ -174,16 +175,12 @@ export function ManageTeachersPanel({
   }
 
   const statusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      PENDING: 'border-yellow-500 text-yellow-800 bg-yellow-50',
-      ACCEPTED: 'border-green-500 text-green-800 bg-green-50',
-      DECLINED: 'border-red-500 text-red-800 bg-red-50',
+    const variants: Record<string, 'warning' | 'success' | 'danger'> = {
+      PENDING: 'warning',
+      ACCEPTED: 'success',
+      DECLINED: 'danger',
     }
-    return (
-      <span className={`font-mono text-xs border px-2 py-0.5 ${colors[status] || ''}`}>
-        {status}
-      </span>
-    )
+    return <Badge variant={variants[status] ?? 'default'}>{status}</Badge>
   }
 
   return (

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { SessionType } from '@/lib/types'
-import { SESSION_TYPE_LABELS, SESSION_TYPE_COLORS, SESSION_TYPE_BG_COLORS } from '@/lib/types'
+import { LOCATION_TYPE_LABELS_SHORT, SESSION_TYPE_LABELS, SESSION_TYPE_COLORS, SESSION_TYPE_BG_COLORS } from '@/lib/types'
 import type { SessionWithDetails } from '@/lib/db/trainee-dashboard'
 import { Badge } from '@/components/Badge'
 import { CertificateDownloadButton } from '@/components/CertificateDownloadButton'
@@ -8,12 +8,6 @@ import { CertificateDownloadButton } from '@/components/CertificateDownloadButto
 interface SessionsPanelProps {
   upcoming: SessionWithDetails[]
   past: SessionWithDetails[]
-}
-
-const LOCATION_LABELS: Record<string, string> = {
-  MS_TEAMS: 'Online',
-  IN_PERSON: 'In Person',
-  HYBRID: 'Hybrid',
 }
 
 function SessionCard({ session }: { session: SessionWithDetails }) {
@@ -54,7 +48,7 @@ function SessionCard({ session }: { session: SessionWithDetails }) {
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         <span className="font-mono text-xs text-gray-500">
-          {LOCATION_LABELS[session.location_type] || session.location_type}
+          {LOCATION_TYPE_LABELS_SHORT[session.location_type as keyof typeof LOCATION_TYPE_LABELS_SHORT] || session.location_type}
         </span>
         {session.department_name && (
           <span className="font-mono text-xs text-gray-500">

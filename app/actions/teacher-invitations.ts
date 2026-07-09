@@ -10,15 +10,8 @@ import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
 import * as teacherEmailsDb from '@/lib/db/teacher-emails'
 import * as contactsDb from '@/lib/db/external-contacts'
 import { DbNotFoundError } from '@/lib/db'
-
-function generateInviteCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = ''
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return code
-}
+import { generateCode } from '@/lib/codes'
+import { normalizeContactEmail } from '@/lib/contacts'
 
 export async function inviteExternalTeacher(
   sessionId: string,
@@ -35,7 +28,7 @@ export async function inviteExternalTeacher(
 
   await requireDepartmentModerator(session.department_id)
 
-  const normalizedEmail = email.toLowerCase()
+  const normalizedEmail = normalizeContactEmail(email)
   const existing = await teacherInvitationsDb.findInvitationForEmail({
     sessionId,
     email: normalizedEmail,
@@ -44,7 +37,7 @@ export async function inviteExternalTeacher(
     throw new Error('An invitation has already been sent to this email')
   }
 
-  const inviteCode = generateInviteCode()
+  const inviteCode = generateCode(8)
 
   await teacherInvitationsDb.insertInvitation({
     orgId,

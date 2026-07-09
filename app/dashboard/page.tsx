@@ -98,6 +98,21 @@ export default async function DashboardPage({
 
   const pendingTeaching = myTeaching.filter((t) => t.status === 'PENDING')
 
+  const teachingInvitesSection =
+    pendingTeaching.length > 0 || claimableSlots.length > 0 ? (
+      <section className="mb-6 sm:mb-8">
+        <Card>
+          <h2 className="text-xl font-mono font-bold mb-4">Teaching Invitations</h2>
+          <div className="space-y-6">
+            <OpenSlotsPanel slots={claimableSlots} />
+            {pendingTeaching.length > 0 && (
+              <TeachingAssignmentsPanel assignments={pendingTeaching} />
+            )}
+          </div>
+        </Card>
+      </section>
+    ) : null
+
   const isTraineeOnly = !orgAdmin && !moderatedDept
 
   const primaryCreateHref = moderatedDept
@@ -148,19 +163,7 @@ export default async function DashboardPage({
             <p className="font-mono text-sm text-gray-600">Moderator Dashboard</p>
           </div>
 
-          {(pendingTeaching.length > 0 || claimableSlots.length > 0) && (
-            <section className="mb-6 sm:mb-8">
-              <Card>
-                <h2 className="text-xl font-mono font-bold mb-4">Teaching Invitations</h2>
-                <div className="space-y-6">
-                  <OpenSlotsPanel slots={claimableSlots} />
-                  {pendingTeaching.length > 0 && (
-                    <TeachingAssignmentsPanel assignments={pendingTeaching} />
-                  )}
-                </div>
-              </Card>
-            </section>
-          )}
+          {teachingInvitesSection}
 
           <section className="mb-6 sm:mb-8">
             <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -206,19 +209,7 @@ export default async function DashboardPage({
       <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
         <h1 className="text-2xl sm:text-3xl font-mono font-bold mb-6 sm:mb-8">Dashboard</h1>
 
-        {(pendingTeaching.length > 0 || claimableSlots.length > 0) && (
-          <section className="mb-6 sm:mb-8">
-            <Card>
-              <h2 className="text-xl font-mono font-bold mb-4">Teaching Invitations</h2>
-              <div className="space-y-6">
-                <OpenSlotsPanel slots={claimableSlots} />
-                {pendingTeaching.length > 0 && (
-                  <TeachingAssignmentsPanel assignments={pendingTeaching} />
-                )}
-              </div>
-            </Card>
-          </section>
-        )}
+        {teachingInvitesSection}
 
         <section className="mb-6 sm:mb-8">
           <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

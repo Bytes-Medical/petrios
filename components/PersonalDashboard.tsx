@@ -34,7 +34,13 @@ interface PersonalDashboardProps {
 
 type Tab = 'sessions' | 'calendar' | 'teaching' | 'feedback' | 'attendance'
 
-const TAB_KEYS: Tab[] = ['sessions', 'calendar', 'teaching', 'feedback', 'attendance']
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'sessions', label: 'Sessions' },
+  { key: 'calendar', label: 'Calendar' },
+  { key: 'teaching', label: 'Teaching' },
+  { key: 'feedback', label: 'Feedback' },
+  { key: 'attendance', label: 'Attendance' },
+]
 
 export function PersonalDashboard({
   sessions,
@@ -48,25 +54,19 @@ export function PersonalDashboard({
   initialTab,
 }: PersonalDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>(
-    TAB_KEYS.includes(initialTab as Tab) ? (initialTab as Tab) : 'sessions'
+    TABS.some((tab) => tab.key === initialTab) ? (initialTab as Tab) : 'sessions'
   )
 
   const pendingTeaching =
     teaching.filter((t) => t.status === 'PENDING').length + claimableSlots.length
 
-  const tabs: { key: Tab; label: string; marker?: number }[] = [
-    { key: 'sessions', label: 'Sessions' },
-    { key: 'calendar', label: 'Calendar' },
-    { key: 'teaching', label: 'Teaching', marker: pendingTeaching },
-    { key: 'feedback', label: 'Feedback' },
-    { key: 'attendance', label: 'Attendance' },
-  ]
-
   return (
     <div>
       {/* Tab bar */}
       <div className="flex flex-wrap border-b-2 border-black mb-6">
-        {tabs.map((tab) => (
+        {TABS.map((tab) => {
+          const marker = tab.key === 'teaching' ? pendingTeaching : 0
+          return (
           <button
             key={tab.key}
             type="button"
@@ -78,13 +78,14 @@ export function PersonalDashboard({
             }`}
           >
             {tab.label}
-            {tab.marker ? (
+            {marker ? (
               <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center bg-clay-600 px-1 font-mono text-[10px] font-bold text-white align-middle">
-                {tab.marker}
+                {marker}
               </span>
             ) : null}
           </button>
-        ))}
+          )
+        })}
       </div>
 
       {/* Tab content */}

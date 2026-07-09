@@ -15,10 +15,13 @@ export async function NavShell() {
 
   if (userId) {
     try {
-      ;[notifications, unreadCount] = await Promise.all([
-        notificationsDb.listMyNotifications(userId),
-        notificationsDb.countUnreadNotifications(userId),
-      ])
+      notifications = await notificationsDb.listMyNotifications(userId)
+      // The count is derivable from the list unless it was truncated at the
+      // fetch limit — avoids a second query on every page render.
+      unreadCount =
+        notifications.length < 15
+          ? notifications.filter((n) => !n.read_at).length
+          : await notificationsDb.countUnreadNotifications(userId)
     } catch (error) {
       // Non-fatal — the nav renders without the bell contents.
       console.error('Failed to load notifications:', error)

@@ -17,16 +17,13 @@ import {
 } from '@/lib/date-picker'
 import { listSlotTimeOptions } from '@/lib/slot-schedule'
 import type { LocationType } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, fieldStyles } from '@/lib/utils'
 
 interface BulkSlotPickerProps {
   departmentId: string
   /** Day keys that already contain a session or an active slot (dot marker). */
   busyDayKeys: string[]
 }
-
-const fieldStyles =
-  'h-10 px-3 border border-black font-mono text-sm bg-white focus:outline-none focus:border-clay-600 focus:ring-1 focus:ring-clay-600'
 
 /**
  * Calendly-style bulk availability picker: multi-select days across months,

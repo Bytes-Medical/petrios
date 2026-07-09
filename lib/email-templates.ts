@@ -1,3 +1,4 @@
+import { LOCATION_TYPE_LABELS } from '@/lib/types'
 import type { Session } from '@/lib/types'
 
 interface TeacherFeedbackEmailParams {
@@ -313,11 +314,6 @@ export function buildInvitationEmailHtml(
     hour: '2-digit', minute: '2-digit'
   })
 
-  const locationLabel: Record<string, string> = {
-    'MS_TEAMS': 'Microsoft Teams (Online)',
-    'IN_PERSON': 'In Person',
-    'HYBRID': 'Hybrid (In Person + Online)',
-  }
 
   const descriptionSection = session.description
     ? `<tr>
@@ -348,7 +344,7 @@ export function buildInvitationEmailHtml(
         </tr>
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Location:</td>
-          <td style="padding:8px 0;">${locationLabel[session.location_type] || session.location_type}</td>
+          <td style="padding:8px 0;">${LOCATION_TYPE_LABELS[session.location_type] || session.location_type}</td>
         </tr>
         ${descriptionSection}
       </table>

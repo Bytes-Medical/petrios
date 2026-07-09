@@ -9,11 +9,13 @@ import { ScheduleXCalendar, useNextCalendarApp } from '@schedule-x/react'
 import { viewDay, viewWeek, viewMonthGrid } from '@schedule-x/calendar'
 import { createEventsServicePlugin } from '@schedule-x/events-service'
 import '@schedule-x/theme-default/dist/index.css'
+import { formatTimeHM } from '@/lib/date-picker'
 import type { Session, SlotEvent } from '@/lib/types'
 
 type ExpandedDay = {
   date: string
   sessions: Session[]
+  slots: SlotEvent[]
   position: {
     top: number
     left: number
@@ -46,6 +48,12 @@ function sessionOccursOnDate(session: Session, date: string) {
 function getSessionsForDate(sessions: Session[], date: string) {
   return sessions
     .filter((session) => sessionOccursOnDate(session, date))
+    .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
+}
+
+function getSlotsForDate(slots: SlotEvent[], date: string) {
+  return slots
+    .filter((slot) => getLocalDateKey(slot.date_start) === date)
     .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
 }
 
@@ -277,6 +285,7 @@ export function SessionCalendar({
       setExpandedDay({
         date,
         sessions: getSessionsForDate(sessionsRef.current, date),
+        slots: getSlotsForDate(slotsRef.current, date),
         position: getExpandedDayPosition((button as HTMLElement).getBoundingClientRect()),
       })
     }
@@ -539,6 +548,36 @@ export function SessionCalendar({
               </div>
 
               <div className="max-h-[min(70vh,34rem)] overflow-y-auto">
+                {expandedDay.slots.map((slot, index) => (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    onClick={() => {
+                      setExpandedDay(null)
+                      setSelectedSession(null)
+                      setSelectedSlot(slot)
+                    }}
+                    className={`flex w-full items-start gap-4 px-4 py-4 text-left font-mono transition hover:bg-gray-50 sm:px-5 ${
+                      index > 0 ? 'border-t border-black' : ''
+                    }`}
+                  >
+                    <div
+                      className="mt-0.5 h-[4.6rem] w-2 shrink-0 border border-black"
+                      style={{ backgroundColor: '#3D7A5D' }}
+                    />
+                    <div className="w-20 shrink-0 pt-0.5 text-gray-700">
+                      <p className="text-lg font-bold leading-none text-black">
+                        {formatTimeHM(slot.date_start)}
+                      </p>
+                    </div>
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <p className="truncate text-lg font-bold leading-tight text-black">
+                        Available — open slot
+                      </p>
+                      <p className="mt-1 text-xs text-gray-600">Claimable teaching slot</p>
+                    </div>
+                  </button>
+                ))}
                 {expandedDay.sessions.map((session, index) => {
                   const isStriped = session.status !== 'PUBLISHED'
 
@@ -551,7 +590,7 @@ export function SessionCalendar({
                         setSelectedSession(session)
                       }}
                       className={`flex w-full items-start gap-4 px-4 py-4 text-left font-mono transition hover:bg-gray-50 sm:px-5 ${
-                        index > 0 ? 'border-t border-black' : ''
+                        index > 0 || expandedDay.slots.length > 0 ? 'border-t border-black' : ''
                       }`}
                     >
                       <div

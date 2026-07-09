@@ -1,3 +1,4 @@
+import { LOCATION_TYPE_LABELS } from '@/lib/types'
 import { Card } from '@/components/Card'
 import { TeacherRsvpForm } from '@/components/TeacherRsvpForm'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -46,12 +47,6 @@ export default async function TeacherRsvpPage({
   const startDate = session ? new Date(session.date_start) : null
   const endDate = session ? new Date(session.date_end) : null
 
-  const locationLabel: Record<string, string> = {
-    MS_TEAMS: 'Microsoft Teams (Online)',
-    IN_PERSON: 'In Person',
-    HYBRID: 'Hybrid (In Person + Online)',
-  }
-
   return (
     <div className="min-h-screen">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -95,7 +90,7 @@ export default async function TeacherRsvpPage({
               )}
               <p>
                 <strong>Location:</strong>{' '}
-                {locationLabel[session.location_type] || session.location_type}
+                {LOCATION_TYPE_LABELS[session.location_type as keyof typeof LOCATION_TYPE_LABELS] || session.location_type}
               </p>
               {session.description && (
                 <p className="mt-2 whitespace-pre-wrap">{session.description}</p>

@@ -15,6 +15,7 @@ import {
   computeAttendanceFromEvidence,
   isWithinEvidenceWindow,
 } from '@/lib/attendance/compute'
+import { generateCode } from '@/lib/codes'
 
 // Re-export so existing `import type { EvidenceSource } from './attendance-evidence'`
 // callers stay working after the DAL move.
@@ -254,13 +255,8 @@ export async function generateGroupCode(sessionId: string) {
 
   let code = await attendanceDb.callGenerateGroupCode(sessionId, newVersion)
   if (!code) {
-    // Fallback to client-side generation if RPC fails
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    let fallback = ''
-    for (let i = 0; i < 6; i++) {
-      fallback += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    code = fallback
+    // Fallback to app-side generation if the RPC fails
+    code = generateCode(6)
   }
 
   revalidatePath(`/sessions/${sessionId}`)

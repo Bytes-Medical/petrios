@@ -589,6 +589,18 @@ export interface OrgMemberRow {
   created_at: string
 }
 
+/** Service-role count for audience previews; caller gates authorization. */
+export async function countOrganizationMembers(orgId: string): Promise<number> {
+  const db = await getServiceDb()
+  const { count, error } = await db
+    .from('organization_members')
+    .select('id', { count: 'exact', head: true })
+    .eq('org_id', orgId)
+
+  if (error) throw toDbError('Failed to count organization members', error)
+  return count ?? 0
+}
+
 export async function listOrganizationMembers(orgId: string): Promise<OrgMemberRow[]> {
   const db = await getServiceDb()
   const { data, error } = await db

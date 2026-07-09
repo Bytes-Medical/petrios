@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useDismissable } from '@/hooks/useDismissable'
 import {
   markAllNotificationsRead,
   markNotificationRead,
@@ -30,21 +31,7 @@ export function NotificationsBell({ notifications, unreadCount }: NotificationsB
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const onMouseDown = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onMouseDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onMouseDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
+  useDismissable(containerRef, open, () => setOpen(false))
 
   async function openNotification(n: AppNotification) {
     setOpen(false)

@@ -13,6 +13,19 @@ export type TraineeGrade = 'Level 1 Trainee' | 'Level 2 Trainee' | 'Consultant'
 export type SessionType = 'STEPP' | 'CLINICAL_SKILLS' | 'SIMULATION' | 'ACADEMIC'
 
 export const TRAINEE_GRADES: TraineeGrade[] = ['Level 1 Trainee', 'Level 2 Trainee', 'Consultant']
+
+// Long form for emails and detail pages; short form for chips and list rows.
+export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
+  MS_TEAMS: 'Microsoft Teams (Online)',
+  IN_PERSON: 'In Person',
+  HYBRID: 'Hybrid (In Person + Online)',
+}
+
+export const LOCATION_TYPE_LABELS_SHORT: Record<LocationType, string> = {
+  MS_TEAMS: 'Online',
+  IN_PERSON: 'In Person',
+  HYBRID: 'Hybrid',
+}
 export const SESSION_TYPES: SessionType[] = ['STEPP', 'CLINICAL_SKILLS', 'SIMULATION', 'ACADEMIC']
 
 export const SESSION_TYPE_LABELS: Record<SessionType, string> = {

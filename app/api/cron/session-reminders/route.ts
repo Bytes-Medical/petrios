@@ -2,16 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildSessionReminderEmailHtml } from '@/lib/email-templates'
 import { getAppUrl } from '@/lib/app-url'
+import { LOCATION_TYPE_LABELS, type LocationType } from '@/lib/types'
+import { contactDisplayName, profileDisplayName } from '@/lib/contacts'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as departmentsDb from '@/lib/db/departments'
 import * as onboardingDb from '@/lib/db/onboarding'
 import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
-
-const LOCATION_LABELS: Record<string, string> = {
-  MS_TEAMS: 'Microsoft Teams (Online)',
-  IN_PERSON: 'In Person',
-  HYBRID: 'Hybrid (In Person + Online)',
-}
 
 /**
  * Emails every department member a reminder ~24h before a published session
@@ -92,10 +88,7 @@ export async function GET(request: NextRequest) {
       for (const profile of profiles) {
         if (!profile.email) continue
         try {
-          const recipientName =
-            profile.full_name ||
-            [profile.first_name, profile.last_name].filter(Boolean).join(' ') ||
-            profile.email
+          const recipientName = profileDisplayName(profile, profile.email)
 
           const html = buildSessionReminderEmailHtml({
             recipientName,
@@ -105,7 +98,7 @@ export async function GET(request: NextRequest) {
             startTime,
             endTime,
             locationLabel:
-              LOCATION_LABELS[session.location_type] ?? session.location_type,
+              LOCATION_TYPE_LABELS[session.location_type as LocationType] ?? session.location_type,
             meetingUrl: session.teams_meeting_url,
             sessionUrl: `${appUrl}/sessions/${session.id}`,
           })
@@ -127,9 +120,7 @@ export async function GET(request: NextRequest) {
 
       for (const teacher of externalRecipients) {
         try {
-          const recipientName =
-            [teacher.first_name, teacher.last_name].filter(Boolean).join(' ') ||
-            teacher.email
+          const recipientName = contactDisplayName(teacher)
 
           const html = buildSessionReminderEmailHtml({
             recipientName,
@@ -139,7 +130,7 @@ export async function GET(request: NextRequest) {
             startTime,
             endTime,
             locationLabel:
-              LOCATION_LABELS[session.location_type] ?? session.location_type,
+              LOCATION_TYPE_LABELS[session.location_type as LocationType] ?? session.location_type,
             meetingUrl: session.teams_meeting_url,
             sessionUrl: `${appUrl}/sessions/${session.id}`,
           })

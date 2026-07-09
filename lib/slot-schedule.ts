@@ -2,8 +2,12 @@ import {
   MAX_SESSION_DURATION_MINS,
   MIN_SESSION_DURATION_MINS,
   computeDateEnd,
+  exactDurationFromDates,
+  formatDuration,
 } from '@/lib/session-duration'
-import { todayKey } from '@/lib/date-picker'
+import { dayKeyFromIso, formatDayKey, formatTimeHM, todayKey } from '@/lib/date-picker'
+import { normalizeContactEmail } from '@/lib/contacts'
+import { generateCode } from '@/lib/codes'
 import type { SlotDisplayStatus, SlotStatus } from '@/lib/types'
 
 /**
@@ -69,6 +73,25 @@ export function listSlotTimeOptions(intervalMinutes = 15): string[] {
   return options
 }
 
+export interface SlotDescription {
+  dateStr: string
+  timeRangeStr: string
+  durationStr: string
+}
+
+/** Human strings for a slot's date, time range, and duration — shared by the
+ *  claim pages, dashboards, schedule list, and offer emails. */
+export function describeSlot(slot: {
+  date_start: string
+  date_end: string
+}): SlotDescription {
+  return {
+    dateStr: formatDayKey(dayKeyFromIso(slot.date_start)),
+    timeRangeStr: `${formatTimeHM(slot.date_start)}–${formatTimeHM(slot.date_end)}`,
+    durationStr: formatDuration(exactDurationFromDates(slot.date_start, slot.date_end)),
+  }
+}
+
 /**
  * Display status: an OPEN slot whose start time has passed is EXPIRED —
  * derived only, never written (the claim guard makes it unclaimable).
@@ -105,7 +128,7 @@ export function dedupeSlotRecipients(
   const seen = new Set<string>()
   const dedupedMembers: MemberRecipient[] = []
   for (const member of members) {
-    const key = member.email.trim().toLowerCase()
+    const key = normalizeContactEmail(member.email)
     if (!key || seen.has(key)) continue
     seen.add(key)
     dedupedMembers.push(member)
@@ -113,7 +136,7 @@ export function dedupeSlotRecipients(
 
   const dedupedContacts: ContactRecipient[] = []
   for (const contact of contacts) {
-    const key = contact.email.trim().toLowerCase()
+    const key = normalizeContactEmail(contact.email)
     if (!key || seen.has(key)) continue
     seen.add(key)
     dedupedContacts.push(contact)
@@ -122,19 +145,10 @@ export function dedupeSlotRecipients(
   return { members: dedupedMembers, contacts: dedupedContacts }
 }
 
-const CLAIM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 export const CLAIM_CODE_LENGTH = 12
 
 /** Capability token for public claim links (longer than session-scoped RSVP
  *  codes because /claim/[code] has no other scoping). */
-export function generateClaimCode(
-  random: () => number = Math.random
-): string {
-  let code = ''
-  for (let i = 0; i < CLAIM_CODE_LENGTH; i++) {
-    code += CLAIM_CODE_ALPHABET.charAt(
-      Math.floor(random() * CLAIM_CODE_ALPHABET.length)
-    )
-  }
-  return code
+export function generateClaimCode(random: () => number = Math.random): string {
+  return generateCode(CLAIM_CODE_LENGTH, random)
 }

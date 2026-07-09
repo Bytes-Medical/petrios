@@ -11,15 +11,12 @@ import { PublishSlotsDialog } from './PublishSlotsDialog'
 import { useToast } from './ToastProvider'
 import { closeTeachingSlot, deleteTeachingSlot } from '@/app/actions/teaching-slots'
 import type { DepartmentSlotView } from '@/app/actions/teaching-slots'
-import { formatDayKey } from '@/lib/date-picker'
-import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
-import type { ContactGroupWithCount, SlotDisplayStatus } from '@/lib/types'
-
-const LOCATION_LABELS: Record<string, string> = {
-  MS_TEAMS: 'MS Teams',
-  IN_PERSON: 'In Person',
-  HYBRID: 'Hybrid',
-}
+import { describeSlot } from '@/lib/slot-schedule'
+import {
+  LOCATION_TYPE_LABELS_SHORT,
+  type ContactGroupWithCount,
+  type SlotDisplayStatus,
+} from '@/lib/types'
 
 const STATUS_BADGES: Record<SlotDisplayStatus, { label: string; variant: 'success' | 'clay' | 'default' | 'warning' }> = {
   OPEN: { label: 'Open', variant: 'success' },
@@ -35,12 +32,6 @@ interface ScheduleManagerPanelProps {
   deptMemberCount: number
   orgMemberCount: number
   busyDayKeys: string[]
-}
-
-function slotDayKey(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 export function ScheduleManagerPanel({
@@ -68,10 +59,14 @@ export function ScheduleManagerPanel({
     })
   }
 
-  async function handleClose(slotId: string) {
-    setLoading(`close-${slotId}`)
+  async function runSlotAction(
+    kind: 'close' | 'delete',
+    slotId: string,
+    action: (id: string) => Promise<unknown>
+  ) {
+    setLoading(`${kind}-${slotId}`)
     try {
-      await closeTeachingSlot(slotId)
+      await action(slotId)
       setSelectedIds((prev) => {
         const next = new Set(prev)
         next.delete(slotId)
@@ -81,28 +76,7 @@ export function ScheduleManagerPanel({
     } catch (err) {
       showToast({
         variant: 'error',
-        title: 'Failed to close slot',
-        description: err instanceof Error ? err.message : undefined,
-      })
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  async function handleDelete(slotId: string) {
-    setLoading(`delete-${slotId}`)
-    try {
-      await deleteTeachingSlot(slotId)
-      setSelectedIds((prev) => {
-        const next = new Set(prev)
-        next.delete(slotId)
-        return next
-      })
-      router.refresh()
-    } catch (err) {
-      showToast({
-        variant: 'error',
-        title: 'Failed to delete slot',
+        title: `Failed to ${kind} slot`,
         description: err instanceof Error ? err.message : undefined,
       })
     } finally {
@@ -142,7 +116,7 @@ export function ScheduleManagerPanel({
           <ul className="space-y-2">
             {slots.map((slot) => {
               const badge = STATUS_BADGES[slot.display_status]
-              const start = new Date(slot.date_start)
+              const desc = describeSlot(slot)
               const selectable = slot.display_status === 'OPEN'
               return (
                 <li
@@ -160,13 +134,12 @@ export function ScheduleManagerPanel({
                     />
                     <div className="min-w-0">
                       <p className="font-mono text-sm font-bold">
-                        {formatDayKey(slotDayKey(slot.date_start))} ·{' '}
-                        {start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                        {desc.dateStr} · {desc.timeRangeStr}
                       </p>
                       <p className="font-mono text-xs text-gray-600">
-                        {formatDuration(exactDurationFromDates(slot.date_start, slot.date_end))} ·{' '}
-                        {LOCATION_LABELS[slot.location_type] ?? slot.location_type}
-                        {slot.claimer_label ? ` · Claimed by ${slot.claimer_label}` : ''}
+                        {desc.durationStr} ·{' '}
+                        {LOCATION_TYPE_LABELS_SHORT[slot.location_type] ?? slot.location_type}
+                        {slot.claimed_name ? ` · Claimed by ${slot.claimed_name}` : ''}
                         {slot.status === 'CLAIMED' && !slot.session_id
                           ? ' · session removed'
                           : ''}
@@ -189,7 +162,7 @@ export function ScheduleManagerPanel({
                         type="button"
                         size="sm"
                         variant="secondary"
-                        onClick={() => handleClose(slot.id)}
+                        onClick={() => runSlotAction('close', slot.id, closeTeachingSlot)}
                         disabled={loading === `close-${slot.id}`}
                       >
                         Close
@@ -200,7 +173,7 @@ export function ScheduleManagerPanel({
                         type="button"
                         size="sm"
                         variant="danger"
-                        onClick={() => handleDelete(slot.id)}
+                        onClick={() => runSlotAction('delete', slot.id, deleteTeachingSlot)}
                         disabled={loading === `delete-${slot.id}`}
                       >
                         Delete

@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import { DatePicker } from './DatePicker'
+import { dayKeyFromIso, formatTimeHM } from '@/lib/date-picker'
+import { listSlotTimeOptions } from '@/lib/slot-schedule'
+import { fieldStyles } from '@/lib/utils'
 
 interface DateTimePickerProps {
   label?: string
@@ -13,31 +16,12 @@ interface DateTimePickerProps {
   intervalMinutes?: number
 }
 
-// Matches Input/Select tokens, but with a fixed height so the native date input
-// and the custom time select line up to the exact same box.
-const fieldStyles =
-  'h-10 px-3 border border-black font-mono text-sm bg-white focus:outline-none focus:border-clay-600 focus:ring-1 focus:ring-clay-600'
-
-const pad = (n: number) => n.toString().padStart(2, '0')
-
 /** Split a default value into local date ('YYYY-MM-DD') and time ('HH:mm') parts. */
 function splitDefault(value?: string): { date: string; time: string } {
   if (!value) return { date: '', time: '' }
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return { date: '', time: '' }
-  return {
-    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-  }
-}
-
-/** Build 'HH:mm' options across the day at the given interval. */
-function buildTimeOptions(intervalMinutes: number): string[] {
-  const options: string[] = []
-  for (let minutes = 0; minutes < 24 * 60; minutes += intervalMinutes) {
-    options.push(`${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`)
-  }
-  return options
+  return { date: dayKeyFromIso(value), time: formatTimeHM(value) }
 }
 
 export function DateTimePicker({
@@ -51,7 +35,7 @@ export function DateTimePicker({
   const [date, setDate] = useState(initial.date)
   const [time, setTime] = useState(initial.time)
 
-  const options = buildTimeOptions(intervalMinutes)
+  const options = listSlotTimeOptions(intervalMinutes)
   // Preserve an off-grid legacy time (e.g. a session saved at 10:07) so editing
   // never silently shifts it — surface it as a selectable option instead.
   if (initial.time && !options.includes(initial.time)) {

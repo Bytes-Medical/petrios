@@ -1,3 +1,4 @@
+import { LOCATION_TYPE_LABELS } from '@/lib/types'
 import { Card } from '@/components/Card'
 import { FeedbackForm } from '@/components/FeedbackForm'
 import { normalizeDepartmentFeedbackFields } from '@/lib/feedback-form'
@@ -59,12 +60,6 @@ export default async function DepartmentFeedbackPage({
   const startDate = new Date(activeSession.date_start)
   const endDate = new Date(activeSession.date_end)
 
-  const locationLabel: Record<string, string> = {
-    MS_TEAMS: 'Microsoft Teams (Online)',
-    IN_PERSON: 'In Person',
-    HYBRID: 'Hybrid (In Person + Online)',
-  }
-
   return (
     <div className="min-h-screen">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -92,7 +87,7 @@ export default async function DepartmentFeedbackPage({
               })}
             </p>
             <p>
-              {locationLabel[activeSession.location_type] || activeSession.location_type}
+              {LOCATION_TYPE_LABELS[activeSession.location_type as keyof typeof LOCATION_TYPE_LABELS] || activeSession.location_type}
             </p>
           </div>
         </div>

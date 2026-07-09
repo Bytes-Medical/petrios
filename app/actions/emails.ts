@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { getAppUrl } from '@/lib/app-url'
-import type { EmailType, Session } from '@/lib/types'
+import { LOCATION_TYPE_LABELS, type EmailType, type Session } from '@/lib/types'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as teacherEmailsDb from '@/lib/db/teacher-emails'
@@ -112,12 +112,6 @@ function buildEmailHtml(
     minute: '2-digit',
   })
 
-  const locationLabel: Record<string, string> = {
-    MS_TEAMS: 'Microsoft Teams (Online)',
-    IN_PERSON: 'In Person',
-    HYBRID: 'Hybrid (In Person + Online)',
-  }
-
   const heading =
     emailType === 'INVITATION'
       ? 'You have been invited to teach a session'
@@ -173,7 +167,7 @@ function buildEmailHtml(
         </tr>
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Location:</td>
-          <td style="padding:8px 0;">${locationLabel[session.location_type] || session.location_type}</td>
+          <td style="padding:8px 0;">${LOCATION_TYPE_LABELS[session.location_type] || session.location_type}</td>
         </tr>
         ${teamsSection}
         ${descriptionSection}

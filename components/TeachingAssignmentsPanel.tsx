@@ -8,12 +8,7 @@ import { Button } from './Button'
 import { useToast } from './ToastProvider'
 import { respondToTeachingAssignment } from '@/app/actions/teaching-assignments'
 import type { TeachingAssignment } from '@/lib/db/trainee-dashboard'
-
-const LOCATION_LABELS: Record<string, string> = {
-  MS_TEAMS: 'Online',
-  IN_PERSON: 'In Person',
-  HYBRID: 'Hybrid',
-}
+import { LOCATION_TYPE_LABELS_SHORT } from '@/lib/types'
 
 interface TeachingAssignmentsPanelProps {
   assignments: TeachingAssignment[]
@@ -27,6 +22,19 @@ function formatWhen(iso: string) {
     month: 'short',
     year: 'numeric',
   })} · ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+function AssignmentHeader({ assignment }: { assignment: TeachingAssignment }) {
+  return (
+    <div>
+      <p className="font-mono text-sm font-bold">{assignment.title}</p>
+      <p className="mt-1 font-mono text-xs text-gray-600">
+        {formatWhen(assignment.date_start)} ·{' '}
+        {LOCATION_TYPE_LABELS_SHORT[assignment.location_type as keyof typeof LOCATION_TYPE_LABELS_SHORT] || assignment.location_type}
+        {assignment.department_name ? ` · ${assignment.department_name}` : ''}
+      </p>
+    </div>
+  )
 }
 
 export function TeachingAssignmentsPanel({ assignments }: TeachingAssignmentsPanelProps) {
@@ -82,14 +90,7 @@ export function TeachingAssignmentsPanel({ assignments }: TeachingAssignmentsPan
             {pending.map((a) => (
               <div key={a.session_id} className="border border-black border-l-4 border-l-clay-600 bg-white p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-mono text-sm font-bold">{a.title}</p>
-                    <p className="mt-1 font-mono text-xs text-gray-600">
-                      {formatWhen(a.date_start)} ·{' '}
-                      {LOCATION_LABELS[a.location_type] || a.location_type}
-                      {a.department_name ? ` · ${a.department_name}` : ''}
-                    </p>
-                  </div>
+                  <AssignmentHeader assignment={a} />
                   <Badge variant="warning">Pending</Badge>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
@@ -134,14 +135,7 @@ export function TeachingAssignmentsPanel({ assignments }: TeachingAssignmentsPan
                 className="block border border-black bg-white p-4 hover:bg-gray-50"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-mono text-sm font-bold">{a.title}</p>
-                    <p className="mt-1 font-mono text-xs text-gray-600">
-                      {formatWhen(a.date_start)} ·{' '}
-                      {LOCATION_LABELS[a.location_type] || a.location_type}
-                      {a.department_name ? ` · ${a.department_name}` : ''}
-                    </p>
-                  </div>
+                  <AssignmentHeader assignment={a} />
                   <Badge variant="success">Teaching</Badge>
                 </div>
               </Link>

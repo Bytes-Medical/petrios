@@ -13,13 +13,19 @@ import {
 import {
   buildSlotDrafts,
   dedupeSlotRecipients,
+  describeSlot,
   generateClaimCode,
   slotDisplayStatus,
 } from '@/lib/slot-schedule'
-import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
-import { contactDisplayName } from '@/lib/contacts'
-import { createSupabaseServiceClient } from '@/lib/supabase/server'
-import type { LocationType, SlotDisplayStatus, TeachingSlot } from '@/lib/types'
+import { generateCode } from '@/lib/codes'
+import { contactDisplayName, profileDisplayName } from '@/lib/contacts'
+import { notifyUser } from '@/lib/notify'
+import {
+  LOCATION_TYPE_LABELS,
+  type LocationType,
+  type SlotDisplayStatus,
+  type TeachingSlot,
+} from '@/lib/types'
 import * as slotsDb from '@/lib/db/teaching-slots'
 import * as contactsDb from '@/lib/db/external-contacts'
 import * as departmentsDb from '@/lib/db/departments'
@@ -28,12 +34,6 @@ import * as notificationsDb from '@/lib/db/notifications'
 import * as attendanceDb from '@/lib/db/attendance'
 import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
 import { DbNotFoundError } from '@/lib/db'
-
-const LOCATION_LABELS: Record<string, string> = {
-  MS_TEAMS: 'Microsoft Teams (Online)',
-  IN_PERSON: 'In Person',
-  HYBRID: 'Hybrid (In Person + Online)',
-}
 
 const PLACEHOLDER_TITLE = 'Teaching session — topic TBC'
 
@@ -71,7 +71,6 @@ export async function createTeachingSlots(
 
 export interface DepartmentSlotView extends TeachingSlot {
   display_status: SlotDisplayStatus
-  claimer_label: string | null
 }
 
 export async function getDepartmentSlots(
@@ -82,11 +81,7 @@ export async function getDepartmentSlots(
 
   const slots = await slotsDb.listSlotsForDepartment(orgId, departmentId)
 
-  return slots.map((slot) => ({
-    ...slot,
-    display_status: slotDisplayStatus(slot),
-    claimer_label: slot.claimed_name,
-  }))
+  return slots.map((slot) => ({ ...slot, display_status: slotDisplayStatus(slot) }))
 }
 
 export async function closeTeachingSlot(slotId: string) {
@@ -122,18 +117,9 @@ export async function deleteTeachingSlot(slotId: string) {
 }
 
 function slotToOfferEmailRow(slot: TeachingSlot): SlotOfferEmailSlot {
-  const start = new Date(slot.date_start)
-  const end = new Date(slot.date_end)
   return {
-    dateStr: start.toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    }),
-    timeRangeStr: `${start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`,
-    durationStr: formatDuration(exactDurationFromDates(slot.date_start, slot.date_end)),
-    locationLabel: LOCATION_LABELS[slot.location_type] ?? slot.location_type,
+    ...describeSlot(slot),
+    locationLabel: LOCATION_TYPE_LABELS[slot.location_type] ?? slot.location_type,
   }
 }
 
@@ -233,6 +219,13 @@ export async function publishSlots(
   const mailer = getEmailClient()
   const fromAddress = getFromAddress()
 
+  // Loop-invariant: every registered member gets the identical email body.
+  const memberHtml = buildSlotOfferMemberEmailHtml({
+    departmentName,
+    slots: offerRows,
+    dashboardUrl: `${appUrl}/dashboard?tab=teaching`,
+  })
+
   let emailed = 0
   let failed = 0
 
@@ -244,11 +237,7 @@ export async function publishSlots(
             slots: offerRows,
             claimUrl: `${appUrl}/claim/${link.claim_code}`,
           })
-        : buildSlotOfferMemberEmailHtml({
-            departmentName,
-            slots: offerRows,
-            dashboardUrl: `${appUrl}/dashboard?tab=teaching`,
-          })
+        : memberHtml
 
       const { error } = await mailer.emails.send({
         from: fromAddress,
@@ -290,7 +279,7 @@ export async function publishSlots(
 // -----------------------------------------------------------------------------
 
 interface ClaimContext {
-  slot: TeachingSlot
+  slotId: string
   orgId: string
   claimerName: string
   claimedByUserId?: string
@@ -303,7 +292,7 @@ interface ClaimContext {
 /** Shared claim orchestration: atomic claim -> session -> attach -> notify. */
 async function performClaim(ctx: ClaimContext) {
   const claimed = await slotsDb.claimSlot({
-    slotId: ctx.slot.id,
+    slotId: ctx.slotId,
     orgId: ctx.orgId,
     claimedByUserId: ctx.claimedByUserId,
     claimedByContactId: ctx.claimedByContactId,
@@ -381,44 +370,31 @@ async function performClaim(ctx: ClaimContext) {
     minute: '2-digit',
   })
 
-  try {
-    await notificationsDb.insertNotificationAsSystem({
-      orgId: ctx.orgId,
-      userId: claimed.created_by,
+  const departmentName =
+    (await teacherInvitationsDb
+      .findDepartmentName(claimed.department_id)
+      .catch(() => null)) || 'your department'
+
+  await notifyUser({
+    orgId: ctx.orgId,
+    userId: claimed.created_by,
+    notification: {
       type: 'SLOT_CLAIMED',
       title: `${ctx.claimerName} claimed a teaching slot`,
       body: `${slotDateStr}, ${slotTimeStr} — assign the topic when ready`,
       link: `/sessions/${sessionId}/manage`,
-    })
-  } catch (err) {
-    console.error('Failed to create slot-claimed notification:', err)
-  }
-
-  try {
-    const departmentName =
-      (await teacherInvitationsDb.findDepartmentName(claimed.department_id)) ||
-      'your department'
-    // Auth-plane: resolve the creator's email via GoTrue admin API.
-    const supabase = await createSupabaseServiceClient()
-    const { data: userData } = await supabase.auth.admin.getUserById(claimed.created_by)
-    if (userData?.user?.email) {
-      const mailer = getEmailClient()
-      await mailer.emails.send({
-        from: getFromAddress(),
-        to: userData.user.email,
-        subject: `Slot claimed: ${slotDateStr} — ${ctx.claimerName}`,
-        html: buildSlotClaimedEmailHtml({
-          claimerName: ctx.claimerName,
-          departmentName,
-          slotDateStr,
-          slotTimeStr,
-          manageUrl: `${getAppUrl()}/sessions/${sessionId}/manage`,
-        }),
-      })
-    }
-  } catch (err) {
-    console.error('Failed to email slot-claimed notification:', err)
-  }
+    },
+    email: {
+      subject: `Slot claimed: ${slotDateStr} — ${ctx.claimerName}`,
+      html: buildSlotClaimedEmailHtml({
+        claimerName: ctx.claimerName,
+        departmentName,
+        slotDateStr,
+        slotTimeStr,
+        manageUrl: `${getAppUrl()}/sessions/${sessionId}/manage`,
+      }),
+    },
+  })
 
   revalidatePath('/dashboard')
   revalidatePath(`/departments/${claimed.department_id}/schedule`)
@@ -430,25 +406,20 @@ export async function claimSlotAsMember(slotId: string, topicSuggestion?: string
   const userId = await requireAuth()
   const orgId = await requireOrg()
 
-  const slot = await slotsDb.findSlot(slotId, orgId)
+  const [slot, invited, profile] = await Promise.all([
+    slotsDb.findSlot(slotId, orgId),
+    slotsDb.hasClaimLinkForSlot({ slotId, userId }),
+    onboardingDb.findProfileByUserId(userId).catch(() => null),
+  ])
   if (!slot) throw new DbNotFoundError('Slot not found')
-
-  const invited = await slotsDb.hasClaimLinkForSlot({ slotId, userId })
   if (!invited) {
     throw new Error('This slot has not been offered to you')
   }
 
-  const profile = await onboardingDb.findProfileByUserId(userId).catch(() => null)
-  const claimerName =
-    profile?.full_name ||
-    [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
-    profile?.email ||
-    'A member'
-
   return performClaim({
-    slot,
+    slotId: slot.id,
     orgId,
-    claimerName,
+    claimerName: profileDisplayName(profile, 'A member'),
     claimedByUserId: userId,
     topicSuggestion,
   })
@@ -470,14 +441,15 @@ export async function claimSlotByCode(
     throw new Error('Please enter your name')
   }
 
-  const slot = await slotsDb.findSlot(slotId, link.org_id)
+  const [slot, offered] = await Promise.all([
+    slotsDb.findSlot(slotId, link.org_id),
+    slotsDb.hasClaimLinkForSlot({
+      slotId,
+      contactId: link.contact_id,
+      publicationId: link.publication_id,
+    }),
+  ])
   if (!slot) throw new DbNotFoundError('Slot not found')
-
-  const offered = await slotsDb.hasClaimLinkForSlot({
-    slotId,
-    contactId: link.contact_id,
-    publicationId: link.publication_id,
-  })
   if (!offered) {
     throw new Error('This slot is not part of your invitation')
   }
@@ -491,10 +463,11 @@ export async function claimSlotByCode(
     overwriteNames: true,
   })
 
-  const inviteCode = generateClaimCode().slice(0, 8)
+  // Same shape as teacher-invitations' session-scoped RSVP codes.
+  const inviteCode = generateCode(8)
 
   return performClaim({
-    slot,
+    slotId: slot.id,
     orgId: link.org_id,
     claimerName: contactDisplayName(contact),
     claimedByContactId: contact.id,
@@ -519,6 +492,19 @@ export async function claimSlotByCode(
 // Reads for calendar + dashboard
 // -----------------------------------------------------------------------------
 
+/** Groups + audience counts for the publish dialog (lean: no member lists). */
+export async function getPublishAudienceMeta(departmentId: string) {
+  const orgId = await requireOrg()
+  await requireDepartmentModerator(departmentId)
+
+  const [groups, deptMemberCount, orgMemberCount] = await Promise.all([
+    contactsDb.listGroupsWithCounts(orgId),
+    departmentsDb.countDepartmentMembers(departmentId),
+    onboardingDb.countOrganizationMembers(orgId),
+  ])
+  return { groups, deptMemberCount, orgMemberCount }
+}
+
 export async function getOpenSlotsForCalendar(departmentId?: string) {
   const orgId = await requireOrg()
   return slotsDb.listActiveSlotsForOrg(orgId, departmentId)
@@ -535,15 +521,9 @@ export async function getMyClaimableSlots(): Promise<ClaimableSlotView[]> {
   const slots = await slotsDb.listClaimableSlotsForUser(userId, orgId)
   if (slots.length === 0) return []
 
-  const names = new Map<string, string>()
-  for (const slot of slots) {
-    if (!names.has(slot.department_id)) {
-      names.set(
-        slot.department_id,
-        (await teacherInvitationsDb.findDepartmentName(slot.department_id)) || ''
-      )
-    }
-  }
+  const names = await departmentsDb.listDepartmentNames(
+    slots.map((slot) => slot.department_id)
+  )
 
   return slots.map((slot) => ({
     ...slot,

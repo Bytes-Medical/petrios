@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { Button } from './Button'
 import { Input } from './Input'
 import { searchAddressBook } from '@/app/actions/contacts'
-import { contactDisplayName } from '@/lib/contacts'
+import { contactDisplayName, normalizeContactEmail } from '@/lib/contacts'
 import type { ExternalContact } from '@/lib/types'
 
 export interface ContactSelection {
@@ -117,7 +117,7 @@ export function ContactPicker({ onSelect, disabled, placeholder, label }: Contac
               className="w-full text-left px-4 py-3 hover:bg-clay-50 border-t border-black"
             >
               <p className="font-mono text-sm font-bold text-clay-700">
-                + Add &ldquo;{query.trim().toLowerCase()}&rdquo; to the address book
+                + Add &ldquo;{normalizeContactEmail(query)}&rdquo; to the address book
               </p>
             </button>
           )}
@@ -133,7 +133,7 @@ export function ContactPicker({ onSelect, disabled, placeholder, label }: Contac
       {open && quickAdd && (
         <div className="absolute z-10 mt-1 w-full border border-black bg-white p-3 shadow-lg space-y-2">
           <p className="font-mono text-xs uppercase tracking-wider text-gray-500">
-            New contact — {query.trim().toLowerCase()}
+            New contact — {normalizeContactEmail(query)}
           </p>
           <div className="grid grid-cols-2 gap-2">
             <Input
@@ -154,7 +154,7 @@ export function ContactPicker({ onSelect, disabled, placeholder, label }: Contac
               disabled={disabled}
               onClick={() =>
                 pick({
-                  email: query.trim().toLowerCase(),
+                  email: normalizeContactEmail(query),
                   firstName: firstName.trim() || undefined,
                   lastName: lastName.trim() || undefined,
                 })

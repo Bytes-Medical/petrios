@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   WEEKDAY_LABELS,
   addMonths,
@@ -9,7 +9,8 @@ import {
   monthLabel,
   todayKey,
 } from '@/lib/date-picker'
-import { cn } from '@/lib/utils'
+import { useDismissable } from '@/hooks/useDismissable'
+import { cn, fieldStyles } from '@/lib/utils'
 
 interface DatePickerProps {
   /** 'YYYY-MM-DD' or '' */
@@ -18,10 +19,6 @@ interface DatePickerProps {
   ariaLabel?: string
   className?: string
 }
-
-// Same field token as DateTimePicker so the trigger lines up with selects.
-const fieldStyles =
-  'h-10 px-3 border border-black font-mono text-sm bg-white focus:outline-none focus:border-clay-600 focus:ring-1 focus:ring-clay-600'
 
 /** Themed replacement for the native date input: a monospace popover calendar. */
 export function DatePicker({ value, onChange, ariaLabel, className }: DatePickerProps) {
@@ -34,21 +31,7 @@ export function DatePicker({ value, onChange, ariaLabel, className }: DatePicker
     monthIndex: initial.getMonth(),
   })
 
-  useEffect(() => {
-    if (!open) return
-    const onMouseDown = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onMouseDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onMouseDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
+  useDismissable(containerRef, open, () => setOpen(false))
 
   const weeks = buildMonthGrid(view.year, view.monthIndex)
   const today = todayKey()

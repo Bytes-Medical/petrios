@@ -219,6 +219,35 @@ export async function listDepartmentMembers(
   return (data as DepartmentMember[] | null) ?? []
 }
 
+/** Batched id -> name lookup (service-role; used to enrich slot/session views). */
+export async function listDepartmentNames(
+  ids: string[]
+): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('departments')
+    .select('id, name')
+    .in('id', Array.from(new Set(ids)))
+
+  if (error) throw toDbError('Failed to fetch department names', error)
+  return new Map(
+    ((data as { id: string; name: string }[] | null) ?? []).map((d) => [d.id, d.name])
+  )
+}
+
+/** Service-role count for audience previews; caller gates authorization. */
+export async function countDepartmentMembers(departmentId: string): Promise<number> {
+  const db = await getServiceDb()
+  const { count, error } = await db
+    .from('department_members')
+    .select('id', { count: 'exact', head: true })
+    .eq('department_id', departmentId)
+
+  if (error) throw toDbError('Failed to count department members', error)
+  return count ?? 0
+}
+
 /**
  * Returns the user ids of every member of a department, regardless of role.
  * Uses a service-role client so it can run in flows where the current user

@@ -2,6 +2,7 @@ import type { ContactGroupWithCount, ExternalContact } from '@/lib/types'
 import { mergeContactNames, normalizeContactEmail } from '@/lib/contacts'
 import { getServiceDb } from './client'
 import { toDbError } from './errors'
+import { unwrapEmbed } from './unwrap'
 
 /**
  * Address-book DAL. The external_contacts / contact_groups /
@@ -55,7 +56,7 @@ export async function searchContacts(
   return (data as ExternalContact[] | null) ?? []
 }
 
-export async function findContactByEmail(
+async function findContactByEmail(
   orgId: string,
   email: string
 ): Promise<ExternalContact | null> {
@@ -71,7 +72,7 @@ export async function findContactByEmail(
   return (data as ExternalContact | null) ?? null
 }
 
-export async function insertContact(input: {
+async function insertContact(input: {
   orgId: string
   email: string
   firstName?: string | null
@@ -270,11 +271,7 @@ export async function listGroupMemberContacts(
   if (error) throw toDbError('Failed to list group members', error)
 
   return ((data as { external_contacts: ExternalContact | ExternalContact[] | null }[] | null) ?? [])
-    .map((row) =>
-      Array.isArray(row.external_contacts)
-        ? row.external_contacts[0]
-        : row.external_contacts
-    )
+    .map((row) => unwrapEmbed(row.external_contacts))
     .filter((c): c is ExternalContact => !!c)
 }
 
@@ -326,9 +323,7 @@ export async function listGroupMembershipPairs(
 
   return ((data as { contact_id: string; contact_groups: { name: string } | { name: string }[] | null }[] | null) ?? [])
     .map((row) => {
-      const group = Array.isArray(row.contact_groups)
-        ? row.contact_groups[0]
-        : row.contact_groups
+      const group = unwrapEmbed(row.contact_groups)
       return group ? { contact_id: row.contact_id, group_name: group.name } : null
     })
     .filter((r): r is { contact_id: string; group_name: string } => !!r)
@@ -351,9 +346,7 @@ export async function listContactsInGroups(
 
   const byId = new Map<string, ExternalContact>()
   for (const row of (data as { external_contacts: ExternalContact | ExternalContact[] | null }[] | null) ?? []) {
-    const contact = Array.isArray(row.external_contacts)
-      ? row.external_contacts[0]
-      : row.external_contacts
+    const contact = unwrapEmbed(row.external_contacts)
     if (contact && !contact.archived_at) byId.set(contact.id, contact)
   }
   return Array.from(byId.values())

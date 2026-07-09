@@ -7,6 +7,7 @@ import type {
 } from '@/lib/types'
 import { getDb, getServiceDb } from './client'
 import { toDbError } from './errors'
+import { unwrapEmbed } from './unwrap'
 
 /**
  * Teaching-slots DAL. teaching_slots has an org-member SELECT policy (the
@@ -313,15 +314,27 @@ export async function markClaimLinkEmailed(linkId: string): Promise<void> {
 }
 
 export interface ClaimLinkLookup {
-  id: string
   org_id: string
   publication_id: string
   contact_id: string | null
-  user_id: string | null
   email: string
-  department_id: string
   department_name: string | null
   contact: Pick<ExternalContact, 'first_name' | 'last_name'> | null
+}
+
+interface ClaimLinkRow {
+  org_id: string
+  publication_id: string
+  contact_id: string | null
+  email: string
+  external_contacts:
+    | { first_name: string | null; last_name: string | null }
+    | { first_name: string | null; last_name: string | null }[]
+    | null
+  slot_publications:
+    | { departments: { name: string } | { name: string }[] | null }
+    | { departments: { name: string } | { name: string }[] | null }[]
+    | null
 }
 
 /**
@@ -335,7 +348,7 @@ export async function findClaimLinkByCode(
   const { data, error } = await db
     .from('slot_claim_links')
     .select(
-      'id, org_id, publication_id, contact_id, user_id, email, external_contacts:contact_id(first_name, last_name), slot_publications:publication_id(department_id, departments:department_id(name))'
+      'org_id, publication_id, contact_id, email, external_contacts:contact_id(first_name, last_name), slot_publications:publication_id(departments:department_id(name))'
     )
     .eq('claim_code', code)
     .maybeSingle()
@@ -343,31 +356,18 @@ export async function findClaimLinkByCode(
   if (error) throw toDbError('Failed to look up claim link', error)
   if (!data) return null
 
-  const row = data as Record<string, unknown>
-  const publication = Array.isArray(row.slot_publications)
-    ? (row.slot_publications as Record<string, unknown>[])[0]
-    : (row.slot_publications as Record<string, unknown> | null)
-  const dept = publication?.departments
-  const deptRow = Array.isArray(dept) ? dept[0] : dept
-  const contact = Array.isArray(row.external_contacts)
-    ? (row.external_contacts as Record<string, unknown>[])[0]
-    : (row.external_contacts as Record<string, unknown> | null)
+  const row = data as unknown as ClaimLinkRow
+  const publication = unwrapEmbed(row.slot_publications)
+  const department = unwrapEmbed(publication?.departments)
+  const contact = unwrapEmbed(row.external_contacts)
 
   return {
-    id: row.id as string,
-    org_id: row.org_id as string,
-    publication_id: row.publication_id as string,
-    contact_id: row.contact_id as string | null,
-    user_id: row.user_id as string | null,
-    email: row.email as string,
-    department_id: (publication?.department_id as string) ?? '',
-    department_name: (deptRow as { name?: string } | null)?.name ?? null,
-    contact: contact
-      ? {
-          first_name: (contact.first_name as string | null) ?? null,
-          last_name: (contact.last_name as string | null) ?? null,
-        }
-      : null,
+    org_id: row.org_id,
+    publication_id: row.publication_id,
+    contact_id: row.contact_id,
+    email: row.email,
+    department_name: department?.name ?? null,
+    contact,
   }
 }
 
@@ -385,9 +385,7 @@ export async function listOpenSlotsForPublication(
 
   const now = Date.now()
   return (((data as { teaching_slots: TeachingSlot | TeachingSlot[] | null }[] | null) ?? [])
-    .map((row) =>
-      Array.isArray(row.teaching_slots) ? row.teaching_slots[0] : row.teaching_slots
-    )
+    .map((row) => unwrapEmbed(row.teaching_slots))
     .filter(
       (slot): slot is TeachingSlot =>
         !!slot && slot.status === 'OPEN' && new Date(slot.date_start).getTime() > now
@@ -423,7 +421,7 @@ export async function listClaimableSlotsForUser(
   const now = Date.now()
   const byId = new Map<string, TeachingSlot>()
   for (const row of (slotRows as { teaching_slots: TeachingSlot | TeachingSlot[] | null }[] | null) ?? []) {
-    const slot = Array.isArray(row.teaching_slots) ? row.teaching_slots[0] : row.teaching_slots
+    const slot = unwrapEmbed(row.teaching_slots)
     if (slot && slot.status === 'OPEN' && new Date(slot.date_start).getTime() > now) {
       byId.set(slot.id, slot)
     }
@@ -489,15 +487,11 @@ export async function insertClaimedSessionAsSystem(input: {
       org_id: input.orgId,
       department_id: input.departmentId,
       title: input.title,
-      description: null,
       date_start: input.dateStart,
       date_end: input.dateEnd,
       location_type: input.locationType,
       status: 'DRAFT',
       created_by: input.createdBy,
-      teams_meeting_url: null,
-      tags: null,
-      capacity: null,
     })
     .select('id, status')
     .single()

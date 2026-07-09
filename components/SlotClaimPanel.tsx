@@ -5,27 +5,15 @@ import { useRouter } from 'next/navigation'
 import { Button } from './Button'
 import { Input } from './Input'
 import { claimSlotByCode } from '@/app/actions/teaching-slots'
-import { formatDayKey } from '@/lib/date-picker'
-import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
-import type { TeachingSlot } from '@/lib/types'
-
-const LOCATION_LABELS: Record<string, string> = {
-  MS_TEAMS: 'Microsoft Teams (Online)',
-  IN_PERSON: 'In Person',
-  HYBRID: 'Hybrid (In Person + Online)',
-}
+import { describeSlot } from '@/lib/slot-schedule'
+import { formatTimeHM } from '@/lib/date-picker'
+import { LOCATION_TYPE_LABELS, type TeachingSlot } from '@/lib/types'
 
 interface SlotClaimPanelProps {
   code: string
   slots: TeachingSlot[]
   initialFirstName: string
   initialLastName: string
-}
-
-function slotDayKey(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 export function SlotClaimPanel({
@@ -63,15 +51,14 @@ export function SlotClaimPanel({
   }
 
   if (claimed) {
-    const start = new Date(claimed.date_start)
+    const desc = describeSlot(claimed)
     return (
       <div className="space-y-3 text-center py-4">
         <h2 className="text-xl font-mono font-bold">You&apos;re booked in</h2>
         <p className="font-mono text-sm">
           You&apos;re teaching on{' '}
           <strong>
-            {formatDayKey(slotDayKey(claimed.date_start))} at{' '}
-            {start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+            {desc.dateStr} at {formatTimeHM(claimed.date_start)}
           </strong>
           .
         </p>
@@ -95,8 +82,7 @@ export function SlotClaimPanel({
         <h2 className="font-mono font-bold mb-2">1. Choose a slot</h2>
         <div className="space-y-2">
           {slots.map((slot) => {
-            const start = new Date(slot.date_start)
-            const end = new Date(slot.date_end)
+            const desc = describeSlot(slot)
             const selected = selectedId === slot.id
             return (
               <button
@@ -109,14 +95,10 @@ export function SlotClaimPanel({
                     : 'border-black bg-white hover:bg-gray-50'
                 }`}
               >
-                <p className="font-mono text-sm font-bold">
-                  {formatDayKey(slotDayKey(slot.date_start))}
-                </p>
+                <p className="font-mono text-sm font-bold">{desc.dateStr}</p>
                 <p className={`font-mono text-xs ${selected ? 'text-gray-200' : 'text-gray-600'}`}>
-                  {start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}–
-                  {end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} ·{' '}
-                  {formatDuration(exactDurationFromDates(slot.date_start, slot.date_end))} ·{' '}
-                  {LOCATION_LABELS[slot.location_type] ?? slot.location_type}
+                  {desc.timeRangeStr} · {desc.durationStr} ·{' '}
+                  {LOCATION_TYPE_LABELS[slot.location_type] ?? slot.location_type}
                 </p>
               </button>
             )

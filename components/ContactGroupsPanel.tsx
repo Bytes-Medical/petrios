@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from './Button'
 import { Input } from './Input'
-import { ContactPicker } from './ContactPicker'
+import { ContactPicker, type ContactSelection } from './ContactPicker'
 import { useToast } from './ToastProvider'
 import {
   addContactToGroup,
@@ -106,7 +106,7 @@ export function ContactGroupsPanel({ groups }: ContactGroupsPanelProps) {
     }
   }
 
-  async function handleAddMember(groupId: string, selection: { email: string; firstName?: string; lastName?: string; contactId?: string }) {
+  async function handleAddMember(groupId: string, selection: ContactSelection) {
     setLoading(`add-${groupId}`)
     try {
       let contactId = selection.contactId

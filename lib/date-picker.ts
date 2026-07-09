@@ -14,6 +14,19 @@ export function todayKey(now = new Date()): string {
   return dayKey(now.getFullYear(), now.getMonth(), now.getDate())
 }
 
+/** Local 'YYYY-MM-DD' key for an ISO datetime string. */
+export function dayKeyFromIso(iso: string): string {
+  return todayKey(new Date(iso))
+}
+
+/** Local 'HH:mm' for an ISO datetime string. */
+export function formatTimeHM(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 /**
  * Weeks (Monday-first) for a month; each cell is a 'YYYY-MM-DD' key or null
  * for padding outside the month.

@@ -61,3 +61,21 @@ export function contactDisplayName(contact: {
     contact.email
   )
 }
+
+/** Display name for a profiles row: full name → first+last → email → fallback. */
+export function profileDisplayName(
+  profile: {
+    full_name?: string | null
+    first_name?: string | null
+    last_name?: string | null
+    email?: string | null
+  } | null,
+  fallback = 'Unknown'
+): string {
+  return (
+    profile?.full_name ||
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
+    profile?.email ||
+    fallback
+  )
+}
