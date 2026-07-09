@@ -19,7 +19,15 @@ import {
   getOrgMembersForManagement,
 } from '@/app/actions/member-onboarding'
 import { DepartmentMembersPanel } from '@/components/DepartmentMembersPanel'
-import type { ManagedDepartmentInviteLink, ManagedOrgMember } from '@/lib/types'
+import { AddressBookPanel } from '@/components/AddressBookPanel'
+import { ContactGroupsPanel } from '@/components/ContactGroupsPanel'
+import { getAddressBook } from '@/app/actions/contacts'
+import type {
+  ContactGroupWithCount,
+  ExternalContact,
+  ManagedDepartmentInviteLink,
+  ManagedOrgMember,
+} from '@/lib/types'
 
 export default async function SettingsPage() {
   const user = await getCurrentUser()
@@ -34,6 +42,11 @@ export default async function SettingsPage() {
   let orgManager = false
   let inviteLinks: ManagedDepartmentInviteLink[] = []
   let orgMembers: ManagedOrgMember[] = []
+  let addressBook: {
+    contacts: ExternalContact[]
+    groups: ContactGroupWithCount[]
+    groupsByContact: Record<string, string[]>
+  } = { contacts: [], groups: [], groupsByContact: {} }
 
   if (orgId) {
     const [orgAdmin, canManageOrgAccess, orgDepartments, moderatedDepartments] = await Promise.all([
@@ -53,9 +66,10 @@ export default async function SettingsPage() {
       : moderatedDepartments
 
     if (orgManager) {
-      ;[inviteLinks, orgMembers] = await Promise.all([
+      ;[inviteLinks, orgMembers, addressBook] = await Promise.all([
         getManagedDepartmentInviteLinks(),
         getOrgMembersForManagement(),
+        getAddressBook(),
       ])
     }
   }
@@ -126,6 +140,20 @@ export default async function SettingsPage() {
                     separately.
                   </p>
                   <OrgMembersPanel members={orgMembers} />
+                </Card>
+
+                <Card>
+                  <h2 className="mb-2 text-xl font-mono font-bold">Address Book</h2>
+                  <AddressBookPanel
+                    contacts={addressBook.contacts}
+                    groupsByContact={addressBook.groupsByContact}
+                  />
+                  <div className="mt-6 border-t border-black pt-6">
+                    <h3 className="mb-3 font-mono text-sm font-bold uppercase tracking-wider text-gray-500">
+                      Contact Groups
+                    </h3>
+                    <ContactGroupsPanel groups={addressBook.groups} />
+                  </div>
                 </Card>
               </>
             ) : null}

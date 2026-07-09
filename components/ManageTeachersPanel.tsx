@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from './Button'
 import { Input } from './Input'
+import { ContactPicker, type ContactSelection } from './ContactPicker'
 import { useToast } from './ToastProvider'
 import { addSessionTeacher, removeSessionTeacher, searchOrgMembersForTeacher } from '@/app/actions/sessions'
 import { sendTeacherEmail } from '@/app/actions/emails'
@@ -29,7 +30,6 @@ export function ManageTeachersPanel({
   const router = useRouter()
   const { showToast } = useToast()
   const [loading, setLoading] = useState<string | null>(null)
-  const [inviteEmail, setInviteEmail] = useState('')
 
   // Autocomplete state for internal teacher assignment
   const [searchQuery, setSearchQuery] = useState('')
@@ -81,20 +81,20 @@ export function ManageTeachersPanel({
     }
   }
 
-  async function handleInvite() {
-    if (!inviteEmail.trim()) return
-
+  async function handleInvite(selection: ContactSelection) {
     setLoading('invite')
     // toast handles feedback
 
     try {
-      const result = await inviteExternalTeacher(sessionId, inviteEmail.trim())
+      const result = await inviteExternalTeacher(sessionId, selection.email, {
+        firstName: selection.firstName,
+        lastName: selection.lastName,
+      })
       if (result.emailSent === false) {
         showToast({ variant: 'info', title: 'Invitation created', description: `Email could not be sent: ${result.emailError}` })
       } else {
         showToast({ variant: 'success', title: 'Invitation sent' })
       }
-      setInviteEmail('')
       router.refresh()
     } catch (err) {
       showToast({ variant: 'error', title: 'Failed to send invitation', description: err instanceof Error ? err.message : undefined })
@@ -225,26 +225,14 @@ export function ManageTeachersPanel({
         )}
       </div>
 
-      {/* Invite External Teacher by Email */}
+      {/* Invite External Teacher via the address book */}
       <div>
         <h3 className="font-mono font-bold mb-2">Invite External Teacher</h3>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            type="email"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="Enter teacher's email address"
-            className="flex-1"
-          />
-          <Button
-            type="button"
-            onClick={handleInvite}
-            disabled={!inviteEmail.trim() || loading === 'invite'}
-            className="w-full sm:w-auto"
-          >
-            {loading === 'invite' ? 'Sending...' : 'Send Invitation'}
-          </Button>
-        </div>
+        <p className="font-mono text-xs text-gray-500 mb-2">
+          Pick from the address book, or type a new email to add and invite in
+          one step. Selecting a contact sends the invitation immediately.
+        </p>
+        <ContactPicker onSelect={handleInvite} disabled={loading === 'invite'} />
       </div>
 
       {/* Invitations */}

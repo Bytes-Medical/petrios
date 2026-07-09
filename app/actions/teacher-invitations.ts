@@ -8,6 +8,7 @@ import type { Session } from '@/lib/types'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
 import * as teacherEmailsDb from '@/lib/db/teacher-emails'
+import * as contactsDb from '@/lib/db/external-contacts'
 import { DbNotFoundError } from '@/lib/db'
 
 function generateInviteCode(): string {
@@ -19,7 +20,11 @@ function generateInviteCode(): string {
   return code
 }
 
-export async function inviteExternalTeacher(sessionId: string, email: string) {
+export async function inviteExternalTeacher(
+  sessionId: string,
+  email: string,
+  names?: { firstName?: string; lastName?: string }
+) {
   const currentUserId = await requireAuth()
   const orgId = await requireOrg()
 
@@ -48,6 +53,21 @@ export async function inviteExternalTeacher(sessionId: string, email: string) {
     inviteCode,
     sentBy: currentUserId,
   })
+
+  // Address book auto-capture: fills blanks only (the moderator typed these,
+  // the contact's own RSVP later overwrites). Non-fatal.
+  try {
+    await contactsDb.upsertContactByEmail({
+      orgId,
+      email: normalizedEmail,
+      firstName: names?.firstName,
+      lastName: names?.lastName,
+      createdBy: currentUserId,
+      overwriteNames: false,
+    })
+  } catch (err) {
+    console.error('Failed to capture contact in address book:', err)
+  }
 
   const departmentName =
     (await teacherInvitationsDb.findDepartmentName(session.department_id)) || ''
@@ -139,6 +159,19 @@ export async function respondToInvitation(
     lastName: lastName.trim(),
     status,
   })
+
+  // Self-reported names are authoritative — overwrite the address book entry.
+  try {
+    await contactsDb.upsertContactByEmail({
+      orgId: invitation.org_id,
+      email: invitation.email,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      overwriteNames: true,
+    })
+  } catch (err) {
+    console.error('Failed to update address book from RSVP:', err)
+  }
 
   return { success: true, status }
 }

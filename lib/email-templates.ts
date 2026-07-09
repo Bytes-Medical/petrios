@@ -103,6 +103,107 @@ export function buildCertificateEmailHtml(
   `
 }
 
+export interface SlotOfferEmailSlot {
+  dateStr: string
+  timeRangeStr: string
+  durationStr: string
+  locationLabel: string
+}
+
+function slotOfferTableRows(slots: SlotOfferEmailSlot[]): string {
+  return slots
+    .map(
+      (slot) => `
+        <tr>
+          <td style="padding:8px 8px 8px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">${slot.dateStr}</td>
+          <td style="padding:8px 0;">${slot.timeRangeStr} (${slot.durationStr}) — ${slot.locationLabel}</td>
+        </tr>`
+    )
+    .join('')
+}
+
+interface SlotOfferEmailParams {
+  departmentName: string
+  slots: SlotOfferEmailSlot[]
+  ctaUrl: string
+  ctaLabel: string
+  intro: string
+}
+
+function buildSlotOfferEmailHtml(params: SlotOfferEmailParams): string {
+  const { departmentName, slots, ctaUrl, ctaLabel, intro } = params
+  return `
+    <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
+      <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Teaching slots available</h2>
+      <p style="margin:20px 0;">${intro}</p>
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+        ${slotOfferTableRows(slots)}
+      </table>
+      <p style="margin:20px 0;">
+        <a href="${ctaUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">${ctaLabel}</a>
+      </p>
+      <p style="font-size:12px;color:#666;">Slots are first come, first served — once a slot is claimed it disappears for everyone else. The ${departmentName} organiser will confirm the topic with you afterwards.</p>
+      <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
+        This email was sent via Byte Teaching.
+      </p>
+    </div>
+  `
+}
+
+export function buildSlotOfferExternalEmailHtml(params: {
+  departmentName: string
+  slots: SlotOfferEmailSlot[]
+  claimUrl: string
+}): string {
+  return buildSlotOfferEmailHtml({
+    departmentName: params.departmentName,
+    slots: params.slots,
+    ctaUrl: params.claimUrl,
+    ctaLabel: 'View & claim a slot',
+    intro: `${params.departmentName} is looking for teachers and has opened the following teaching slots. Pick one that suits you — no account needed.`,
+  })
+}
+
+export function buildSlotOfferMemberEmailHtml(params: {
+  departmentName: string
+  slots: SlotOfferEmailSlot[]
+  dashboardUrl: string
+}): string {
+  return buildSlotOfferEmailHtml({
+    departmentName: params.departmentName,
+    slots: params.slots,
+    ctaUrl: params.dashboardUrl,
+    ctaLabel: 'Claim a slot on your dashboard',
+    intro: `${params.departmentName} is looking for teachers and has opened the following teaching slots. Sign in and claim one from the Teaching tab on your dashboard.`,
+  })
+}
+
+export function buildSlotClaimedEmailHtml(params: {
+  claimerName: string
+  departmentName: string
+  slotDateStr: string
+  slotTimeStr: string
+  manageUrl: string
+}): string {
+  const { claimerName, departmentName, slotDateStr, slotTimeStr, manageUrl } = params
+  return `
+    <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
+      <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Teaching slot claimed</h2>
+      <p style="margin:20px 0;">
+        <strong>${claimerName}</strong> has claimed the ${departmentName} teaching slot on
+        <strong>${slotDateStr}</strong> at ${slotTimeStr}. A draft session has been created —
+        assign the topic and publish it when you're ready.
+      </p>
+      <p style="margin:20px 0;">
+        <a href="${manageUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Manage Session</a>
+      </p>
+      <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
+        This email was sent via Byte Teaching.
+      </p>
+    </div>
+  `
+}
+
 interface TeacherResponseEmailParams {
   teacherName: string
   accepted: boolean

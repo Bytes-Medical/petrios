@@ -47,7 +47,8 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/join/') ||
     request.nextUrl.pathname.startsWith('/sessions/') && request.nextUrl.pathname.endsWith('/feedback') ||
     request.nextUrl.pathname.match(/^\/sessions\/[^/]+\/teacher-rsvp\/[^/]+$/) ||
-    request.nextUrl.pathname.match(/^\/departments\/[^/]+\/feedback$/)
+    request.nextUrl.pathname.match(/^\/departments\/[^/]+\/feedback$/) ||
+    request.nextUrl.pathname.match(/^\/claim\/[^/]+$/)
   )
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 

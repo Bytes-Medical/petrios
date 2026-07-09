@@ -39,9 +39,16 @@ export default async function DepartmentSessionsPage({
             <p className="font-mono text-sm text-gray-600 mt-2">Sessions</p>
           </div>
           {canManage && (
-            <Link href={`/departments/${params.id}/sessions/new`} className="w-full sm:w-auto">
-              <Button className="w-full sm:w-auto">Create Session</Button>
-            </Link>
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+              <Link href={`/departments/${params.id}/sessions/new`} className="w-full sm:w-auto">
+                <Button className="w-full sm:w-auto">Create Session</Button>
+              </Link>
+              <Link href={`/departments/${params.id}/schedule`} className="w-full sm:w-auto">
+                <Button variant="secondary" className="w-full sm:w-auto">
+                  Schedule Slots
+                </Button>
+              </Link>
+            </div>
           )}
         </div>
 

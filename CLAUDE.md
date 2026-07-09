@@ -50,6 +50,8 @@ The attendance system is an append-only evidence aggregation pipeline (documente
 - **Feedback**: Anonymous session feedback with QR code distribution. Stats endpoint at `/api/sessions/[id]/feedback/stats`. AI summaries via `summarizeSessionFeedback` in `app/actions/feedback.ts`.
 - **AI (Claude)**: `lib/ai/claude.ts` wraps `@anthropic-ai/sdk` (Claude Fable 5 with a server-side fallback to Opus 4.8). Used by feedback summarization (`lib/ai/feedback-summary.ts`). Degrades gracefully when no key is configured.
 - **Cron jobs**: `app/api/cron/post-session-reports` (certificates + report emails after sessions end) and `app/api/cron/session-reminders` (reminder emails ~24h before a session). Both are idempotent via watermark columns (`report_sent_at`, `reminder_sent_at`) and authenticated with `?secret=CRON_SECRET`.
+- **Address book**: org-scoped `external_contacts` + `contact_groups` (deny-all RLS, service-role DAL `lib/db/external-contacts.ts`, managed in Settings). Contacts auto-captured from external teacher invitations/RSVPs; groups are the audience unit for slot publications.
+- **Teaching slots (Calendly-style)**: moderators bulk-create open slots (`/departments/[id]/schedule`), publish them to contact groups and/or registered members, and invitees claim first-come-first-served (atomic CAS in `lib/db/teaching-slots.ts`). Claiming creates a DRAFT session with the claimer attached as teacher; externals claim via the public `/claim/[code]` page, members via the dashboard Teaching tab. Open slots render as "Available" events on `SessionCalendar` (`slots` prop).
 
 ### Environment Variables
 

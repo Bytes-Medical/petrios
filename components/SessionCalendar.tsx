@@ -9,7 +9,7 @@ import { ScheduleXCalendar, useNextCalendarApp } from '@schedule-x/react'
 import { viewDay, viewWeek, viewMonthGrid } from '@schedule-x/calendar'
 import { createEventsServicePlugin } from '@schedule-x/events-service'
 import '@schedule-x/theme-default/dist/index.css'
-import type { Session } from '@/lib/types'
+import type { Session, SlotEvent } from '@/lib/types'
 
 type ExpandedDay = {
   date: string
@@ -66,6 +66,20 @@ function sessionsToEvents(sessions: Session[]) {
       description: session.description || undefined,
       calendarId: session.status === 'PUBLISHED' ? 'published' : 'draft',
     }))
+}
+
+// Slot pseudo-events are id-namespaced with 'slot-' so onEventClick can tell
+// them apart from sessions.
+const SLOT_EVENT_PREFIX = 'slot-'
+
+function slotsToEvents(slots: SlotEvent[]) {
+  return slots.map((slot) => ({
+    id: `${SLOT_EVENT_PREFIX}${slot.id}`,
+    title: 'Available — open slot',
+    start: toZonedDateTime(slot.date_start),
+    end: toZonedDateTime(slot.date_end),
+    calendarId: 'available',
+  }))
 }
 
 function formatSessionDateRange(session: Session) {
@@ -153,22 +167,27 @@ function getExpandedDayPosition(anchorRect: DOMRect): ExpandedDay['position'] {
 export function SessionCalendar({
   sessions,
   subscriptionUrl,
+  slots = [],
 }: {
   sessions: Session[]
   subscriptionUrl: string
+  /** Open teaching slots shown as claimable 'Available' events. */
+  slots?: SlotEvent[]
 }) {
   const router = useRouter()
   const [copied, setCopied] = useState(false)
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
+  const [selectedSlot, setSelectedSlot] = useState<SlotEvent | null>(null)
   const [expandedDay, setExpandedDay] = useState<ExpandedDay | null>(null)
   const [eventsService] = useState(() => createEventsServicePlugin())
   const sessionsRef = useRef(sessions)
+  const slotsRef = useRef(slots)
   const calendarWrapperRef = useRef<HTMLDivElement | null>(null)
 
   const calendarApp = useNextCalendarApp({
     defaultView: viewMonthGrid.name,
     views: [viewMonthGrid, viewWeek, viewDay],
-    events: sessionsToEvents(sessions),
+    events: [...sessionsToEvents(sessions), ...slotsToEvents(slots)],
     monthGridOptions: {
       nEventsPerDay: 2,
     },
@@ -189,12 +208,31 @@ export function SessionCalendar({
           onContainer: '#46413A',
         },
       },
+      available: {
+        colorName: 'available',
+        lightColors: {
+          main: '#3D7A5D',
+          container: '#E3F0E8',
+          onContainer: '#25543D',
+        },
+      },
     },
     callbacks: {
       onEventClick(event) {
         setExpandedDay(null)
+        const eventId = String(event.id)
+        if (eventId.startsWith(SLOT_EVENT_PREFIX)) {
+          const slotId = eventId.slice(SLOT_EVENT_PREFIX.length)
+          const slot = slotsRef.current.find((candidate) => candidate.id === slotId)
+          if (slot) {
+            setSelectedSession(null)
+            setSelectedSlot(slot)
+          }
+          return
+        }
         const session = sessionsRef.current.find((candidate) => candidate.id === event.id)
         if (session) {
+          setSelectedSlot(null)
           setSelectedSession(session)
         }
       },
@@ -212,8 +250,9 @@ export function SessionCalendar({
 
   useEffect(() => {
     sessionsRef.current = sessions
-    eventsService.set(sessionsToEvents(sessions))
-  }, [eventsService, sessions])
+    slotsRef.current = slots
+    eventsService.set([...sessionsToEvents(sessions), ...slotsToEvents(slots)])
+  }, [eventsService, sessions, slots])
 
   useEffect(() => {
     const wrapper = calendarWrapperRef.current
@@ -304,6 +343,12 @@ export function SessionCalendar({
             <span className="h-3 w-3 border border-stone-600 bg-stone-100" />
             Draft / Cancelled
           </span>
+          {slots.length > 0 && (
+            <span className="inline-flex items-center gap-2 font-mono">
+              <span className="h-3 w-3 border border-green-800 bg-green-100" />
+              Available slot
+            </span>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -318,6 +363,58 @@ export function SessionCalendar({
           </button>
         </div>
       </div>
+
+      {selectedSlot ? (
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-black/15 px-4 py-6"
+          onClick={() => setSelectedSlot(null)}
+        >
+          <div
+            className="w-full max-w-sm border border-black bg-white shadow-[0_18px_60px_rgba(31,29,26,0.18)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-t-[6px] border-green-800 px-5 py-5">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <h3 className="text-xl font-mono font-bold leading-tight text-gray-800">
+                  Open teaching slot
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSlot(null)}
+                  className="shrink-0 border border-black px-2 py-1 font-mono text-xs hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="space-y-3 font-mono text-sm text-gray-700">
+                <p>
+                  {new Date(selectedSlot.date_start).toLocaleDateString('en-GB', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                  <br />
+                  {new Date(selectedSlot.date_start).toLocaleTimeString('en-GB', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  –
+                  {new Date(selectedSlot.date_end).toLocaleTimeString('en-GB', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </p>
+                <p className="text-xs text-gray-600">
+                  This date is open for someone to claim and teach. If it has
+                  been offered to you, claim it from the Teaching tab on your
+                  dashboard before someone else does.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {selectedSession ? (
         <div

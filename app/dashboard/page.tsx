@@ -9,7 +9,9 @@ import { SessionCalendar } from '@/components/SessionCalendar'
 import { PersonalDashboard } from '@/components/PersonalDashboard'
 import { getMyDepartmentSessions, getMyFeedbackHistory, getMyAttendanceSummary } from '@/app/actions/trainee-dashboard'
 import { getMyTeachingAssignments } from '@/app/actions/teaching-assignments'
+import { getMyClaimableSlots, getOpenSlotsForCalendar } from '@/app/actions/teaching-slots'
 import { TeachingAssignmentsPanel } from '@/components/TeachingAssignmentsPanel'
+import { OpenSlotsPanel } from '@/components/OpenSlotsPanel'
 import { ensurePersonalWorkspace } from '@/app/actions/personal-workspace'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
 
@@ -80,7 +82,7 @@ export default async function DashboardPage({
     )
   }
 
-  const [sessions, departments, moderatedDept, orgAdmin, calendarUrl, mySessions, myFeedback, myAttendance, myTeaching] = await Promise.all([
+  const [sessions, departments, moderatedDept, orgAdmin, calendarUrl, mySessions, myFeedback, myAttendance, myTeaching, claimableSlots, openSlots] = await Promise.all([
     getSessionsForOrg(orgId),
     getDepartmentsForOrg(orgId),
     getMyModeratedDepartment(orgId),
@@ -90,6 +92,8 @@ export default async function DashboardPage({
     getMyFeedbackHistory(),
     getMyAttendanceSummary(),
     getMyTeachingAssignments(),
+    getMyClaimableSlots(),
+    getOpenSlotsForCalendar(),
   ])
 
   const pendingTeaching = myTeaching.filter((t) => t.status === 'PENDING')
@@ -120,7 +124,9 @@ export default async function DashboardPage({
             feedback={myFeedback}
             attendance={myAttendance}
             teaching={myTeaching}
+            claimableSlots={claimableSlots}
             orgSessions={sessions}
+            openSlots={openSlots}
             calendarUrl={calendarUrl}
             initialTab={searchParams?.tab}
           />
@@ -142,11 +148,16 @@ export default async function DashboardPage({
             <p className="font-mono text-sm text-gray-600">Moderator Dashboard</p>
           </div>
 
-          {pendingTeaching.length > 0 && (
+          {(pendingTeaching.length > 0 || claimableSlots.length > 0) && (
             <section className="mb-6 sm:mb-8">
               <Card>
                 <h2 className="text-xl font-mono font-bold mb-4">Teaching Invitations</h2>
-                <TeachingAssignmentsPanel assignments={pendingTeaching} />
+                <div className="space-y-6">
+                  <OpenSlotsPanel slots={claimableSlots} />
+                  {pendingTeaching.length > 0 && (
+                    <TeachingAssignmentsPanel assignments={pendingTeaching} />
+                  )}
+                </div>
               </Card>
             </section>
           )}
@@ -167,6 +178,12 @@ export default async function DashboardPage({
                   Create Session
                 </Link>
                 <Link
+                  href={`/departments/${moderatedDept.id}/schedule`}
+                  className="border border-black bg-white px-4 py-3 text-center font-mono text-sm text-black hover:bg-gray-50"
+                >
+                  Schedule Slots
+                </Link>
+                <Link
                   href={primaryManageHref}
                   className="border border-black bg-white px-4 py-3 text-center font-mono text-sm text-black hover:bg-gray-50"
                 >
@@ -174,7 +191,7 @@ export default async function DashboardPage({
                 </Link>
               </div>
             </div>
-            <SessionCalendar sessions={departmentSessions} subscriptionUrl={deptCalendarUrl} />
+            <SessionCalendar sessions={departmentSessions} subscriptionUrl={deptCalendarUrl} slots={openSlots.filter((s) => s.department_id === moderatedDept.id)} />
           </section>
 
         </div>
@@ -189,11 +206,16 @@ export default async function DashboardPage({
       <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
         <h1 className="text-2xl sm:text-3xl font-mono font-bold mb-6 sm:mb-8">Dashboard</h1>
 
-        {pendingTeaching.length > 0 && (
+        {(pendingTeaching.length > 0 || claimableSlots.length > 0) && (
           <section className="mb-6 sm:mb-8">
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Teaching Invitations</h2>
-              <TeachingAssignmentsPanel assignments={pendingTeaching} />
+              <div className="space-y-6">
+                <OpenSlotsPanel slots={claimableSlots} />
+                {pendingTeaching.length > 0 && (
+                  <TeachingAssignmentsPanel assignments={pendingTeaching} />
+                )}
+              </div>
             </Card>
           </section>
         )}
@@ -221,7 +243,7 @@ export default async function DashboardPage({
               </Link>
             </div>
           </div>
-          <SessionCalendar sessions={sessions} subscriptionUrl={calendarUrl} />
+          <SessionCalendar sessions={sessions} subscriptionUrl={calendarUrl} slots={openSlots} />
         </section>
 
         <div className="grid grid-cols-1 gap-4 sm:gap-6">

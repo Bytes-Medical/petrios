@@ -189,6 +189,62 @@ export interface SessionTeacher {
   responded_at: string | null
 }
 
+export interface ExternalContact {
+  id: string
+  org_id: string
+  email: string
+  first_name: string | null
+  last_name: string | null
+  role_note: string | null
+  archived_at: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ContactGroup {
+  id: string
+  org_id: string
+  name: string
+  created_by: string | null
+  created_at: string
+}
+
+export interface ContactGroupWithCount extends ContactGroup {
+  member_count: number
+}
+
+export type SlotStatus = 'OPEN' | 'CLAIMED' | 'CLOSED'
+export type SlotDisplayStatus = SlotStatus | 'EXPIRED'
+
+export interface TeachingSlot {
+  id: string
+  org_id: string
+  department_id: string
+  date_start: string
+  date_end: string
+  location_type: LocationType
+  status: SlotStatus
+  session_id: string | null
+  claimed_by_user_id: string | null
+  claimed_by_contact_id: string | null
+  claimed_name: string | null
+  claimed_at: string | null
+  topic_suggestion: string | null
+  created_by: string
+  created_at: string
+}
+
+/** Lightweight slot shape for calendar rendering. */
+export interface SlotEvent {
+  id: string
+  department_id: string
+  date_start: string
+  date_end: string
+  location_type: LocationType
+  status: SlotStatus
+}
+
 export interface AppNotification {
   id: string
   org_id: string

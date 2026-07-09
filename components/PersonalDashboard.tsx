@@ -6,21 +6,27 @@ import { FeedbackPanel } from '@/components/FeedbackPanel'
 import { AttendancePanel } from '@/components/AttendancePanel'
 import { SessionCalendar } from '@/components/SessionCalendar'
 import { TeachingAssignmentsPanel } from '@/components/TeachingAssignmentsPanel'
+import { OpenSlotsPanel } from '@/components/OpenSlotsPanel'
+import type { ClaimableSlotView } from '@/app/actions/teaching-slots'
 import type {
   SessionWithDetails,
   FeedbackHistoryEntry,
   AttendanceSummary,
   TeachingAssignment,
 } from '@/lib/db/trainee-dashboard'
-import type { Session } from '@/lib/types'
+import type { Session, SlotEvent } from '@/lib/types'
 
 interface PersonalDashboardProps {
   sessions: { upcoming: SessionWithDetails[]; past: SessionWithDetails[] }
   feedback: FeedbackHistoryEntry[]
   attendance: AttendanceSummary
   teaching: TeachingAssignment[]
+  /** Open slots this member can claim (Teaching tab). */
+  claimableSlots: ClaimableSlotView[]
   /** Org-wide published sessions for the calendar tab. */
   orgSessions: Session[]
+  /** Org-wide open slots shown as Available on the calendar tab. */
+  openSlots: SlotEvent[]
   calendarUrl: string
   /** Deep-link target, e.g. /dashboard?tab=teaching from invitation emails. */
   initialTab?: string
@@ -35,7 +41,9 @@ export function PersonalDashboard({
   feedback,
   attendance,
   teaching,
+  claimableSlots,
   orgSessions,
+  openSlots,
   calendarUrl,
   initialTab,
 }: PersonalDashboardProps) {
@@ -43,7 +51,8 @@ export function PersonalDashboard({
     TAB_KEYS.includes(initialTab as Tab) ? (initialTab as Tab) : 'sessions'
   )
 
-  const pendingTeaching = teaching.filter((t) => t.status === 'PENDING').length
+  const pendingTeaching =
+    teaching.filter((t) => t.status === 'PENDING').length + claimableSlots.length
 
   const tabs: { key: Tab; label: string; marker?: number }[] = [
     { key: 'sessions', label: 'Sessions' },
@@ -83,10 +92,13 @@ export function PersonalDashboard({
         <SessionsPanel upcoming={sessions.upcoming} past={sessions.past} />
       )}
       {activeTab === 'calendar' && (
-        <SessionCalendar sessions={orgSessions} subscriptionUrl={calendarUrl} />
+        <SessionCalendar sessions={orgSessions} subscriptionUrl={calendarUrl} slots={openSlots} />
       )}
       {activeTab === 'teaching' && (
-        <TeachingAssignmentsPanel assignments={teaching} />
+        <div className="space-y-6">
+          <OpenSlotsPanel slots={claimableSlots} />
+          <TeachingAssignmentsPanel assignments={teaching} />
+        </div>
       )}
       {activeTab === 'feedback' && <FeedbackPanel entries={feedback} />}
       {activeTab === 'attendance' && <AttendancePanel summary={attendance} />}
