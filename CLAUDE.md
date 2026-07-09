@@ -52,6 +52,7 @@ The attendance system is an append-only evidence aggregation pipeline (documente
 - **Cron jobs**: `app/api/cron/post-session-reports` (certificates + report emails after sessions end) and `app/api/cron/session-reminders` (reminder emails ~24h before a session). Both are idempotent via watermark columns (`report_sent_at`, `reminder_sent_at`) and authenticated with `?secret=CRON_SECRET`.
 - **Address book**: org-scoped `external_contacts` + `contact_groups` (deny-all RLS, service-role DAL `lib/db/external-contacts.ts`, managed in Settings). Contacts auto-captured from external teacher invitations/RSVPs; groups are the audience unit for slot publications.
 - **Teaching slots (Calendly-style)**: moderators bulk-create open slots (`/departments/[id]/schedule`), publish them to contact groups and/or registered members, and invitees claim first-come-first-served (atomic CAS in `lib/db/teaching-slots.ts`). Claiming creates a DRAFT session with the claimer attached as teacher; externals claim via the public `/claim/[code]` page, members via the dashboard Teaching tab. Open slots render as "Available" events on `SessionCalendar` (`slots` prop).
+- **Bytes Ops (AI agent layer)**: additive agent layer under `lib/ops/` + `/ops` routes + `ops_*` tables (migration 036, all deny-all RLS, accessed only via `lib/db/ops.ts`; read-only core-table queries live in `lib/db/ops-reads.ts`). Hard invariants: (1) NO outbound email without an approved `ops_pending_actions` row — `lib/ops/executors.ts` is the only ops send path; (2) all LLM calls go through `lib/ops/gateway.ts` (`opsInference`, purpose allow-list, audit steps store prompt HASHES + token counts, never text) — the one exception is the assistant tool loop in `lib/ops/agent-loop.ts`; never instantiate the Anthropic client anywhere else besides `lib/ai/claude.ts`; (3) `OPS_ENABLED=false` kills every ops surface; (4) feedback synthesis (`lib/ops/synthesis.ts`) strips names and routes welfare-signal content to humans (`requires_human_review`), and the layer never evaluates trainee performance. Crons: `ops-weekly` (speaker chases → approval queue, low-score alerts, curriculum gap watch), `ops-synthesis` (feedback syntheses + thank-you drafts), `ops-newsletter` (weekly digest drafts). Organiser-only chat assistant at `/ops/assistant` (tools in `lib/ops/tools.ts`, org scope always from the authenticated caller). Approvals surface: `ApprovalsBell` in the nav + `/ops` queue. Public unsubscribe at `/ops/unsubscribe/[token]` (HMAC token, `lib/ops/newsletter.ts`).
 
 ### Environment Variables
 
@@ -63,7 +64,8 @@ NEXT_PUBLIC_APP_URL           # Public app URL used in emailed sign-in/invite li
 RESEND_API_KEY                # Resend API key (server-only)
 MAIL_FROM                     # Default sender, "Name <email@verified-domain>" (server-only)
 CRON_SECRET                   # Shared secret for /api/cron/* routes (server-only)
-ANTHROPIC_API_KEY             # Claude API key for AI feedback summaries (server-only, optional)
+ANTHROPIC_API_KEY             # Claude API key for AI feedback summaries + Bytes Ops (server-only, optional)
+OPS_ENABLED                   # Bytes Ops kill switch: unset/anything = on, "false" = every ops surface halts
 ```
 
 ### Database

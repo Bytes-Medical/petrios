@@ -13,12 +13,27 @@ export function isClaudeConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY
 }
 
-export async function askClaude(input: {
+export interface ClaudeUsage {
+  inputTokens: number
+  outputTokens: number
+}
+
+export interface ClaudeResult {
+  text: string | null
+  usage: ClaudeUsage
+  model: string
+}
+
+/**
+ * Like askClaude but also reports token usage and the model that actually
+ * served the request — the Bytes Ops gateway records both in its audit trail.
+ */
+export async function askClaudeWithUsage(input: {
   system: string
   prompt: string
   maxTokens?: number
   effort?: 'low' | 'medium' | 'high'
-}): Promise<string | null> {
+}): Promise<ClaudeResult | null> {
   if (!isClaudeConfigured()) return null
 
   const client = new Anthropic()
@@ -42,5 +57,23 @@ export async function askClaude(input: {
   for (const block of response.content) {
     if (block.type === 'text') text += block.text
   }
-  return text || null
+
+  return {
+    text: text || null,
+    usage: {
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+    },
+    model: response.model ?? CLAUDE_MODEL,
+  }
+}
+
+export async function askClaude(input: {
+  system: string
+  prompt: string
+  maxTokens?: number
+  effort?: 'low' | 'medium' | 'high'
+}): Promise<string | null> {
+  const result = await askClaudeWithUsage(input)
+  return result?.text ?? null
 }

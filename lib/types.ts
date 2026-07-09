@@ -330,3 +330,161 @@ export interface Certificate {
   created_at: string
 }
 
+
+// ---------------------------------------------------------------------------
+// Bytes Ops (AI agent layer) — rows live in deny-all-RLS ops_* tables and are
+// only reachable through lib/db/ops.ts.
+// ---------------------------------------------------------------------------
+
+export type OpsActionType =
+  | 'SPEAKER_CHASE_EMAIL'
+  | 'THANK_YOU_EMAIL'
+  | 'NEWSLETTER_ISSUE'
+  | 'CUSTOM_EMAIL'
+export type OpsActionStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed'
+
+export const OPS_ACTION_TYPE_LABELS: Record<OpsActionType, string> = {
+  SPEAKER_CHASE_EMAIL: 'Speaker chase',
+  THANK_YOU_EMAIL: 'Thank you',
+  NEWSLETTER_ISSUE: 'Newsletter',
+  CUSTOM_EMAIL: 'Email',
+}
+
+export interface OpsPendingAction {
+  id: string
+  org_id: string
+  department_id: string | null
+  type: OpsActionType
+  payload: Record<string, unknown>
+  preview_title: string
+  preview_body: string
+  status: OpsActionStatus
+  created_by: string
+  reviewed_by: string | null
+  reviewed_at: string | null
+  executed_at: string | null
+  error: string | null
+  created_at: string
+}
+
+export interface OpsAgentRun {
+  id: string
+  org_id: string | null
+  kind: string
+  trigger: string
+  status: 'running' | 'succeeded' | 'failed'
+  summary: string | null
+  started_at: string
+  finished_at: string | null
+}
+
+export interface OpsAgentRunStep {
+  id: string
+  run_id: string
+  seq: number
+  name: string
+  detail: Record<string, unknown> | null
+  purpose: string | null
+  model: string | null
+  prompt_hash: string | null
+  input_tokens: number | null
+  output_tokens: number | null
+  created_at: string
+}
+
+export interface OpsSynthesisTheme {
+  title: string
+  detail: string
+  count?: number
+}
+
+export interface OpsFeedbackSynthesis {
+  id: string
+  org_id: string
+  department_id: string
+  session_id: string
+  themes: OpsSynthesisTheme[]
+  sentiment: 'positive' | 'mixed' | 'negative'
+  suggestions: string[]
+  quotes: string[]
+  requires_human_review: boolean
+  response_count: number
+  average_rating: number | null
+  model: string | null
+  created_at: string
+}
+
+export interface OpsCurriculumDomain {
+  code: string
+  name: string
+  description: string | null
+  sort: number
+}
+
+export type OpsMapConfidence = 'deterministic' | 'llm_high' | 'llm_low'
+
+export interface OpsCurriculumMapping {
+  id: string
+  org_id: string
+  session_id: string
+  domain_code: string
+  confidence: OpsMapConfidence
+  rationale: string | null
+  created_at: string
+}
+
+export interface OpsSpeakerChase {
+  id: string
+  org_id: string
+  session_id: string
+  target_user_id: string | null
+  target_invitation_id: string | null
+  target_email: string
+  chase_count: number
+  last_chased_at: string | null
+  created_at: string
+}
+
+export interface OpsMemoryEntry {
+  id: string
+  org_id: string
+  department_id: string | null
+  key: string
+  value: string
+  source: string
+  created_by: string | null
+  updated_at: string
+}
+
+export type OpsNewsletterStatus = 'draft' | 'approved' | 'sent' | 'failed'
+
+export interface OpsNewsletterIssue {
+  id: string
+  org_id: string
+  week_start: string
+  subject: string
+  html: string
+  summary_points: { title: string; detail: string }[]
+  status: OpsNewsletterStatus
+  pending_action_id: string | null
+  sent_count: number
+  created_at: string
+}
+
+export interface OpsChatThread {
+  id: string
+  org_id: string
+  user_id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export interface OpsChatMessage {
+  id: string
+  thread_id: string
+  role: 'user' | 'assistant'
+  content: string
+  tool_summary: { name: string; ok: boolean }[] | null
+  created_at: string
+}

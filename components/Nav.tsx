@@ -6,8 +6,9 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { Button } from './Button'
 import { NotificationsBell } from './NotificationsBell'
+import { ApprovalsBell } from './ApprovalsBell'
 import type { User } from '@supabase/supabase-js'
-import type { AppNotification } from '@/lib/types'
+import type { AppNotification, OpsPendingAction } from '@/lib/types'
 
 interface AdminLink {
   href: string
@@ -21,6 +22,9 @@ interface NavProps {
   isPersonal?: boolean
   notifications?: AppNotification[]
   unreadCount?: number
+  /** Present only for org managers: enables the Ops link + approvals bell. */
+  pendingApprovals?: OpsPendingAction[] | null
+  pendingApprovalsCount?: number
 }
 
 export function Nav({
@@ -30,6 +34,8 @@ export function Nav({
   isPersonal,
   notifications = [],
   unreadCount = 0,
+  pendingApprovals = null,
+  pendingApprovalsCount = 0,
 }: NavProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -45,6 +51,7 @@ export function Nav({
       : [
           { href: '/dashboard', label: 'Dashboard' },
           { href: '/audit', label: 'Audit' },
+          ...(pendingApprovals ? [{ href: '/ops', label: 'Ops' }] : []),
           { href: '/settings', label: 'Settings' },
           ...(adminLink ? [adminLink] : []),
         ]
@@ -109,6 +116,9 @@ export function Nav({
               ))}
             </div>
             <div className="flex items-center gap-4 ml-4">
+              {!loading && user && pendingApprovals && (
+                <ApprovalsBell actions={pendingApprovals} count={pendingApprovalsCount} />
+              )}
               {!loading && user && (
                 <NotificationsBell
                   notifications={notifications}
@@ -133,8 +143,11 @@ export function Nav({
             </div>
           </div>
 
-          {/* Mobile: bell + menu button */}
+          {/* Mobile: bells + menu button */}
           <div className="md:hidden flex items-center gap-2">
+            {!loading && user && pendingApprovals && (
+              <ApprovalsBell actions={pendingApprovals} count={pendingApprovalsCount} />
+            )}
             {!loading && user && (
               <NotificationsBell
                 notifications={notifications}

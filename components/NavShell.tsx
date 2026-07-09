@@ -1,8 +1,15 @@
 import { Nav } from '@/components/Nav'
-import { getCurrentUserId, isSuperAdmin, isPersonalWorkspace } from '@/lib/auth'
+import {
+  getCurrentOrgId,
+  getCurrentUserId,
+  isOrgManager,
+  isPersonalWorkspace,
+  isSuperAdmin,
+} from '@/lib/auth'
 import * as organizationsDb from '@/lib/db/organizations'
 import * as notificationsDb from '@/lib/db/notifications'
-import type { AppNotification } from '@/lib/types'
+import * as opsDb from '@/lib/db/ops'
+import type { AppNotification, OpsPendingAction } from '@/lib/types'
 
 export async function NavShell() {
   const userId = await getCurrentUserId()
@@ -12,6 +19,8 @@ export async function NavShell() {
   let isPersonal = false
   let notifications: AppNotification[] = []
   let unreadCount = 0
+  let pendingApprovals: OpsPendingAction[] | null = null
+  let pendingApprovalsCount = 0
 
   if (userId) {
     try {
@@ -42,6 +51,27 @@ export async function NavShell() {
     } else if (await organizationsDb.userIsDepartmentAdminAnywhere(userId)) {
       roleLabel = 'Moderator'
     }
+
+    // Bytes Ops surfaces (Ops link + approvals bell) are organiser-only.
+    if (!superAdmin && !isPersonal) {
+      try {
+        const orgId = await getCurrentOrgId()
+        if (orgId && (await isOrgManager(orgId))) {
+          pendingApprovals = await opsDb.listPendingActions(orgId, {
+            statuses: ['pending'],
+            limit: 5,
+          })
+          pendingApprovalsCount =
+            pendingApprovals.length < 5
+              ? pendingApprovals.length
+              : await opsDb.countPendingActions(orgId)
+        }
+      } catch (error) {
+        // Non-fatal — e.g. migration 036 not applied yet. Nav renders without
+        // the approvals bell.
+        console.error('Failed to load ops approvals:', error)
+      }
+    }
   }
 
   return (
@@ -52,6 +82,8 @@ export async function NavShell() {
       isPersonal={isPersonal}
       notifications={notifications}
       unreadCount={unreadCount}
+      pendingApprovals={pendingApprovals}
+      pendingApprovalsCount={pendingApprovalsCount}
     />
   )
 }

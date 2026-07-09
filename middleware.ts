@@ -48,7 +48,9 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/sessions/') && request.nextUrl.pathname.endsWith('/feedback') ||
     request.nextUrl.pathname.match(/^\/sessions\/[^/]+\/teacher-rsvp\/[^/]+$/) ||
     request.nextUrl.pathname.match(/^\/departments\/[^/]+\/feedback$/) ||
-    request.nextUrl.pathname.match(/^\/claim\/[^/]+$/)
+    request.nextUrl.pathname.match(/^\/claim\/[^/]+$/) ||
+    // Newsletter unsubscribe: must work from an email link without a session.
+    request.nextUrl.pathname.match(/^\/ops\/unsubscribe\/[^/]+$/)
   )
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 
