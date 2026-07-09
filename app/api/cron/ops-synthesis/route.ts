@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unauthorizedCronResponse } from '@/lib/cron-auth'
 import { notifyUser } from '@/lib/notify'
 import { opsEnabled } from '@/lib/ops/flags'
 import { startRun } from '@/lib/ops/run'
 import { runSynthesisForSession } from '@/lib/ops/synthesis'
+import { formatDateLong } from '@/lib/ops/format'
 import { draftThankYouEmail } from '@/lib/ops/drafts'
 import { buildOpsEmailHtml } from '@/lib/ops/email-html'
 import { profileDisplayName } from '@/lib/contacts'
@@ -31,10 +33,8 @@ import * as onboardingDb from '@/lib/db/onboarding'
 const SYNTHESIS_CAP = 5
 
 export async function GET(request: NextRequest) {
-  const secret = request.nextUrl.searchParams.get('secret')
-  if (!secret || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const unauthorized = unauthorizedCronResponse(request)
+  if (unauthorized) return unauthorized
   if (!opsEnabled()) {
     return NextResponse.json({ message: 'Bytes Ops is disabled', skipped: true })
   }
@@ -83,11 +83,7 @@ export async function GET(request: NextRequest) {
 
       // Thank-you drafts for everyone who actually taught (accepted only).
       // Drafted exactly once: only in the same pass that created the synthesis.
-      const dateStr = new Date(session.date_start).toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      })
+      const dateStr = formatDateLong(session.date_start)
 
       const [teacherIds, externalTeachers] = await Promise.all([
         sessionsDb.listAcceptedSessionTeacherUserIdsAsSystem(session.id),

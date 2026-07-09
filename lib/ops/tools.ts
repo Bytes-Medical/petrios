@@ -6,6 +6,7 @@ import * as teachingSlotsDb from '@/lib/db/teaching-slots'
 import * as onboardingDb from '@/lib/db/onboarding'
 import { buildCoverage, mapSessionDomains } from './curriculum'
 import { buildOpsEmailHtml } from './email-html'
+import { averageRating } from './format'
 import { opsInference } from './gateway'
 import type { OpsRun } from './run'
 
@@ -148,7 +149,7 @@ export const OPS_TOOLS: OpsTool[] = [
       for (const rating of ratings) distribution[rating] = (distribution[rating] ?? 0) + 1
       return {
         responses: ratings.length,
-        average: Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10,
+        average: averageRating(ratings),
         distribution,
       }
     },
@@ -180,7 +181,7 @@ export const OPS_TOOLS: OpsTool[] = [
         if (rs.length < 3) continue
         const avg = rs.reduce((a, b) => a + b, 0) / rs.length
         if (avg < 3.5) {
-          low.push({ ...sessionSummaryLine(session), average: Math.round(avg * 10) / 10, responses: rs.length })
+          low.push({ ...sessionSummaryLine(session), average: averageRating(rs), responses: rs.length })
           if (low.length >= ROW_CAP) break
         }
       }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unauthorizedCronResponse } from '@/lib/cron-auth'
 import { getAppUrl } from '@/lib/app-url'
 import { notifyUser } from '@/lib/notify'
 import { profileDisplayName } from '@/lib/contacts'
@@ -7,6 +8,7 @@ import { startRun } from '@/lib/ops/run'
 import { draftChaseEmail } from '@/lib/ops/drafts'
 import { buildOpsEmailHtml } from '@/lib/ops/email-html'
 import { buildCoverage, mapSessionDomains } from '@/lib/ops/curriculum'
+import { averageRating, formatSessionDateLabel } from '@/lib/ops/format'
 import { opsInference } from '@/lib/ops/gateway'
 import * as opsDb from '@/lib/db/ops'
 import * as opsReads from '@/lib/db/ops-reads'
@@ -34,10 +36,8 @@ const CHASE_SPACING_DAYS = 5
 const MAPPING_CAP = 15
 
 export async function GET(request: NextRequest) {
-  const secret = request.nextUrl.searchParams.get('secret')
-  if (!secret || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const unauthorized = unauthorizedCronResponse(request)
+  if (unauthorized) return unauthorized
   if (!opsEnabled()) {
     return NextResponse.json({ message: 'Bytes Ops is disabled', skipped: true })
   }
@@ -56,14 +56,6 @@ export async function GET(request: NextRequest) {
     await run.finish('failed', err instanceof Error ? err.message : 'unknown error')
     return NextResponse.json({ error: 'ops-weekly failed' }, { status: 500 })
   }
-}
-
-function dateLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
 }
 
 async function runSpeakerChase(run: Awaited<ReturnType<typeof startRun>>): Promise<number> {
@@ -109,10 +101,10 @@ async function runSpeakerChase(run: Awaited<ReturnType<typeof startRun>>): Promi
     const pendingInvitations = sessionInvitations.filter((i) => i.status === 'PENDING')
     if (pendingTeachers.length === 0 && pendingInvitations.length === 0) continue
 
-    const chaseCounts = await opsDb.getChaseCounts(session.id)
-    const profiles = await onboardingDb.listProfilesForUsers(
-      pendingTeachers.map((t) => t.user_id)
-    )
+    const [chaseCounts, profiles] = await Promise.all([
+      opsDb.getChaseCounts(session.id),
+      onboardingDb.listProfilesForUsers(pendingTeachers.map((t) => t.user_id)),
+    ])
 
     interface Target {
       email: string
@@ -158,7 +150,7 @@ async function runSpeakerChase(run: Awaited<ReturnType<typeof startRun>>): Promi
         {
           recipientName: target.name,
           sessionTitle: session.title,
-          dateLabel: dateLabel(session.date_start),
+          dateLabel: formatSessionDateLabel(session.date_start),
           chaseNumber: count + 1,
           isExternal: target.isExternal,
         },
@@ -202,6 +194,9 @@ async function runLowScoreWarning(run: Awaited<ReturnType<typeof startRun>>): Pr
   const windowEnd = new Date(now).toISOString()
 
   let alerts = 0
+  // Sessions in a department share moderators — fetch each department once.
+  const moderatorsByDept = new Map<string, string[]>()
+
   for (const org of organizations) {
     const sessions = await opsReads.listSessionsEndedInWindow(org.id, windowStart, windowEnd, 50)
     if (sessions.length === 0) continue
@@ -212,10 +207,14 @@ async function runLowScoreWarning(run: Awaited<ReturnType<typeof startRun>>): Pr
         .filter((r) => r.session_id === session.id && r.rating !== null)
         .map((r) => r.rating as number)
       if (sessionRatings.length < 3) continue
-      const avg = sessionRatings.reduce((a, b) => a + b, 0) / sessionRatings.length
+      const avg = averageRating(sessionRatings)
       if (avg >= 3.5) continue
 
-      const moderators = await opsReads.listDepartmentModeratorUserIds(session.department_id)
+      let moderators = moderatorsByDept.get(session.department_id)
+      if (!moderators) {
+        moderators = await opsReads.listDepartmentModeratorUserIds(session.department_id)
+        moderatorsByDept.set(session.department_id, moderators)
+      }
       for (const moderator of moderators) {
         await notifyUser({
           orgId: org.id,
@@ -223,7 +222,7 @@ async function runLowScoreWarning(run: Awaited<ReturnType<typeof startRun>>): Pr
           notification: {
             type: 'OPS_LOW_SCORE',
             title: `Low feedback score: "${session.title}"`,
-            body: `Averaged ${Math.round(avg * 10) / 10}/5 across ${sessionRatings.length} responses. Worth a look at the raw feedback.`,
+            body: `Averaged ${avg}/5 across ${sessionRatings.length} responses. Worth a look at the raw feedback.`,
             link: `/sessions/${session.id}/manage`,
           },
         })
@@ -231,7 +230,7 @@ async function runLowScoreWarning(run: Awaited<ReturnType<typeof startRun>>): Pr
       alerts++
       await run.log('low-score:flagged', {
         sessionId: session.id,
-        avg: Math.round(avg * 10) / 10,
+        avg,
         responses: sessionRatings.length,
       })
     }

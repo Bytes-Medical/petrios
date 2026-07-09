@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unauthorizedCronResponse } from '@/lib/cron-auth'
 import { generateCertificateCode } from '@/lib/certificates/utils'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildCertificateEmailHtml } from '@/lib/email-templates'
@@ -9,11 +10,8 @@ import * as certificatesDb from '@/lib/db/certificates'
 import * as onboardingDb from '@/lib/db/onboarding'
 
 export async function GET(request: NextRequest) {
-  // Auth: check secret token
-  const secret = request.nextUrl.searchParams.get('secret')
-  if (!secret || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const unauthorized = unauthorizedCronResponse(request)
+  if (unauthorized) return unauthorized
 
   const sessions = await sessionsDb.listSessionsNeedingReport()
 

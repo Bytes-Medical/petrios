@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { getOpsRunSteps } from '@/app/actions/ops'
 import { Badge } from '@/components/Badge'
 import { Card } from '@/components/Card'
+import { formatDateTimeShort } from '@/lib/ops/format'
 import type { OpsAgentRun, OpsAgentRunStep } from '@/lib/types'
 
 interface RecentRunsPanelProps {
@@ -14,15 +15,6 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger'> = {
   succeeded: 'success',
   running: 'warning',
   failed: 'danger',
-}
-
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 /**
@@ -79,7 +71,7 @@ export function RecentRunsPanel({ runs }: RecentRunsPanelProps) {
                   <span className="min-w-0">
                     <span className="font-mono text-xs font-bold">{run.kind}</span>
                     <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-gray-400">
-                      {run.trigger} · {formatWhen(run.started_at)}
+                      {run.trigger} · {formatDateTimeShort(run.started_at)}
                     </span>
                     {run.summary && (
                       <span className="block truncate font-mono text-xs text-gray-600">

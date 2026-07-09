@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unauthorizedCronResponse } from '@/lib/cron-auth'
 import { notifyUser } from '@/lib/notify'
 import { opsEnabled } from '@/lib/ops/flags'
+import { averageRating, formatDateLong, formatSessionDateLabel } from '@/lib/ops/format'
 import { startRun } from '@/lib/ops/run'
 import { opsInference } from '@/lib/ops/gateway'
 import {
@@ -27,10 +29,8 @@ import * as organizationsDb from '@/lib/db/organizations'
  */
 
 export async function GET(request: NextRequest) {
-  const secret = request.nextUrl.searchParams.get('secret')
-  if (!secret || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const unauthorized = unauthorizedCronResponse(request)
+  if (unauthorized) return unauthorized
   if (!opsEnabled()) {
     return NextResponse.json({ message: 'Bytes Ops is disabled', skipped: true })
   }
@@ -68,9 +68,7 @@ export async function GET(request: NextRequest) {
         const sessionRatings = ratings
           .filter((r) => r.session_id === session.id && r.rating !== null)
           .map((r) => r.rating as number)
-        const avg = sessionRatings.length
-          ? ` (rated ${Math.round((sessionRatings.reduce((a, b) => a + b, 0) / sessionRatings.length) * 10) / 10}/5)`
-          : ''
+        const avg = sessionRatings.length ? ` (rated ${averageRating(sessionRatings)}/5)` : ''
         // Welfare-flagged syntheses stay out of the newsletter entirely.
         const themes =
           synthesis && !synthesis.requires_human_review && synthesis.themes.length
@@ -80,12 +78,7 @@ export async function GET(request: NextRequest) {
       })
 
       const upcomingLines = upcoming.map(
-        (s) =>
-          `- "${s.title}" on ${new Date(s.date_start).toLocaleDateString('en-GB', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-          })}`
+        (s) => `- "${s.title}" on ${formatSessionDateLabel(s.date_start)}`
       )
 
       const content = await opsInference({
@@ -111,11 +104,7 @@ Return JSON: {"subject": string, "intro": string (1-2 sentences), "learning_poin
         continue
       }
 
-      const weekLabel = `Week commencing ${window.weekStart.toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      })}`
+      const weekLabel = `Week commencing ${formatDateLong(window.weekStart.toISOString())}`
       const orgName = (await organizationsDb.findOrganizationName(org.id)) ?? org.name
 
       const issue = await opsDb.insertNewsletterIssue({

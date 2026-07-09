@@ -1,6 +1,6 @@
 'use server'
 
-import { requireAuth, requireOrg, requireOrgManager } from '@/lib/auth'
+import { requireOpsManager } from '@/lib/ops/auth'
 import { opsEnabled } from '@/lib/ops/flags'
 import { startRun } from '@/lib/ops/run'
 import { runAgentLoop, type ChatTurn } from '@/lib/ops/agent-loop'
@@ -16,13 +16,6 @@ import type { OpsChatMessage, OpsChatThread } from '@/lib/types'
  */
 
 const HISTORY_LIMIT = 20
-
-async function requireOpsManager(): Promise<{ userId: string; orgId: string }> {
-  const userId = await requireAuth()
-  const orgId = await requireOrg()
-  await requireOrgManager(orgId)
-  return { userId, orgId }
-}
 
 export async function listChatThreads(): Promise<OpsChatThread[]> {
   const { userId, orgId } = await requireOpsManager()

@@ -2,9 +2,8 @@
 
 import { useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useDismissable } from '@/hooks/useDismissable'
-import { approveOpsAction, rejectOpsAction } from '@/app/actions/ops'
+import { useOpsReview } from '@/hooks/useOpsReview'
 import { OPS_ACTION_TYPE_LABELS, type OpsPendingAction } from '@/lib/types'
 
 interface ApprovalsBellProps {
@@ -18,30 +17,11 @@ interface ApprovalsBellProps {
  * the full /ops queue, which shows the complete preview body).
  */
 export function ApprovalsBell({ actions, count }: ApprovalsBellProps) {
-  const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { busyId, error, review } = useOpsReview()
   const containerRef = useRef<HTMLDivElement>(null)
 
   useDismissable(containerRef, open, () => setOpen(false))
-
-  async function review(id: string, decision: 'approve' | 'reject') {
-    setBusyId(id)
-    setError(null)
-    try {
-      if (decision === 'approve') {
-        await approveOpsAction(id)
-      } else {
-        await rejectOpsAction(id)
-      }
-      router.refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
-    } finally {
-      setBusyId(null)
-    }
-  }
 
   return (
     <div ref={containerRef} className="relative">

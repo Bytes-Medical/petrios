@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireAuth, requireOrg, requireOrgManager } from '@/lib/auth'
+import { requireOpsManager } from '@/lib/ops/auth'
 import { opsEnabled } from '@/lib/ops/flags'
 import { executeAction } from '@/lib/ops/executors'
 import { startRun } from '@/lib/ops/run'
@@ -21,17 +21,10 @@ import type {
 import type { DomainCoverage } from '@/lib/ops/curriculum'
 
 /**
- * Bytes Ops server actions — every entry point re-checks requireOrgManager
+ * Bytes Ops server actions — every entry point re-checks requireOpsManager
  * (organisers only) and scopes to the caller's org. The ops_* tables are
  * deny-all RLS, so these actions are the only interactive path to them.
  */
-
-async function requireOpsManager(): Promise<{ userId: string; orgId: string }> {
-  const userId = await requireAuth()
-  const orgId = await requireOrg()
-  await requireOrgManager(orgId)
-  return { userId, orgId }
-}
 
 export interface OpsOverview {
   enabled: boolean

@@ -5,6 +5,7 @@ import * as opsDb from '@/lib/db/ops'
 import type { OpsSessionRow } from '@/lib/db/ops-reads'
 import { CLAUDE_MODEL } from '@/lib/ai/claude'
 import { containsWelfareSignal, stripNameLikeTokens } from './anonymize'
+import { averageRating } from './format'
 import { opsInference } from './gateway'
 import type { OpsRun } from './run'
 
@@ -125,9 +126,7 @@ export async function runSynthesisForSession(
   if (rows.length === 0) return null
 
   const ratings = rows.map((r) => r.rating).filter((r): r is number => r !== null)
-  const averageRating = ratings.length
-    ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10
-    : null
+  const avgRating = ratings.length ? averageRating(ratings) : null
 
   // Names to strip: attendees who left feedback plus the session's teachers.
   const knownNames: string[] = []
@@ -182,7 +181,7 @@ export async function runSynthesisForSession(
     quotes: clean.quotes,
     requiresHumanReview: clean.requires_human_review,
     responseCount: rows.length,
-    averageRating,
+    averageRating: avgRating,
     model: CLAUDE_MODEL,
   })
 }

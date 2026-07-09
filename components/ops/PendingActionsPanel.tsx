@@ -1,11 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { approveOpsAction, rejectOpsAction } from '@/app/actions/ops'
+import { useOpsReview } from '@/hooks/useOpsReview'
 import { Badge } from '@/components/Badge'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { formatDateTimeShort } from '@/lib/ops/format'
 import { OPS_ACTION_TYPE_LABELS, type OpsPendingAction } from '@/lib/types'
 
 interface PendingActionsPanelProps {
@@ -20,37 +20,9 @@ const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger
   failed: 'danger',
 }
 
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 export function PendingActionsPanel({ pending, reviewed }: PendingActionsPanelProps) {
-  const router = useRouter()
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function review(id: string, decision: 'approve' | 'reject') {
-    setBusyId(id)
-    setError(null)
-    try {
-      if (decision === 'approve') {
-        await approveOpsAction(id)
-      } else {
-        await rejectOpsAction(id)
-      }
-      router.refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
-    } finally {
-      setBusyId(null)
-    }
-  }
+  const { busyId, error, review } = useOpsReview()
 
   return (
     <Card>
@@ -81,7 +53,7 @@ export function PendingActionsPanel({ pending, reviewed }: PendingActionsPanelPr
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge>{OPS_ACTION_TYPE_LABELS[action.type]}</Badge>
                       <span className="font-mono text-xs text-gray-500">
-                        {formatWhen(action.created_at)}
+                        {formatDateTimeShort(action.created_at)}
                       </span>
                     </div>
                     <p className="mt-1 font-mono text-sm font-bold">{action.preview_title}</p>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unauthorizedCronResponse } from '@/lib/cron-auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildSessionReminderEmailHtml } from '@/lib/email-templates'
 import { getAppUrl } from '@/lib/app-url'
@@ -15,10 +16,8 @@ import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
  * schedule, e.g. hourly: GET /api/cron/session-reminders?secret=CRON_SECRET
  */
 export async function GET(request: NextRequest) {
-  const secret = request.nextUrl.searchParams.get('secret')
-  if (!secret || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const unauthorized = unauthorizedCronResponse(request)
+  if (unauthorized) return unauthorized
 
   const sessions = await sessionsDb.listSessionsNeedingReminder()
 
