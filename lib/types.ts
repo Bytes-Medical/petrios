@@ -1,4 +1,4 @@
-export type LocationType = 'MS_TEAMS' | 'IN_PERSON' | 'HYBRID'
+export type LocationType = 'MS_TEAMS' | 'IN_PERSON' | 'HYBRID' | 'JITSI'
 export type SessionStatus = 'DRAFT' | 'PUBLISHED' | 'CANCELLED'
 export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LATE'
 export type AttendanceMethod = 'SELF_CHECKIN' | 'MANUAL'
@@ -19,12 +19,14 @@ export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
   MS_TEAMS: 'Microsoft Teams (Online)',
   IN_PERSON: 'In Person',
   HYBRID: 'Hybrid (In Person + Online)',
+  JITSI: 'Byte Meet (Video)',
 }
 
 export const LOCATION_TYPE_LABELS_SHORT: Record<LocationType, string> = {
   MS_TEAMS: 'Online',
   IN_PERSON: 'In Person',
   HYBRID: 'Hybrid',
+  JITSI: 'Video',
 }
 export const SESSION_TYPES: SessionType[] = ['STEPP', 'CLINICAL_SKILLS', 'SIMULATION', 'ACADEMIC']
 

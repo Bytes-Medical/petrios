@@ -82,6 +82,7 @@ export function SessionForm({ departmentId, departmentName }: SessionFormProps) 
       </div>
 
       <Select label="Location Type" name="location_type" required>
+        <option value="JITSI">Byte Meet (Video)</option>
         <option value="MS_TEAMS">MS Teams</option>
         <option value="IN_PERSON">In Person</option>
         <option value="HYBRID">Hybrid</option>

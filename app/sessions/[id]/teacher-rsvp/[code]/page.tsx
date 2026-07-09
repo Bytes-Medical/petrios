@@ -1,4 +1,5 @@
 import { LOCATION_TYPE_LABELS } from '@/lib/types'
+import { sessionMeetingUrl } from '@/lib/jitsi'
 import { Card } from '@/components/Card'
 import { TeacherRsvpForm } from '@/components/TeacherRsvpForm'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -30,6 +31,12 @@ export default async function TeacherRsvpPage({
   }
 
   if (invitation.status !== 'PENDING') {
+    // Accepted external teachers have no dashboard — their RSVP link is the
+    // one place they can retrieve the join link for the session.
+    const acceptedSession =
+      invitation.status === 'ACCEPTED' ? await sessionsDb.findSessionById(params.id) : null
+    const joinUrl = acceptedSession ? sessionMeetingUrl(acceptedSession) : null
+
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <Card>
@@ -38,6 +45,14 @@ export default async function TeacherRsvpPage({
             You have already{' '}
             {invitation.status === 'ACCEPTED' ? 'accepted' : 'declined'} this invitation.
           </p>
+          {joinUrl && (
+            <p className="mt-4 font-mono text-sm">
+              Join the session here:{' '}
+              <a href={joinUrl} className="underline break-all" target="_blank" rel="noopener noreferrer">
+                {joinUrl}
+              </a>
+            </p>
+          )}
         </Card>
       </div>
     )

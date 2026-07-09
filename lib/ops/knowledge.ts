@@ -14,7 +14,7 @@ Byte Teaching is a teaching management platform for NHS training programmes. An 
 - Trainees join a department with its 6-digit department code; external teachers do NOT need accounts.
 
 ## Sessions
-Sessions have a status (DRAFT, PUBLISHED, CANCELLED), a date, duration (30 min–4 h), a location type (Teams / in person / hybrid), and an optional session type (STEPP, Clinical Skills, Simulation, Academic). Moderators create them from their department pages; published sessions appear on the org-wide calendar (subscribable as an ICS feed).
+Sessions have a status (DRAFT, PUBLISHED, CANCELLED), a date, duration (30 min–4 h), a location type (Teams / in person / hybrid / Byte Meet video), and an optional session type (STEPP, Clinical Skills, Simulation, Academic). Moderators create them from their department pages; published sessions appear on the org-wide calendar (subscribable as an ICS feed). "Byte Meet (Video)" sessions get a built-in video room automatically (no link to paste) embedded on the session page; joining it also records self check-in attendance, and guests without accounts can use the plain room link.
 
 ## Teachers & invitations
 Teachers can be registered members (invited in-app; they accept or decline from the dashboard Teaching tab) or external people (emailed an RSVP link — no account needed). A session is "unconfirmed" while nobody has ACCEPTED. Accepted teachers get an automatic reminder ~24h before the session.

@@ -49,6 +49,7 @@ The attendance system is an append-only evidence aggregation pipeline (documente
 - **Email**: Resend REST API (`lib/email.ts`, a `getEmailClient()` adapter over `fetch`). Templates in `lib/email-templates.ts`. Used for teacher invitations, session reminders, and certificates.
 - **Feedback**: Anonymous session feedback with QR code distribution. Stats endpoint at `/api/sessions/[id]/feedback/stats`. AI summaries via `summarizeSessionFeedback` in `app/actions/feedback.ts`.
 - **AI (OpenAI)**: `lib/ai/llm.ts` calls the OpenAI Chat Completions REST API via `fetch` (no SDK; default model `gpt-5.5`, override with `OPENAI_MODEL`). Used by feedback summarization (`lib/ai/feedback-summary.ts`) and Bytes Ops. Degrades gracefully when no key is configured.
+- **Byte Meet (Jitsi video)**: `JITSI` location type whose room is DERIVED from the session id (`lib/jitsi.ts` — no stored URL) and embedded on the session page via `@jitsi/react-sdk` (`components/JitsiMeetingPanel.tsx`, client-only). Joining fires the normal `checkIn` self check-in. `sessionMeetingUrl()` in `lib/jitsi.ts` is the single join-URL resolver for ICS/reminders/teacher emails/RSVP — use it instead of reading `teams_meeting_url` directly. Backend swaps via `NEXT_PUBLIC_JITSI_DOMAIN` (default meet.jit.si).
 - **Cron jobs**: `app/api/cron/post-session-reports` (certificates + report emails after sessions end) and `app/api/cron/session-reminders` (reminder emails ~24h before a session). Both are idempotent via watermark columns (`report_sent_at`, `reminder_sent_at`) and authenticated with `?secret=CRON_SECRET`.
 - **Address book**: org-scoped `external_contacts` + `contact_groups` (deny-all RLS, service-role DAL `lib/db/external-contacts.ts`, managed in Settings). Contacts auto-captured from external teacher invitations/RSVPs; groups are the audience unit for slot publications.
 - **Teaching slots (Calendly-style)**: moderators bulk-create open slots (`/departments/[id]/schedule`), publish them to contact groups and/or registered members, and invitees claim first-come-first-served (atomic CAS in `lib/db/teaching-slots.ts`). Claiming creates a DRAFT session with the claimer attached as teacher; externals claim via the public `/claim/[code]` page, members via the dashboard Teaching tab. Open slots render as "Available" events on `SessionCalendar` (`slots` prop).
@@ -66,6 +67,7 @@ MAIL_FROM                     # Default sender, "Name <email@verified-domain>" (
 CRON_SECRET                   # Shared secret for /api/cron/* routes (server-only)
 OPENAI_API_KEY                # OpenAI API key for AI feedback summaries + Bytes Ops (server-only, optional)
 OPENAI_MODEL                  # Optional model override (default gpt-5.5)
+NEXT_PUBLIC_JITSI_DOMAIN      # Jitsi domain for Byte Meet rooms (optional, default meet.jit.si)
 OPS_ENABLED                   # Bytes Ops kill switch: unset/anything = on, "false" = every ops surface halts
 ```
 

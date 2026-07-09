@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { unauthorizedCronResponse } from '@/lib/cron-auth'
+import { sessionMeetingUrl } from '@/lib/jitsi'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildSessionReminderEmailHtml } from '@/lib/email-templates'
 import { getAppUrl } from '@/lib/app-url'
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest) {
             endTime,
             locationLabel:
               LOCATION_TYPE_LABELS[session.location_type as LocationType] ?? session.location_type,
-            meetingUrl: session.teams_meeting_url,
+            meetingUrl: sessionMeetingUrl(session),
             sessionUrl: `${appUrl}/sessions/${session.id}`,
           })
 
@@ -130,7 +131,7 @@ export async function GET(request: NextRequest) {
             endTime,
             locationLabel:
               LOCATION_TYPE_LABELS[session.location_type as LocationType] ?? session.location_type,
-            meetingUrl: session.teams_meeting_url,
+            meetingUrl: sessionMeetingUrl(session),
             sessionUrl: `${appUrl}/sessions/${session.id}`,
           })
 

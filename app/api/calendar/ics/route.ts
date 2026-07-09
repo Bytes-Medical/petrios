@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ical, { ICalCalendarMethod, ICalEventStatus } from 'ical-generator'
+import { sessionMeetingUrl } from '@/lib/jitsi'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as organizationsDb from '@/lib/db/organizations'
 
@@ -48,6 +49,9 @@ export async function GET(request: NextRequest) {
     }
     if (session.location_type === 'IN_PERSON' || session.location_type === 'HYBRID') {
       locationParts.push('In Person')
+    }
+    if (session.location_type === 'JITSI') {
+      locationParts.push(sessionMeetingUrl(session) || 'Byte Meet (Video)')
     }
 
     calendar.createEvent({

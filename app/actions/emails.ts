@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
+import { sessionMeetingUrl } from '@/lib/jitsi'
 import { getAppUrl } from '@/lib/app-url'
 import { LOCATION_TYPE_LABELS, type EmailType, type Session } from '@/lib/types'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
@@ -127,11 +128,12 @@ function buildEmailHtml(
          <p style="font-size:12px;color:#666;">Sign in and accept the invitation to confirm you are teaching this session.</p>`
       : ''
 
-  const teamsSection = session.teams_meeting_url
+  const meetingUrl = sessionMeetingUrl(session)
+  const meetingSection = meetingUrl
     ? `<tr>
-         <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Teams Link:</td>
+         <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Join link:</td>
          <td style="padding:8px 0;">
-           <a href="${session.teams_meeting_url}" style="color:#000;text-decoration:underline;">
+           <a href="${meetingUrl}" style="color:#000;text-decoration:underline;">
              Join Meeting
            </a>
          </td>
@@ -169,7 +171,7 @@ function buildEmailHtml(
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Location:</td>
           <td style="padding:8px 0;">${LOCATION_TYPE_LABELS[session.location_type] || session.location_type}</td>
         </tr>
-        ${teamsSection}
+        ${meetingSection}
         ${descriptionSection}
       </table>
       ${respondSection}

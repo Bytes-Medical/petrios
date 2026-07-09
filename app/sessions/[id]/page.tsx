@@ -4,9 +4,12 @@ import { NavShell } from '@/components/NavShell'
 import { getSession, getSessionTeachers } from '@/app/actions/sessions'
 import { getAttendance } from '@/app/actions/attendance'
 import { SessionTabs } from '@/components/SessionTabs'
+import { JitsiMeetingPanel } from '@/components/JitsiMeetingPanel'
 import { Button } from '@/components/Button'
 import Link from 'next/link'
 import { isDepartmentModerator } from '@/lib/auth'
+import { profileDisplayName } from '@/lib/contacts'
+import * as onboardingDb from '@/lib/db/onboarding'
 
 export default async function SessionPage({
   params,
@@ -30,6 +33,15 @@ export default async function SessionPage({
   const attendance = await getAttendance(params.id)
   const canManage = await isDepartmentModerator(session.department_id)
 
+  // Byte Meet sessions embed their video room; name shown to the room.
+  let videoDisplayName: string | null = null
+  if (session.location_type === 'JITSI' && session.status === 'PUBLISHED') {
+    const profile = await onboardingDb.findProfileByUserId(user.id)
+    videoDisplayName = profile
+      ? profileDisplayName(profile, user.email ?? 'Attendee')
+      : user.email ?? 'Attendee'
+  }
+
   return (
     <div className="min-h-screen">
       <NavShell />
@@ -52,6 +64,16 @@ export default async function SessionPage({
             )}
           </div>
         </div>
+
+        {videoDisplayName !== null && (
+          <JitsiMeetingPanel
+            sessionId={session.id}
+            sessionTitle={session.title}
+            dateStart={session.date_start}
+            dateEnd={session.date_end}
+            displayName={videoDisplayName}
+          />
+        )}
 
         <SessionTabs
           session={session}

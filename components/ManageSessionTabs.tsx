@@ -14,8 +14,9 @@ import { EditSessionForm } from './EditSessionForm'
 import { AuditPanel } from './AuditPanel'
 import { ReleaseTeacherFeedbackPanel } from './ReleaseTeacherFeedbackPanel'
 import { Button } from './Button'
-import type { Session, TeacherInvitation } from '@/lib/types'
+import { LOCATION_TYPE_LABELS, type Session, type TeacherInvitation } from '@/lib/types'
 import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
+import { sessionMeetingUrl } from '@/lib/jitsi'
 
 interface ManageSessionTabsProps {
   session: Session
@@ -98,12 +99,12 @@ export function ManageSessionTabs({
                     <strong>Duration:</strong>{' '}
                     {formatDuration(exactDurationFromDates(session.date_start, session.date_end))}
                   </p>
-                  <p><strong>Location:</strong> {session.location_type}</p>
-                  {session.teams_meeting_url && (
+                  <p><strong>Location:</strong> {LOCATION_TYPE_LABELS[session.location_type] || session.location_type}</p>
+                  {sessionMeetingUrl(session) && (
                     <p>
-                      <strong>Teams URL:</strong>{' '}
-                      <a href={session.teams_meeting_url} target="_blank" rel="noopener noreferrer" className="underline">
-                        Join Meeting
+                      <strong>Meeting link:</strong>{' '}
+                      <a href={sessionMeetingUrl(session)!} target="_blank" rel="noopener noreferrer" className="underline">
+                        {session.location_type === 'JITSI' ? 'Open Byte Meet room' : 'Join Meeting'}
                       </a>
                     </p>
                   )}
@@ -135,8 +136,23 @@ export function ManageSessionTabs({
 
         {activeTab === 'meeting' && (
           <Card>
-            <h2 className="text-xl font-mono font-bold mb-4">Update Meeting Link</h2>
-            <UpdateMeetingUrlForm sessionId={session.id} currentUrl={session.teams_meeting_url} />
+            <h2 className="text-xl font-mono font-bold mb-4">
+              {session.location_type === 'JITSI' ? 'Byte Meet Room' : 'Update Meeting Link'}
+            </h2>
+            {session.location_type === 'JITSI' ? (
+              <div className="space-y-3 font-mono text-sm">
+                <p className="text-gray-600">
+                  This session uses a built-in Byte Meet video room — no link to
+                  paste. Members join from the session page; share the link
+                  below with external guests who don&apos;t have an account.
+                </p>
+                <p className="break-all border border-black bg-gray-50 px-3 py-2">
+                  {sessionMeetingUrl(session)}
+                </p>
+              </div>
+            ) : (
+              <UpdateMeetingUrlForm sessionId={session.id} currentUrl={session.teams_meeting_url} />
+            )}
           </Card>
         )}
 
