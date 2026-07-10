@@ -9,6 +9,7 @@ import {
 import type { LocationType, Session, SessionStatus } from '@/lib/types'
 import * as sessionsDb from '@/lib/db/sessions'
 import { DbNotFoundError } from '@/lib/db'
+import { emitWebhook } from '@/lib/webhooks'
 
 export async function createSession(sessionData: {
   department_id: string
@@ -76,6 +77,17 @@ export async function updateSession(id: string, updates: Partial<Session>) {
   }
 
   const session = await sessionsDb.updateSessionById(id, orgId, updates)
+
+  // Fire-and-forget integration event on the DRAFT -> PUBLISHED transition.
+  if (nextStatus === 'PUBLISHED' && scope.status !== 'PUBLISHED') {
+    void emitWebhook(orgId, 'session.published', {
+      session_id: session.id,
+      title: session.title,
+      department_id: session.department_id,
+      date_start: session.date_start,
+      date_end: session.date_end,
+    })
+  }
 
   revalidatePath(`/sessions/${id}`)
   revalidatePath(`/sessions/${id}/manage`)

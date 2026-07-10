@@ -20,6 +20,7 @@ import {
 import { generateCode } from '@/lib/codes'
 import { contactDisplayName, profileDisplayName } from '@/lib/contacts'
 import { notifyUser } from '@/lib/notify'
+import { emitWebhook } from '@/lib/webhooks'
 import {
   LOCATION_TYPE_LABELS,
   type LocationType,
@@ -346,6 +347,13 @@ async function performClaim(ctx: ClaimContext) {
     }
 
     await slotsDb.linkSlotSession({ slotId: claimed.id, sessionId })
+
+    void emitWebhook(claimed.org_id, 'slot.claimed', {
+      slot_id: claimed.id,
+      session_id: sessionId,
+      department_id: claimed.department_id,
+      date_start: claimed.date_start,
+    })
   } catch (err) {
     // Compensation: the slot goes back on offer rather than being stuck
     // CLAIMED with no session.

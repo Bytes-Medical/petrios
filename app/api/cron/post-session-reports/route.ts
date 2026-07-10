@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { unauthorizedCronResponse } from '@/lib/cron-auth'
+import { emitWebhook } from '@/lib/webhooks'
 import { generateCertificateCode } from '@/lib/certificates/utils'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildCertificateEmailHtml } from '@/lib/email-templates'
@@ -80,6 +81,11 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Integration event: attendance for this session has been computed.
+      void emitWebhook(session.org_id, 'attendance.computed', {
+        session_id: session.id,
+      })
+
       // 3. Attendees who were actually there (LATE still attended)
       const attendeeIds = await attendanceDb.listAttendeeUserIdsByStatusAsSystem(
         session.id,
@@ -112,14 +118,20 @@ export async function GET(request: NextRequest) {
           )
 
           if (!existingCert) {
+            const code = generateCertificateCode()
             await certificatesDb.insertCertificateAsSystem({
               orgId: session.org_id,
               departmentId: session.department_id,
               sessionId: session.id,
               userId: attendeeId,
               role: 'ATTENDEE',
-              certificateCode: generateCertificateCode(),
+              certificateCode: code,
               recipientName,
+            })
+            void emitWebhook(session.org_id, 'certificate.issued', {
+              session_id: session.id,
+              certificate_code: code,
+              role: 'ATTENDEE',
             })
           }
 

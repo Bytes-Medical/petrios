@@ -21,6 +21,10 @@ import {
 import { DepartmentMembersPanel } from '@/components/DepartmentMembersPanel'
 import { AddressBookPanel } from '@/components/AddressBookPanel'
 import { ContactGroupsPanel } from '@/components/ContactGroupsPanel'
+import { ApiTokensPanel } from '@/components/ApiTokensPanel'
+import { WebhooksPanel } from '@/components/WebhooksPanel'
+import { listOrgApiTokens, listWebhooks, type SafeApiToken, type WebhookView } from '@/app/actions/api-platform'
+import type { WebhookDelivery } from '@/lib/db/api-platform'
 import { getAddressBook } from '@/app/actions/contacts'
 import type {
   ContactGroupWithCount,
@@ -47,6 +51,12 @@ export default async function SettingsPage() {
     groups: ContactGroupWithCount[]
     groupsByContact: Record<string, string[]>
   } = { contacts: [], groups: [], groupsByContact: {} }
+  let apiTokens: SafeApiToken[] = []
+  let webhookData: { endpoints: WebhookView[]; deliveries: WebhookDelivery[] } = {
+    endpoints: [],
+    deliveries: [],
+  }
+  let orgAdminAccess = false
 
   if (orgId) {
     const [orgAdmin, canManageOrgAccess, orgDepartments, moderatedDepartments] = await Promise.all([
@@ -71,6 +81,13 @@ export default async function SettingsPage() {
         getOrgMembersForManagement(),
         getAddressBook(),
       ])
+    }
+
+    // Developer platform surfaces are org-admin only (tokens grant API access
+    // to the whole org's data).
+    orgAdminAccess = orgAdmin
+    if (orgAdmin) {
+      ;[apiTokens, webhookData] = await Promise.all([listOrgApiTokens(), listWebhooks()])
     }
   }
 
@@ -155,6 +172,23 @@ export default async function SettingsPage() {
                     <ContactGroupsPanel groups={addressBook.groups} />
                   </div>
                 </Card>
+
+                {orgAdminAccess ? (
+                  <>
+                    <Card>
+                      <h2 className="mb-2 text-xl font-mono font-bold">API Tokens</h2>
+                      <ApiTokensPanel tokens={apiTokens} />
+                    </Card>
+
+                    <Card>
+                      <h2 className="mb-2 text-xl font-mono font-bold">Webhooks</h2>
+                      <WebhooksPanel
+                        endpoints={webhookData.endpoints}
+                        deliveries={webhookData.deliveries}
+                      />
+                    </Card>
+                  </>
+                ) : null}
               </>
             ) : null}
 

@@ -1,0 +1,150 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Byte Teaching API",
+    "version": "1.0.0",
+    "description": "Org-scoped REST API for Byte Teaching. Authenticate with an org-admin-issued bearer token (Settings → API Tokens). See docs/api.md for webhooks and signature verification."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "bt_<48 hex>" }
+    },
+    "schemas": {
+      "Session": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "department_id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "description": { "type": ["string", "null"] },
+          "date_start": { "type": "string", "format": "date-time" },
+          "date_end": { "type": "string", "format": "date-time" },
+          "location_type": { "type": "string", "enum": ["MS_TEAMS", "IN_PERSON", "HYBRID", "JITSI"] },
+          "meeting_url": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["DRAFT", "PUBLISHED", "CANCELLED"] },
+          "session_type": { "type": ["string", "null"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AttendanceRow": {
+        "type": "object",
+        "properties": {
+          "user_id": { "type": ["string", "null"] },
+          "external_email": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["PRESENT", "LATE", "ABSENT"] },
+          "primary_source": { "type": ["string", "null"], "description": "TEACHER | TEAMS | FEEDBACK | GROUP_CODE | SELF_CHECKIN | RECALL" },
+          "first_evidence_at": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" }, "code": { "type": "string" } }
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/sessions": {
+      "get": {
+        "summary": "List sessions",
+        "description": "Scope: read:sessions",
+        "parameters": [
+          { "name": "from", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "to", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "department_id", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["DRAFT", "PUBLISHED", "CANCELLED"] } }
+        ],
+        "responses": {
+          "200": { "description": "Sessions", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Session" } } } } } } }
+        }
+      },
+      "post": {
+        "summary": "Create a DRAFT session",
+        "description": "Scope: write:sessions",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["department_id", "title", "date_start", "date_end", "location_type"],
+                "properties": {
+                  "department_id": { "type": "string", "format": "uuid" },
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "date_start": { "type": "string", "format": "date-time" },
+                  "date_end": { "type": "string", "format": "date-time" },
+                  "location_type": { "type": "string", "enum": ["MS_TEAMS", "IN_PERSON", "HYBRID", "JITSI"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Session" } } } } } },
+          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/sessions/{id}": {
+      "get": {
+        "summary": "Get a session",
+        "description": "Scope: read:sessions",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Session", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Session" } } } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/sessions/{id}/publish": {
+      "post": {
+        "summary": "Publish a session",
+        "description": "Scope: write:sessions. Idempotent; emits the session.published webhook on transition.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Published session" },
+          "400": { "description": "Publish blocked (e.g. session already ended)" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/sessions/{id}/attendance": {
+      "get": {
+        "summary": "List computed attendance for a session",
+        "description": "Scope: read:attendance. Aggregated, evidence-based rows.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Attendance rows", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/AttendanceRow" } } } } } } }
+        }
+      }
+    },
+    "/departments": {
+      "get": {
+        "summary": "List departments",
+        "description": "Scope: read:departments",
+        "responses": { "200": { "description": "Departments (id, name, department_code)" } }
+      }
+    },
+    "/slots": {
+      "get": {
+        "summary": "List open, future teaching slots",
+        "description": "Scope: read:slots",
+        "responses": { "200": { "description": "Open slots" } }
+      }
+    },
+    "/certificates/{code}": {
+      "get": {
+        "summary": "Verify a certificate by code",
+        "description": "Scope: read:certificates. Only certificates in the token's org are confirmed.",
+        "parameters": [{ "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Certificate details with valid: true" },
+          "404": { "description": "Not found" }
+        }
+      }
+    }
+  }
+}
