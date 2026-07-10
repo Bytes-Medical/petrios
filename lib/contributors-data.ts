@@ -15,8 +15,16 @@ export interface CuratedContributor {
 export const CURATED_CONTRIBUTORS: CuratedContributor[] = [
   {
     name: 'Akanimoh Osutuk',
-    role: 'Creator & maintainer',
+    role: 'Founder',
     url: 'https://github.com/FibrinLab',
+  },
+  {
+    name: 'Dr Umberto Piaggio',
+    role: 'Advisor',
+  },
+  {
+    name: 'Dr Marcus Baw',
+    role: 'Advisor',
   },
   // Add contributors here, e.g.:
   // { name: 'Dr A. Example', role: 'Clinical education advisor' },
