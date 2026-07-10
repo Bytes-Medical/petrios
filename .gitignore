@@ -37,3 +37,6 @@ next-env.d.ts
 
 # Supabase CLI artifacts
 supabase/.temp/
+
+# Personal working notes
+tests.md
