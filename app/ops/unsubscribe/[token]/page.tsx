@@ -10,11 +10,12 @@ export const dynamic = 'force-dynamic'
  * work without a login but cannot be forged or enumerated. One click
  * opts out — the standard expectation for email unsubscribe links.
  */
-export default async function UnsubscribePage({
-  params,
-}: {
-  params: { token: string }
-}) {
+export default async function UnsubscribePage(
+  props: {
+    params: Promise<{ token: string }>
+  }
+) {
+  const params = await props.params;
   const verified = verifyUnsubToken(params.token)
 
   if (!verified) {

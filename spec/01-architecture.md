@@ -2,7 +2,7 @@
 
 ## Stack
 
-- **Next.js 14 App Router** + TypeScript. All mutations are **server
+- **Next.js 16 App Router** + TypeScript + React 19. All mutations are **server
   actions** in `app/actions/*`; API routes exist only for cron jobs
   (`app/api/cron/*`), the ICS feed, and feedback stats.
 - **Supabase**: Postgres with Row Level Security + Supabase Auth (email
@@ -54,7 +54,8 @@ UI (app/ pages, components/)          — rendering + client state only
 
 ## Middleware & public routes
 
-`middleware.ts` redirects unauthenticated users to `/login`. Public
+`proxy.ts` (the Next 16 proxy convention, formerly middleware.ts) redirects
+unauthenticated users to `/login`. Public
 surfaces (each a capability URL or genuinely public page): `/`, `/login`,
 `/signup`, `/verify/*` (certificates), `/join/*`, session + department
 feedback pages, teacher RSVP (`/sessions/[id]/teacher-rsvp/[code]`), slot

@@ -2,11 +2,12 @@ import { getCertificateByCode } from '@/app/actions/certificates'
 import { buildSignatories } from '@/lib/certificates/signatories'
 import Image from 'next/image'
 
-export default async function VerifyCertificatePage({
-  params,
-}: {
-  params: { certificateId: string }
-}) {
+export default async function VerifyCertificatePage(
+  props: {
+    params: Promise<{ certificateId: string }>
+  }
+) {
+  const params = await props.params;
   const certificate = await getCertificateByCode(params.certificateId)
 
   return (

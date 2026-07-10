@@ -5,11 +5,12 @@ import { getJoinInviteLandingData } from '@/app/actions/member-onboarding'
 
 export const dynamic = 'force-dynamic'
 
-export default async function JoinDepartmentPage({
-  params,
-}: {
-  params: { code: string }
-}) {
+export default async function JoinDepartmentPage(
+  props: {
+    params: Promise<{ code: string }>
+  }
+) {
+  const params = await props.params;
   const invite = await getJoinInviteLandingData(params.code)
 
   if (!invite) {

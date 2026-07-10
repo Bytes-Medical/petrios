@@ -11,11 +11,12 @@ import { getSessionInvitations } from '@/app/actions/teacher-invitations'
 import Link from 'next/link'
 import { ManageSessionTabs } from '@/components/ManageSessionTabs'
 
-export default async function ManageSessionPage({
-  params,
-}: {
-  params: { id: string }
-}) {
+export default async function ManageSessionPage(
+  props: {
+    params: Promise<{ id: string }>
+  }
+) {
+  const params = await props.params;
   const user = await getCurrentUser()
 
   if (!user) {

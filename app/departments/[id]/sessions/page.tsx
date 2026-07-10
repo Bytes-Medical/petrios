@@ -8,13 +8,14 @@ import Link from 'next/link'
 import { Button } from '@/components/Button'
 import { DeleteSessionButton } from '@/components/DeleteSessionButton'
 
-export default async function DepartmentSessionsPage({
-  params,
-}: {
-  params: { id: string }
-}) {
+export default async function DepartmentSessionsPage(
+  props: {
+    params: Promise<{ id: string }>
+  }
+) {
+  const params = await props.params;
   const user = await getCurrentUser()
-  
+
   if (!user) {
     redirect('/login')
   }

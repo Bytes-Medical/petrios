@@ -3,10 +3,8 @@ import { requireAuth, requireOrg, getCurrentUser } from '@/lib/auth'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
 import * as certificatesDb from '@/lib/db/certificates'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const userId = await requireAuth()
     const orgId = await requireOrg()

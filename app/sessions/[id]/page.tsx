@@ -11,13 +11,14 @@ import { isDepartmentModerator } from '@/lib/auth'
 import { profileDisplayName } from '@/lib/contacts'
 import * as onboardingDb from '@/lib/db/onboarding'
 
-export default async function SessionPage({
-  params,
-}: {
-  params: { id: string }
-}) {
+export default async function SessionPage(
+  props: {
+    params: Promise<{ id: string }>
+  }
+) {
+  const params = await props.params;
   const user = await getCurrentUser()
-  
+
   if (!user) {
     redirect('/login')
   }

@@ -11,11 +11,12 @@ import { dayKeyFromIso } from '@/lib/date-picker'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DepartmentSchedulePage({
-  params,
-}: {
-  params: { id: string }
-}) {
+export default async function DepartmentSchedulePage(
+  props: {
+    params: Promise<{ id: string }>
+  }
+) {
+  const params = await props.params;
   const user = await getCurrentUser()
   if (!user) redirect('/login')
 

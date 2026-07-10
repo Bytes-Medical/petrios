@@ -7,11 +7,12 @@ import * as sessionsDb from '@/lib/db/sessions'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DepartmentFeedbackPage({
-  params,
-}: {
-  params: { id: string }
-}) {
+export default async function DepartmentFeedbackPage(
+  props: {
+    params: Promise<{ id: string }>
+  }
+) {
+  const params = await props.params;
   const department = await departmentsDb.findDepartmentPublic(params.id)
 
   if (!department) {

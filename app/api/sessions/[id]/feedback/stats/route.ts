@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSessionFeedbackStats } from '@/app/actions/feedback'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const stats = await getSessionFeedbackStats(params.id)
     return NextResponse.json(stats)

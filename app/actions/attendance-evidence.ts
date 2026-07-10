@@ -17,9 +17,8 @@ import {
 } from '@/lib/attendance/compute'
 import { generateCode } from '@/lib/codes'
 
-// Re-export so existing `import type { EvidenceSource } from './attendance-evidence'`
-// callers stay working after the DAL move.
-export type { EvidenceSource, EvidenceMetadata }
+// NOTE: Next 16 forbids non-async exports from 'use server' modules — import
+// EvidenceSource/EvidenceMetadata types from '@/lib/db/attendance' directly.
 
 /**
  * Add evidence to the attendance system.

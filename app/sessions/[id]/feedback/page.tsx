@@ -5,11 +5,12 @@ import { FeedbackForm } from '@/components/FeedbackForm'
 import { normalizeDepartmentFeedbackFields } from '@/lib/feedback-form'
 import * as sessionsDb from '@/lib/db/sessions'
 
-export default async function SessionFeedbackPage({
-  params,
-}: {
-  params: { id: string }
-}) {
+export default async function SessionFeedbackPage(
+  props: {
+    params: Promise<{ id: string }>
+  }
+) {
+  const params = await props.params;
   const session = await sessionsDb.findPublishedSessionWithFeedbackFields(params.id)
 
   if (!session || session.status !== 'PUBLISHED') {

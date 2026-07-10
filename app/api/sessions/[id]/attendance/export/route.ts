@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exportAttendanceCSV } from '@/app/actions/attendance'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const csv = await exportAttendanceCSV(params.id)
     return new NextResponse(csv, {

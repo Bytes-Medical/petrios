@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from './Button'
 import { Input } from './Input'
@@ -85,12 +85,12 @@ export function FeedbackTemplatePanel({
     () => initialFields[0]?.id ?? null
   )
 
-  // Keep activeId in sync if the current active field is removed
-  useEffect(() => {
-    if (activeId && !fields.some((field) => field.id === activeId)) {
-      setActiveId(fields[0]?.id ?? null)
-    }
-  }, [fields, activeId])
+  // Derive the selection during render: if the chosen field was removed,
+  // fall back to the first field (no state-sync effect needed).
+  const effectiveActiveId =
+    activeId && fields.some((field) => field.id === activeId)
+      ? activeId
+      : fields[0]?.id ?? null
 
   function updateField(index: number, patch: Partial<DepartmentFeedbackField>) {
     setFields((currentFields) =>
@@ -189,7 +189,7 @@ export function FeedbackTemplatePanel({
 
       <div className="space-y-3">
         {fields.map((field, index) => {
-          const isActive = field.id === activeId
+          const isActive = field.id === effectiveActiveId
           const isFirst = index === 0
           const isLast = index === fields.length - 1
 

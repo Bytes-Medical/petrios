@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { checkIn } from '@/app/actions/attendance'
 import { JITSI_DOMAIN, jitsiMeetingUrl, jitsiRoomName } from '@/lib/jitsi'
@@ -42,7 +42,14 @@ export function JitsiMeetingPanel({
   const [joined, setJoined] = useState(false)
   const checkedIn = useRef(false)
 
-  const now = Date.now()
+  // Clock as state (render must stay pure); the minute tick also makes the
+  // Join button appear/disappear without a page refresh.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
+
   const opensAt = new Date(dateStart).getTime() - ROOM_OPEN_MINS_BEFORE * 60 * 1000
   const closesAt = new Date(dateEnd).getTime() + ROOM_CLOSE_MINS_AFTER * 60 * 1000
 

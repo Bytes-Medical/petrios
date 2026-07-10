@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateGroupCode } from '@/app/actions/attendance-evidence'
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const result = await generateGroupCode(params.id)
     return NextResponse.json(result)

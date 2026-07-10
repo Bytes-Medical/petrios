@@ -7,11 +7,12 @@ import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
 
 export const dynamic = 'force-dynamic'
 
-export default async function TeacherRsvpPage({
-  params,
-}: {
-  params: { id: string; code: string }
-}) {
+export default async function TeacherRsvpPage(
+  props: {
+    params: Promise<{ id: string; code: string }>
+  }
+) {
+  const params = await props.params;
   const invitation = await teacherInvitationsDb.findInvitationByCodeAndSession({
     inviteCode: params.code,
     sessionId: params.id,

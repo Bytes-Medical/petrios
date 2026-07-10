@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getSessionFeedbackAudit } from '@/app/actions/feedback'
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const audit = await getSessionFeedbackAudit(params.id)
     return NextResponse.json(audit)

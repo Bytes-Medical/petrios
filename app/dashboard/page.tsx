@@ -15,11 +15,12 @@ import { OpenSlotsPanel } from '@/components/OpenSlotsPanel'
 import { ensurePersonalWorkspace } from '@/app/actions/personal-workspace'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams?: { tab?: string }
-}) {
+export default async function DashboardPage(
+  props: {
+    searchParams?: Promise<{ tab?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser()
 
   if (!user) {

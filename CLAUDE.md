@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run dev      # Dev server at localhost:3000
 npm run build    # Production build (also serves as type-check)
-npm run lint     # ESLint via next lint
+npm run lint     # ESLint CLI (flat config in eslint.config.mjs)
 npm test         # Vitest (pure-logic tests colocated as lib/**/*.test.ts)
 ```
 
@@ -17,7 +17,7 @@ Database migrations live in `supabase/migrations/` and are applied via `supabase
 
 ## Architecture
 
-Next.js 14 App Router application — a teaching management platform for NHS trainees. Multi-tenant with organizations and departments.
+Next.js 16 App Router application — a teaching management platform for NHS trainees. Multi-tenant with organizations and departments.
 
 ### Backend Pattern
 
@@ -28,7 +28,7 @@ All data mutations use **Next.js Server Actions** in `app/actions/`. There is no
 ### Auth & Middleware
 
 - Supabase Auth with email/password. Session managed via cookies.
-- `middleware.ts` — redirects unauthenticated users to `/login`. Public routes: `/`, `/login`, `/signup`, `/verify/*`, feedback pages, teacher RSVP pages.
+- `proxy.ts` (Next 16 proxy convention, formerly middleware) — redirects unauthenticated users to `/login`. Public routes: `/`, `/login`, `/signup`, `/verify/*`, feedback pages, teacher RSVP pages.
 - `lib/auth.ts` — helper functions: `getCurrentUser()`, `getCurrentOrgId()`, `requireAuth()`, `requireOrg()`, `isOrgAdmin()`, `isSuperAdmin()`, `isDepartmentModerator()`.
 
 ### Role Hierarchy

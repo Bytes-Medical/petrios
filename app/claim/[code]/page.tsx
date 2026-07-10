@@ -4,11 +4,12 @@ import * as slotsDb from '@/lib/db/teaching-slots'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ClaimSlotPage({
-  params,
-}: {
-  params: { code: string }
-}) {
+export default async function ClaimSlotPage(
+  props: {
+    params: Promise<{ code: string }>
+  }
+) {
+  const params = await props.params;
   const link = await slotsDb.findClaimLinkByCode(params.code)
 
   if (!link || !link.contact_id) {

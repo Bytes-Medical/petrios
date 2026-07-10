@@ -9,13 +9,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@jitsi/react-sdk": "^1.4.4",
-    "@react-pdf/renderer": "^3.4.4",
+    "@react-pdf/renderer": "^4.5.1",
     "@schedule-x/calendar": "^4.3.1",
     "@schedule-x/events-service": "^4.3.1",
     "@schedule-x/react": "^4.1.0",
@@ -26,10 +26,10 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "ical-generator": "^10.1.0",
-    "next": "^14.2.35",
+    "next": "^16.2.10",
     "qrcode": "^1.5.4",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tailwind-merge": "^3.6.0",
     "temporal-polyfill": "^0.3.0",
     "zod": "^3.22.4"
@@ -43,18 +43,24 @@
     },
     "@next/eslint-plugin-next": {
       "glob": "^10.5.0"
+    },
+    "next": {
+      "postcss": "^8.5.10"
     }
   },
   "devDependencies": {
     "@types/node": "^20.11.5",
-    "@types/react": "^18.2.48",
-    "@types/react-dom": "^18.2.18",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.17",
-    "eslint": "^8.56.0",
-    "eslint-config-next": "14.2.5",
-    "postcss": "^8.4.33",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.10",
+    "postcss": "^8.5.10",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.9"
+  },
+  "engines": {
+    "node": ">=20.9"
   }
 }

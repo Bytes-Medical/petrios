@@ -5,13 +5,14 @@ import { Card } from '@/components/Card'
 import { getDepartment } from '@/app/actions/departments'
 import { SessionForm } from '@/components/SessionForm'
 
-export default async function NewSessionPage({
-  params,
-}: {
-  params: { id: string }
-}) {
+export default async function NewSessionPage(
+  props: {
+    params: Promise<{ id: string }>
+  }
+) {
+  const params = await props.params;
   const user = await getCurrentUser()
-  
+
   if (!user) {
     redirect('/login')
   }

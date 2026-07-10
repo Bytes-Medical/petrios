@@ -48,7 +48,7 @@ departments; trainees need accounts, external teachers don't.
 
 ## Tech stack
 
-- Next.js 14 (App Router) + TypeScript, server actions for all mutations
+- Next.js 16 (App Router) + TypeScript + React 19, server actions for all mutations
 - Supabase (Postgres + Row Level Security) and Supabase Auth
 - Tailwind CSS with cva-based UI primitives (neo-brutalist design system)
 - OpenAI Chat Completions (via `fetch`, no SDK) for the AI features —
@@ -62,7 +62,7 @@ departments; trainees need accounts, external teachers don't.
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 20.9+ and npm
 - A Supabase project
 
 ### Installation
