@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose an improvement or new capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the workflow pain, not just the solution — who hits it and when?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: Optional. Check ROADMAP.md and spec/ first — link the relevant spec section if applicable.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Sessions & scheduling
+        - Attendance & evidence
+        - Feedback & certificates
+        - Portfolio / recall / federation
+        - Bytes Ops (AI layer)
+        - API / webhooks / integrations
+        - Self-hosting & operations
+        - Other

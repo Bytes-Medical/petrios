@@ -12,7 +12,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "test:e2e": "playwright test",
+    "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
     "@jitsi/react-sdk": "^1.4.4",
@@ -52,6 +54,7 @@
     }
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^20.11.5",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.2.17",

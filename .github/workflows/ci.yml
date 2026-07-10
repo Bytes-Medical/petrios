@@ -79,3 +79,25 @@ jobs:
           fi
 
           exit $failed
+
+  e2e-smoke:
+    name: E2E smoke (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # Unauthenticated smoke against the dev server with placeholder env —
+      # see playwright.config.ts (authed e2e is tracked in ROADMAP.md).
+      - name: Run smoke tests
+        run: npm run test:e2e

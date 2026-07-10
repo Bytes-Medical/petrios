@@ -1,0 +1,41 @@
+name: Bug report
+description: Something is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a session with …
+        2. Publish it
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: e.g. main @ a728bf3, or your instance version
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Self-hosted (Docker)
+        - Self-hosted (other)
+        - Local development
+        - Hosted demo
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Server logs / browser console. Redact anything sensitive.
+      render: shell
