@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { AuditSessionsTable } from './AuditSessionsTable'
 import { AuditCertificateTable } from './AuditCertificateTable'
+import { EquityPanel } from './EquityPanel'
 import { AuditMemberPanel } from './AuditMemberPanel'
 import { Button } from './Button'
 import { Input } from './Input'
@@ -14,7 +15,7 @@ interface AuditDashboardProps {
 }
 
 export function AuditDashboard({ data }: AuditDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'sessions' | 'certificates' | 'members'>('sessions')
+  const [activeTab, setActiveTab] = useState<'sessions' | 'certificates' | 'members' | 'equity'>('sessions')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [downloading, setDownloading] = useState(false)
@@ -54,6 +55,7 @@ export function AuditDashboard({ data }: AuditDashboardProps) {
     { id: 'sessions' as const, label: 'Sessions' },
     { id: 'certificates' as const, label: 'Certificates' },
     { id: 'members' as const, label: 'Members' },
+    { id: 'equity' as const, label: 'Equity' },
   ]
 
   async function handleDownloadReport() {
@@ -157,6 +159,7 @@ export function AuditDashboard({ data }: AuditDashboardProps) {
       {activeTab === 'members' && (
         <AuditMemberPanel summary={data.memberSummary} members={data.memberDetails} />
       )}
+      {activeTab === 'equity' && <EquityPanel members={data.memberDetails} />}
     </div>
   )
 }
