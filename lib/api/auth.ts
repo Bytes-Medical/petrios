@@ -9,16 +9,8 @@ import * as apiPlatformDb from '@/lib/db/api-platform'
  * scope checks are explicit per route.
  */
 
-export const API_SCOPES = [
-  'read:sessions',
-  'write:sessions',
-  'read:attendance',
-  'read:certificates',
-  'read:departments',
-  'read:slots',
-] as const
-
-export type ApiScope = (typeof API_SCOPES)[number]
+import type { ApiScope } from './scopes'
+export { API_SCOPES, type ApiScope } from './scopes'
 
 export function generateApiToken(): { token: string; hash: string; prefix: string } {
   const token = `bt_${randomBytes(24).toString('hex')}`

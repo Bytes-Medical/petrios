@@ -66,6 +66,9 @@ claiming (`/claim/[code]`), newsletter unsubscribe
 ## Environment
 
 Documented in `.env.example`. Server-only values never reach the client;
-only `NEXT_PUBLIC_*` do. Every optional integration (Resend, OpenAI, Jitsi
-domain) degrades gracefully when unset — dev works with just the Supabase
-values (email logs to console).
+only `NEXT_PUBLIC_*` do. Every optional integration degrades gracefully when
+unset — dev works with just the Supabase values (email logs to console).
+Provider adapters make self-hosting first-class: email is SMTP or Resend
+behind one interface, AI honours `OPENAI_BASE_URL`, video honours
+`NEXT_PUBLIC_JITSI_DOMAIN`; `/api/health` reports liveness + db. Deployment
+and the public API/webhooks/federation layer: spec/09.

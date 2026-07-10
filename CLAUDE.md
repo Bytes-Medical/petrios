@@ -54,6 +54,7 @@ The attendance system is an append-only evidence aggregation pipeline (documente
 - **Byte Meet (Jitsi video)**: `JITSI` location type whose room is DERIVED from the session id (`lib/jitsi.ts` — no stored URL) and embedded on the session page via `@jitsi/react-sdk` (`components/JitsiMeetingPanel.tsx`, client-only). Joining fires the normal `checkIn` self check-in. `sessionMeetingUrl()` in `lib/jitsi.ts` is the single join-URL resolver for ICS/reminders/teacher emails/RSVP — use it instead of reading `teams_meeting_url` directly. Backend swaps via `NEXT_PUBLIC_JITSI_DOMAIN` (default meet.jit.si).
 - **Cron jobs**: `app/api/cron/post-session-reports` (certificates + report emails after sessions end), `app/api/cron/session-reminders` (reminder emails ~24h before a session), and `app/api/cron/recall-send` (Byte Recall emails at end+3d/+14d). All idempotent via watermark columns and authenticated with `?secret=CRON_SECRET` (`unauthorizedCronResponse`).
 - **Evidence Engine (spec/08)**: trainee curriculum passport + ARCP portfolio packs (`app/actions/portfolio.ts`, `lib/portfolio/*`, `session_reflections` + `portfolio_packs` tables, public verify at `/verify/pack/[code]`) and teacher appraisal dossiers (Teaching tab).
+- **Platform layer (spec/09)**: public API `/api/v1` (org-scoped `bt_` bearer tokens, hashed at rest, scoped; thin routes over `lib/db/api-reads.ts`; OpenAPI at `public/openapi.json`), signed webhooks (`lib/webhooks.ts` — fire-and-forget, HMAC `X-Bytes-Signature`, SSRF-guarded; events: session.published, attendance.computed, certificate.issued, slot.claimed), federation (`lib/federation.ts` Ed25519 signed teaching records, `/.well-known/bytes-teaching`, `/verify/record`), self-hosting (SMTP transport, `OPENAI_BASE_URL`, Docker + `/api/health` + `scripts/migrate.mjs`; `docs/self-hosting.md`).
 - **Byte Recall (spec/08)**: AI-drafted recall questions (gateway purpose `recall_questions`), moderator-approved on the session manage Recall tab, emailed via `recall-send`; absentees passing 2/3 within 21 days earn catch-up attendance via the lowest-priority `RECALL` evidence source (always visible as the primary source). Public answer page `/recall/[token]` (HMAC token, `lib/recall.ts`).
 - **Address book**: org-scoped `external_contacts` + `contact_groups` (deny-all RLS, service-role DAL `lib/db/external-contacts.ts`, managed in Settings). Contacts auto-captured from external teacher invitations/RSVPs; groups are the audience unit for slot publications.
 - **Teaching slots (Calendly-style)**: moderators bulk-create open slots (`/departments/[id]/schedule`), publish them to contact groups and/or registered members, and invitees claim first-come-first-served (atomic CAS in `lib/db/teaching-slots.ts`). Claiming creates a DRAFT session with the claimer attached as teacher; externals claim via the public `/claim/[code]` page, members via the dashboard Teaching tab. Open slots render as "Available" events on `SessionCalendar` (`slots` prop).
@@ -66,11 +67,14 @@ NEXT_PUBLIC_SUPABASE_URL      # Supabase project URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY # Supabase anon key
 SUPABASE_SERVICE_ROLE_KEY     # Supabase service role key (server-only)
 NEXT_PUBLIC_APP_URL           # Public app URL used in emailed sign-in/invite links
-RESEND_API_KEY                # Resend API key (server-only)
+RESEND_API_KEY                # Resend API key (server-only; OR use SMTP_HOST/PORT/USER/PASS/SECURE for self-hosted SMTP)
 MAIL_FROM                     # Default sender, "Name <email@verified-domain>" (server-only)
 CRON_SECRET                   # Shared secret for /api/cron/* routes (server-only)
 OPENAI_API_KEY                # OpenAI API key for AI feedback summaries + Bytes Ops (server-only, optional)
 OPENAI_MODEL                  # Optional model override (default gpt-5.5)
+OPENAI_BASE_URL               # Optional OpenAI-compatible endpoint (Azure/local models; default api.openai.com/v1)
+DATABASE_URL                  # Optional: plain-Postgres migration runner (npm run db:migrate)
+INSTANCE_SIGNING_KEY          # Optional: Ed25519 identity enabling signed teaching-record exports (federation)
 NEXT_PUBLIC_JITSI_DOMAIN      # Jitsi domain for Byte Meet rooms (optional, default meet.jit.si)
 OPS_ENABLED                   # Bytes Ops kill switch: unset/anything = on, "false" = every ops surface halts
 ```

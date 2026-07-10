@@ -20,6 +20,7 @@ the code is a bug in the spec.
 | [06-bytes-ops.md](./06-bytes-ops.md) | The AI agent layer: invariants, approval gate, gateway, crons, assistant |
 | [07-conventions.md](./07-conventions.md) | Code, UI, email, notification, cron, and testing conventions |
 | [08-portfolio-and-recall.md](./08-portfolio-and-recall.md) | Evidence Engine (ARCP packs, teacher dossiers) + Byte Recall with catch-up attendance |
+| [09-platform-api-and-self-hosting.md](./09-platform-api-and-self-hosting.md) | Public API + webhooks, federation, provider adapters, deployment |
 
 ## Non-negotiable invariants (summary)
 

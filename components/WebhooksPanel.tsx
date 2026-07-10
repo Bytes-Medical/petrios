@@ -9,7 +9,7 @@ import {
   type WebhookView,
 } from '@/app/actions/api-platform'
 import type { WebhookDelivery } from '@/lib/db/api-platform'
-import { WEBHOOK_EVENTS } from '@/lib/webhooks'
+import { WEBHOOK_EVENTS } from '@/lib/webhook-events'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Input } from './Input'

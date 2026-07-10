@@ -67,6 +67,23 @@ departments; trainees need accounts, external teachers don't.
 - `@react-pdf/renderer` for certificates, Schedule-X for the calendar,
   Vitest for tests
 
+## Self-hosting & API
+
+Byte Teaching is built to run on **your own infrastructure**: Docker image +
+compose file, SMTP email, an OpenAI-compatible `OPENAI_BASE_URL` for
+in-network AI (or none), self-hosted Jitsi, a plain-Postgres migration
+runner, and a health endpoint — see [docs/self-hosting.md](./docs/self-hosting.md).
+
+Integrate anything via the **org-scoped REST API** (`/api/v1`, tokens with
+scopes, [OpenAPI schema](./public/openapi.json)) and **signed webhooks** —
+see [docs/api.md](./docs/api.md). Instances publish a federation identity at
+`/.well-known/bytes-teaching`, and members can export **signed, portable
+teaching records** any instance can verify at `/verify/record`.
+
+For NHS deployments: [DTAC self-assessment](./docs/compliance/dtac.md) and a
+[DPIA template](./docs/compliance/dpia-template.md). What's next lives in
+[ROADMAP.md](./ROADMAP.md).
+
 ## Setup
 
 ### Prerequisites
@@ -105,6 +122,7 @@ supabase db push
 ```bash
 npm run dev    # http://localhost:3000
 npm test       # Vitest (pure-logic tests, lib/**/*.test.ts)
+npm run test:e2e   # Playwright smoke (public surface)
 npm run lint
 npm run build
 ```

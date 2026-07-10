@@ -9,14 +9,8 @@ import * as apiPlatformDb from '@/lib/db/api-platform'
  * Settings panel. One attempt per event in v1 (retries: see ROADMAP.md).
  */
 
-export const WEBHOOK_EVENTS = [
-  'session.published',
-  'attendance.computed',
-  'certificate.issued',
-  'slot.claimed',
-] as const
-
-export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]
+import type { WebhookEvent } from './webhook-events'
+export { WEBHOOK_EVENTS, type WebhookEvent } from './webhook-events'
 
 export function signWebhookBody(secret: string, body: string): string {
   return `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`

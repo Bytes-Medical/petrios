@@ -7,7 +7,7 @@ import {
   revokeOrgApiToken,
   type SafeApiToken,
 } from '@/app/actions/api-platform'
-import { API_SCOPES } from '@/lib/api/auth'
+import { API_SCOPES } from '@/lib/api/scopes'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Input } from './Input'

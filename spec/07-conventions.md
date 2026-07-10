@@ -16,6 +16,10 @@
   `generateCode` (`lib/codes.ts`), `sessionMeetingUrl` (`lib/jitsi.ts`),
   `unauthorizedCronResponse` (`lib/cron-auth.ts`), `unwrapEmbed`
   (`lib/db/unwrap.ts`).
+- Public API routes (`app/api/v1/*`) are thin: `authenticateApiRequest`
+  (scope check) → `lib/db/api-reads.ts` → stable serializers; response
+  shapes are contract (spec/09). Webhook emission is fire-and-forget via
+  `lib/webhooks.ts` only.
 - LLM access: only `lib/ai/llm.ts` (and the sanctioned tool loop in
   `lib/ops/agent-loop.ts`) may call the OpenAI API. Raw `fetch`, no SDK —
   same reasoning as email below.
@@ -35,11 +39,11 @@
 
 ## Email
 
-- `lib/email.ts` is a provider-neutral adapter over Resend's REST API via
-  `fetch` (deliberately no SDK): `getEmailClient().emails.send({from, to,
-  subject, html, attachments?})`, `getFromAddress()`. Dev behaviour: no
-  `RESEND_API_KEY` → console log-sink; `MAIL_DEV_REDIRECT` funnels all mail
-  to one inbox.
+- `lib/email.ts` is a provider-neutral adapter with transports selected by
+  env: `SMTP_HOST` (nodemailer, self-hosted) → `RESEND_API_KEY` (REST via
+  fetch) → dev console sink. Call sites only see
+  `getEmailClient().emails.send({from, to, subject, html, attachments?})` +
+  `getFromAddress()`; `MAIL_DEV_REDIRECT` funnels all mail to one inbox.
 - Templates: `lib/email-templates.ts` (+ `lib/ops/email-html.ts` for
   ops-drafted mail). Mono/inline-style HTML matching the app. All dynamic
   text is escaped (`escapeHtml`); LLM-drafted bodies are plain text that
