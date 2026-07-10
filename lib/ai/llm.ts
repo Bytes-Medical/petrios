@@ -21,6 +21,31 @@ export function isLlmConfigured(): boolean {
   return !!process.env.OPENAI_API_KEY
 }
 
+/**
+ * Shared POST to the chat-completions endpoint (auth, error shaping). Also
+ * used by the Bytes Ops tool-use loop — the one sanctioned caller outside
+ * this module.
+ */
+export async function postOpenAiChatCompletion(
+  body: Record<string, unknown>
+): Promise<unknown> {
+  const response = await fetch(OPENAI_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`OpenAI request failed (${response.status}): ${detail.slice(0, 300)}`)
+  }
+
+  return response.json()
+}
+
 export interface LlmUsage {
   inputTokens: number
   outputTokens: number
@@ -48,30 +73,16 @@ export async function askLlmWithUsage(input: {
 }): Promise<LlmResult | null> {
   if (!isLlmConfigured()) return null
 
-  const response = await fetch(OPENAI_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      max_completion_tokens: input.maxTokens ?? 8192,
-      ...(input.effort ? { reasoning_effort: input.effort } : {}),
-      ...(input.jsonMode ? { response_format: { type: 'json_object' } } : {}),
-      messages: [
-        { role: 'system', content: input.system },
-        { role: 'user', content: input.prompt },
-      ],
-    }),
-  })
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new Error(`OpenAI request failed (${response.status}): ${detail.slice(0, 300)}`)
-  }
-
-  const data = (await response.json()) as {
+  const data = (await postOpenAiChatCompletion({
+    model: LLM_MODEL,
+    max_completion_tokens: input.maxTokens ?? 8192,
+    ...(input.effort ? { reasoning_effort: input.effort } : {}),
+    ...(input.jsonMode ? { response_format: { type: 'json_object' } } : {}),
+    messages: [
+      { role: 'system', content: input.system },
+      { role: 'user', content: input.prompt },
+    ],
+  })) as {
     model?: string
     choices?: {
       message?: { content?: string | null; refusal?: string | null }

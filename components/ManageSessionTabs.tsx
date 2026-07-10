@@ -40,6 +40,7 @@ export function ManageSessionTabs({
   isPersonal,
 }: ManageSessionTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'meeting' | 'teachers' | 'feedback' | 'audit' | 'certificates'>('overview')
+  const meetingUrl = sessionMeetingUrl(session)
   const [editMode, setEditMode] = useState(false)
 
   const tabs = [
@@ -100,10 +101,10 @@ export function ManageSessionTabs({
                     {formatDuration(exactDurationFromDates(session.date_start, session.date_end))}
                   </p>
                   <p><strong>Location:</strong> {LOCATION_TYPE_LABELS[session.location_type] || session.location_type}</p>
-                  {sessionMeetingUrl(session) && (
+                  {meetingUrl && (
                     <p>
                       <strong>Meeting link:</strong>{' '}
-                      <a href={sessionMeetingUrl(session)!} target="_blank" rel="noopener noreferrer" className="underline">
+                      <a href={meetingUrl} target="_blank" rel="noopener noreferrer" className="underline">
                         {session.location_type === 'JITSI' ? 'Open Byte Meet room' : 'Join Meeting'}
                       </a>
                     </p>
@@ -147,7 +148,7 @@ export function ManageSessionTabs({
                   below with external guests who don&apos;t have an account.
                 </p>
                 <p className="break-all border border-black bg-gray-50 px-3 py-2">
-                  {sessionMeetingUrl(session)}
+                  {meetingUrl}
                 </p>
               </div>
             ) : (

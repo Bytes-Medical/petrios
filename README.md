@@ -1,184 +1,141 @@
 # Byte Teaching
 
-A teaching management web application designed for NHS trainees to facilitate and encourage teaching, with an ultra-simple UI.
+A teaching management platform for NHS training programmes — scheduling,
+attendance, feedback, certificates, built-in video, and an AI operations
+layer, with an ultra-simple UI. Multi-tenant across organizations and
+departments; trainees need accounts, external teachers don't.
 
 ## Features
 
-- **Multi-tenancy**: Organizations and departments
-- **Role-based access**: org_admin, department_admin, faculty, trainee
-- **Session management**: Create, edit, publish, and cancel teaching sessions
-- **Evidence-based attendance**: Multiple check-in methods (self, group code, feedback) with audit trail
-- **Certificate generation**: PDF certificates for both teachers and attendees
-- **Certificate verification**: Public verification page for certificates
+- **Multi-tenancy & roles**: organizations → departments, with
+  `org_admin` > `department_admin` (moderator) > `faculty` > `trainee`
+  (plus platform-level super admins). Trainees join with a 6-digit
+  department code.
+- **Session management**: create, edit, publish, and cancel teaching
+  sessions (30 min–4 h, typed: STEPP / Clinical Skills / Simulation /
+  Academic), with an org-wide calendar and a subscribable ICS feed.
+- **Byte Meet video**: sessions can use a built-in Jitsi video room —
+  auto-generated per session (nothing to paste), embedded on the session
+  page, joinable by external guests via a plain link. Joining the embedded
+  room records attendance automatically. Microsoft Teams links are equally
+  supported for orgs that live in Teams.
+- **Evidence-based attendance**: an append-only evidence pipeline
+  (teacher marking > Teams > feedback > group code > self check-in) computes
+  PRESENT/LATE/ABSENT with configurable windows, locking, CSV export, and a
+  full audit trail. See [EVIDENCE_ATTENDANCE.md](./EVIDENCE_ATTENDANCE.md).
+- **Anonymous feedback**: per-session QR-code feedback with customizable
+  department forms, live stats, and optional AI summaries.
+- **Teacher invitations & RSVP**: invite registered members (accept/decline
+  from the dashboard) or external teachers by email (public RSVP link, no
+  account needed), with automatic 24h reminders.
+- **Teaching slots (Calendly-style)**: moderators publish open, claimable
+  teaching slots to contact groups and/or all members; first come, first
+  served — a claim creates a draft session with the claimer attached.
+- **Address book**: org-scoped external contacts and contact groups,
+  auto-captured from invitations and used as publishing audiences.
+- **Certificates**: PDF generation for teachers and attendees with a public
+  verification page (`/verify/[code]`).
+- **In-app notifications**: bell with read tracking for invitations,
+  responses, claims, and ops alerts.
+- **Bytes Ops (AI agent layer)**: drafts speaker-chase emails, post-session
+  thank-yous with feedback insights, and a weekly learning-points
+  newsletter; watches curriculum coverage (RCPCH Progress+ domains) and low
+  feedback scores; includes an organiser-only chat assistant that knows the
+  platform. **Nothing sends without human approval** — every outbound email
+  waits in an approval queue, all LLM calls go through one audited gateway
+  (prompt hashes, never text), anonymisation and welfare-signal safety rails
+  are built in, and `OPS_ENABLED=false` kills the whole layer.
 
-## Tech Stack
+## Tech stack
 
-- Next.js 14 (App Router) + TypeScript
-- Tailwind CSS
-- Supabase Auth for authentication
-- Supabase (Postgres + Row Level Security)
-- @react-pdf/renderer for PDF certificate generation
+- Next.js 14 (App Router) + TypeScript, server actions for all mutations
+- Supabase (Postgres + Row Level Security) and Supabase Auth
+- Tailwind CSS with cva-based UI primitives (neo-brutalist design system)
+- OpenAI Chat Completions (via `fetch`, no SDK) for the AI features —
+  optional, degrades gracefully
+- Jitsi Meet (`@jitsi/react-sdk`) for built-in video rooms
+- Resend REST API for transactional email (console log-sink in dev)
+- `@react-pdf/renderer` for certificates, Schedule-X for the calendar,
+  Vitest for tests
 
 ## Setup
 
 ### Prerequisites
 
 - Node.js 18+ and npm
-- Supabase account
+- A Supabase project
 
 ### Installation
 
-1. Clone the repository and install dependencies:
-
 ```bash
 npm install
+cp .env.example .env.local   # then fill in the values
 ```
 
-2. Set up environment variables:
+All environment variables are documented in [`.env.example`](./.env.example).
+The minimum for local development is the three Supabase values — email logs
+to the console without a Resend key, and AI/video features are optional.
 
-Create a `.env.local` file in the root directory with the following variables:
+### Supabase setup
 
-```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-# Public app URL used in emailed sign-in and invite links
-NEXT_PUBLIC_APP_URL=https://your-production-domain.example
-
-# Email delivery (Resend — https://resend.com/api-keys)
-RESEND_API_KEY=your-resend-api-key
-MAIL_FROM=Byte Teaching <no-reply@your-verified-domain>
-
-# Local testing — both optional:
-#   Leave RESEND_API_KEY unset in dev to log emails to the console
-#   instead of sending (works for any recipient, no provider needed).
-#   Or set a key + MAIL_DEV_REDIRECT to funnel ALL mail to one inbox.
-# MAIL_DEV_REDIRECT=you@example.com
-```
-
-### Supabase Setup
-
-1. Create a new Supabase project at https://supabase.com
-2. Enable Email authentication in Authentication > Providers
-3. In Authentication > URL Configuration, set the Site URL to the same value as `NEXT_PUBLIC_APP_URL`, and add your app callback URL to Redirect URLs, for example `https://your-production-domain.example/join/callback`.
-4. Run the migrations in `supabase/migrations/` in order:
-   - `000_organizations.sql` - Creates organizations and organization_members tables
-   - `001_initial_schema.sql` - Creates all other tables
-   - `002_rls_policies.sql` - Sets up Row Level Security policies
-   - `003_super_admin_and_join_requests.sql` - Super admin and join requests
-   - ... (all other migrations in order)
-   - `014_evidence_based_attendance.sql` - Evidence-based attendance system
-   - `015_attendance_evidence_rls.sql` - RLS for attendance evidence
-
-You can run these migrations using the Supabase SQL editor or CLI:
+1. Create a project at https://supabase.com and enable Email authentication
+   (Authentication → Providers).
+2. In Authentication → URL Configuration, set the Site URL to
+   `NEXT_PUBLIC_APP_URL` and add `<your-app-url>/join/callback` to Redirect
+   URLs.
+3. Apply the migrations in `supabase/migrations/` **in numeric order**
+   (`000_…` through the latest):
 
 ```bash
-# Using Supabase CLI (if installed)
 supabase db push
-
-# Or manually copy and paste the SQL into the Supabase SQL editor
+# or paste each file into the Supabase SQL editor, in order
 ```
 
-### Running the Application
+### Run
 
 ```bash
-npm run dev
+npm run dev    # http://localhost:3000
+npm test       # Vitest (pure-logic tests, lib/**/*.test.ts)
+npm run lint
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+### Cron jobs (production)
 
-## Project Structure
+Five idempotent routes under `/api/cron/`, each authenticated with
+`?secret=CRON_SECRET` — schedule them with Vercel Cron or any scheduler:
 
-```
-byte-teaching/
-├── app/
-│   ├── actions/          # Server actions
-│   │   ├── departments.ts
-│   │   ├── sessions.ts
-│   │   ├── attendance.ts
-│   │   ├── attendance-evidence.ts
-│   │   ├── certificates.ts
-│   │   ├── feedback.ts
-│   │   └── organizations.ts
-│   ├── api/              # API routes
-│   ├── dashboard/        # Dashboard page
-│   ├── departments/      # Department pages
-│   ├── sessions/         # Session pages
-│   ├── certificates/     # Certificates page
-│   ├── verify/           # Certificate verification
-│   ├── admin/            # Admin panel
-│   ├── login/            # Login page
-│   └── signup/           # Signup page
-├── components/           # React components
-├── lib/
-│   ├── supabase/         # Supabase client utilities
-│   ├── auth.ts           # Auth helpers
-│   ├── types.ts          # TypeScript types
-│   └── certificates/     # PDF generation
-├── supabase/
-│   └── migrations/       # Database migrations
-└── middleware.ts         # Auth middleware
-```
+| Route | Suggested schedule | What it does |
+|---|---|---|
+| `session-reminders` | hourly | Reminder emails ~24h before sessions |
+| `post-session-reports` | hourly | Certificates + report emails after sessions |
+| `ops-synthesis` | daily | AI feedback syntheses + thank-you drafts (approval-gated) |
+| `ops-weekly` | weekly | Speaker-chase drafts, low-score alerts, curriculum gap watch |
+| `ops-newsletter` | weekly (Mon) | Weekly learning-points newsletter draft (approval-gated) |
 
-## Database Schema
+## Architecture notes
 
-- **organizations**: Organization entities
-- **organization_members**: User roles within organizations
-- **departments**: Organization departments
-- **department_members**: User roles within departments
-- **sessions**: Teaching sessions (with attendance configuration)
-- **session_teachers**: Teachers assigned to sessions
-- **attendance_evidence**: Append-only audit trail of attendance evidence
-- **attendance**: Computed attendance records (derived from evidence)
-- **session_feedback**: Session feedback submissions
-- **certificates**: Generated certificates
+- **Server actions** in `app/actions/` do auth checks and orchestration, then
+  delegate all table access to the data-access layer in `lib/db/` — the only
+  code allowed to run data-plane Supabase queries (`lib/db/README.md`).
+- Several tables are **deny-all RLS** by design (notifications, address book,
+  teaching slots, all `ops_*` tables): they are reachable only through the
+  service-role DAL, with authorization enforced in the calling actions.
+- The **Bytes Ops** layer is strictly additive (`lib/ops/`, `/ops` routes,
+  `ops_*` tables) with hard invariants documented in [CLAUDE.md](./CLAUDE.md):
+  one inference gateway, one email send path, approval gate on everything
+  outbound.
+- `CLAUDE.md` doubles as the contributor-facing architecture reference.
 
-All tables use Row Level Security (RLS) to enforce organization and role-based access.
+## Usage (first run)
 
-## Usage
-
-### First Time Setup
-
-1. Sign up with email and password
-2. Create an organization in the Admin panel
-3. As an org admin, create departments
-4. Assign users to departments with appropriate roles
-
-### Creating Sessions
-
-1. Navigate to a department
-2. Click "Create Session"
-3. Fill in session details (title, date, location, etc.)
-4. Publish the session to make it visible
-
-### Attendance (Evidence-Based System)
-
-- **Self Check-in**: Attendees can check in during the session window (configurable, default: 15 min before to 45 min after start)
-- **Group Code**: Teachers can generate group codes/QR codes for group check-ins
-- **Feedback**: Submitting feedback can automatically mark attendance (if user is department member)
-- **Manual**: Department admins and faculty can manually confirm attendance
-- **Evidence Trail**: All attendance evidence is stored immutably for audit
-- **Locking**: Attendance can be locked after session ends to prevent changes
-- **Export**: Export attendance as CSV from the session page
-
-See [EVIDENCE_ATTENDANCE.md](./EVIDENCE_ATTENDANCE.md) for detailed documentation.
-
-### Certificates
-
-- Generate certificates for a session (creates certificates for all teachers and present attendees)
-- View your certificates on the Certificates page
-- Verify certificates using the public verification page: `/verify/[certificateCode]`
-
-## Deployment
-
-This application is ready for deployment on Vercel:
-
-1. Push your code to a Git repository
-2. Import the project in Vercel
-3. Add environment variables in Vercel dashboard
-4. Deploy
+1. Sign up, then create an organization via the Admin panel.
+2. Create departments; share each department's 6-digit code with trainees.
+3. Create and publish sessions (pick Byte Meet video, Teams, in person, or
+   hybrid) — or publish open teaching slots and let teachers claim them.
+4. During a session: attendees check in via QR/feedback/video join; after it,
+   generate certificates and read the AI feedback summary.
+5. Organisers: watch the approvals bell — Bytes Ops drafts, you decide.
 
 ## License
 
@@ -212,8 +169,8 @@ use cases.
 For commercial licensing inquiries, contact the copyright holder
 (Akanimoh Osutuk).
 
-### Contributing
+### Contributing & security
 
-Contributions are welcome. By submitting a patch you agree to the
-Developer Certificate of Origin (DCO) — see [`CONTRIBUTING.md`](./CONTRIBUTING.md)
-for details.
+Contributions are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+(DCO applies). Please report vulnerabilities privately as described in
+[`SECURITY.md`](./SECURITY.md).

@@ -187,6 +187,7 @@ export function SessionCalendar({
   const router = useRouter()
   const [copied, setCopied] = useState(false)
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
+  const selectedMeetingUrl = selectedSession ? sessionMeetingUrl(selectedSession) : null
   const [selectedSlot, setSelectedSlot] = useState<SlotEvent | null>(null)
   const [expandedDay, setExpandedDay] = useState<ExpandedDay | null>(null)
   const [eventsService] = useState(() => createEventsServicePlugin())
@@ -461,9 +462,9 @@ export function SessionCalendar({
                   >
                     Join video room
                   </button>
-                ) : sessionMeetingUrl(selectedSession) ? (
+                ) : selectedMeetingUrl ? (
                   <a
-                    href={sessionMeetingUrl(selectedSession)!}
+                    href={selectedMeetingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="border border-black bg-black px-4 py-3 font-mono text-sm text-white hover:bg-gray-800"
@@ -489,9 +490,9 @@ export function SessionCalendar({
                 <div className="border-b border-gray-200 pb-4">
                   <p className="mb-1 text-xs uppercase tracking-[0.18em] text-gray-500">Location</p>
                   <p>{getLocationLabel(selectedSession)}</p>
-                  {sessionMeetingUrl(selectedSession) ? (
+                  {selectedMeetingUrl ? (
                     <a
-                      href={sessionMeetingUrl(selectedSession)!}
+                      href={selectedMeetingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="mt-2 inline-block text-xs underline"

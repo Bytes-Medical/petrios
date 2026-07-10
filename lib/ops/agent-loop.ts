@@ -1,4 +1,4 @@
-import { LLM_MODEL, isLlmConfigured } from '@/lib/ai/llm'
+import { LLM_MODEL, isLlmConfigured, postOpenAiChatCompletion } from '@/lib/ai/llm'
 import { hashPrompt } from './gateway'
 import type { OpsRun } from './run'
 import type { OpsTool, ToolContext } from './tools'
@@ -11,7 +11,6 @@ import type { OpsTool, ToolContext } from './tools'
  * a hard iteration cap.
  */
 
-const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions'
 const MAX_ITERATIONS = 8
 const MAX_TOKENS = 4096
 
@@ -76,26 +75,12 @@ export async function runAgentLoop(input: {
   ]
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    const response = await fetch(OPENAI_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        max_completion_tokens: MAX_TOKENS,
-        messages,
-        tools: apiTools,
-      }),
-    })
-
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '')
-      throw new Error(`OpenAI request failed (${response.status}): ${detail.slice(0, 300)}`)
-    }
-
-    const data = (await response.json()) as {
+    const data = (await postOpenAiChatCompletion({
+      model: LLM_MODEL,
+      max_completion_tokens: MAX_TOKENS,
+      messages,
+      tools: apiTools,
+    })) as {
       model?: string
       choices?: { message?: OpenAiAssistantMessage; finish_reason?: string }[]
       usage?: { prompt_tokens?: number; completion_tokens?: number }
