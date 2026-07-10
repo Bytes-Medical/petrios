@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Detailed subsystem specs live in `spec/`** (see `spec/README.md` for the index and the non-negotiable invariants). Read the relevant spec before changing a subsystem, and update it in the same change if behaviour shifts. This file stays the compact summary.
+
 ## Commands
 
 ```bash
@@ -37,7 +39,7 @@ Super admins are stored in a separate `super_admins` table. Other roles are in `
 
 ### Evidence-Based Attendance
 
-The attendance system is an append-only evidence aggregation pipeline (documented in `EVIDENCE_ATTENDANCE.md`):
+The attendance system is an append-only evidence aggregation pipeline (documented in `spec/03-attendance.md`):
 - Evidence sources with priority: `TEACHER` > `TEAMS` > `FEEDBACK` > `GROUP_CODE` > `SELF_CHECKIN`
 - `attendance_evidence` table is immutable; `attendance` table is computed from it
 - Attendance can be locked to prevent recomputation

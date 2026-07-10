@@ -5,7 +5,7 @@ import type { AttendanceStatus } from '@/lib/types'
  * Pure attendance-computation logic shared by the interactive evidence
  * pipeline (app/actions/attendance-evidence.ts) and backend jobs
  * (app/api/cron/post-session-reports). Keep this module free of I/O so it
- * stays unit-testable; EVIDENCE_ATTENDANCE.md documents the semantics.
+ * stays unit-testable; spec/03-attendance.md documents the semantics.
  */
 
 export const EVIDENCE_PRIORITY: Record<EvidenceSource, number> = {

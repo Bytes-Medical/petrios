@@ -22,7 +22,7 @@ departments; trainees need accounts, external teachers don't.
 - **Evidence-based attendance**: an append-only evidence pipeline
   (teacher marking > Teams > feedback > group code > self check-in) computes
   PRESENT/LATE/ABSENT with configurable windows, locking, CSV export, and a
-  full audit trail. See [EVIDENCE_ATTENDANCE.md](./EVIDENCE_ATTENDANCE.md).
+  full audit trail. See [spec/03-attendance.md](./spec/03-attendance.md).
 - **Anonymous feedback**: per-session QR-code feedback with customizable
   department forms, live stats, and optional AI summaries.
 - **Teacher invitations & RSVP**: invite registered members (accept/decline
@@ -125,7 +125,9 @@ Five idempotent routes under `/api/cron/`, each authenticated with
   `ops_*` tables) with hard invariants documented in [CLAUDE.md](./CLAUDE.md):
   one inference gateway, one email send path, approval gate on everything
   outbound.
-- `CLAUDE.md` doubles as the contributor-facing architecture reference.
+- Detailed subsystem specifications live in [`spec/`](./spec/README.md) —
+  written for both contributors and AI coding assistants; `CLAUDE.md` is the
+  compact entry point.
 
 ## Usage (first run)
 
