@@ -54,7 +54,9 @@ export async function proxy(request: NextRequest) {
     // Recall answer page: HMAC capability link from the recall email.
     request.nextUrl.pathname.match(/^\/recall\/[^/]+$/) ||
     // Federation instance identity (public key discovery).
-    request.nextUrl.pathname.startsWith('/.well-known/')
+    request.nextUrl.pathname.startsWith('/.well-known/') ||
+    // Open-source project page.
+    request.nextUrl.pathname === '/contributors'
   )
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 

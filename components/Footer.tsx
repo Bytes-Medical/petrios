@@ -5,13 +5,36 @@ export function Footer() {
         <div className="text-center">
           <p className="font-mono text-sm text-gray-600">
             © {new Date().getFullYear()} Byte Teaching
-            <span className="text-clay-600"> ▪ </span>Simple.
-            <span className="text-clay-600"> ▪ </span>Effective.
-            <span className="text-clay-600"> ▪ </span>Reliable.
+            <span className="text-clay-600"> ▪ </span>Open source.
+            <span className="text-clay-600"> ▪ </span>Self-hostable.
+            <span className="text-clay-600"> ▪ </span>Yours.
           </p>
-          <a href="/privacy" className="mt-2 inline-block font-mono text-xs text-gray-500 underline hover:text-clay-700">
-            Privacy Policy
-          </a>
+          <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 font-mono text-xs text-gray-500">
+            <a
+              href="https://github.com/Bytes-Medical/bytes-teaching"
+              className="underline hover:text-clay-700"
+            >
+              GitHub
+            </a>
+            <a href="/contributors" className="underline hover:text-clay-700">
+              Contributors
+            </a>
+            <a
+              href="https://github.com/Bytes-Medical/bytes-teaching/blob/main/ROADMAP.md"
+              className="underline hover:text-clay-700"
+            >
+              Roadmap
+            </a>
+            <a
+              href="https://github.com/Bytes-Medical/bytes-teaching/blob/main/docs/api.md"
+              className="underline hover:text-clay-700"
+            >
+              API
+            </a>
+            <a href="/privacy" className="underline hover:text-clay-700">
+              Privacy
+            </a>
+          </div>
         </div>
       </div>
     </footer>

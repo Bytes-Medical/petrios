@@ -101,15 +101,56 @@ export default async function Home() {
             {/* Features */}
             <div className="border-t border-gray-200 pt-6 sm:pt-8">
               <h2 className="mb-3 text-base sm:text-lg font-mono font-bold">
-                Everything in one place
+                Everything a teaching programme runs on
               </h2>
               <ul className="font-mono text-sm text-gray-700 space-y-2">
-                <li><span className="text-clay-600">▸</span> <strong>Evidence-based attendance</strong> — multiple check-in methods with a full audit trail</li>
-                <li><span className="text-clay-600">▸</span> <strong>QR &amp; group codes</strong> — fast, low-friction attendance tracking</li>
-                <li><span className="text-clay-600">▸</span> <strong>Anonymous feedback</strong> — collected and analysed automatically</li>
-                <li><span className="text-clay-600">▸</span> <strong>Certificate generation</strong> — automatic PDFs for teachers and attendees</li>
-                <li><span className="text-clay-600">▸</span> <strong>Simple interface</strong> — clean, minimal design focused on usability</li>
+                <li><span className="text-clay-600">▸</span> <strong>Evidence-based attendance</strong> — QR codes, group codes, video joins and feedback all feed one audited record</li>
+                <li><span className="text-clay-600">▸</span> <strong>Built-in video</strong> — every session can carry its own Byte Meet room; joining checks you in automatically</li>
+                <li><span className="text-clay-600">▸</span> <strong>Claimable teaching slots</strong> — publish availability Calendly-style; teachers (even without accounts) claim first-come-first-served</li>
+                <li><span className="text-clay-600">▸</span> <strong>Anonymous feedback &amp; AI summaries</strong> — collected by QR, analysed automatically, welfare-safe by design</li>
+                <li><span className="text-clay-600">▸</span> <strong>Portfolio-ready evidence</strong> — verifiable ARCP packs for trainees, appraisal dossiers for teachers, spaced-recall follow-ups that turn attendance into retention</li>
+                <li><span className="text-clay-600">▸</span> <strong>An AI ops assistant that never acts alone</strong> — drafts speaker chases, thank-yous and a weekly digest; every email waits for human approval</li>
+                <li><span className="text-clay-600">▸</span> <strong>Certificates</strong> — automatic PDFs, publicly verifiable by code</li>
               </ul>
+            </div>
+
+            {/* Open source */}
+            <div className="border-t border-gray-200 pt-6 sm:pt-8 mt-6 sm:mt-8">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="mb-2 text-base sm:text-lg font-mono font-bold">
+                    Open source. Your servers. Your data.
+                  </h2>
+                  <p className="font-mono text-sm text-gray-700 leading-relaxed max-w-xl">
+                    Byte Teaching is free software (AGPL-3.0). Self-host the whole
+                    platform inside your trust — your own database, mail relay, video
+                    server, even an in-network AI model — and integrate anything through
+                    the org-scoped REST API and signed webhooks. Teaching records are
+                    portable and verifiable across instances, so a trainee&apos;s history
+                    survives every rotation.
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col gap-2 font-mono text-sm">
+                  <a
+                    href="https://github.com/Bytes-Medical/bytes-teaching"
+                    className="border border-black bg-black px-4 py-2 text-center text-white hover:bg-gray-800"
+                  >
+                    Star on GitHub
+                  </a>
+                  <a
+                    href="https://github.com/Bytes-Medical/bytes-teaching/blob/main/docs/self-hosting.md"
+                    className="border border-black bg-white px-4 py-2 text-center hover:bg-gray-50"
+                  >
+                    Self-hosting guide
+                  </a>
+                  <Link
+                    href="/contributors"
+                    className="border border-black bg-white px-4 py-2 text-center hover:bg-gray-50"
+                  >
+                    Contributors
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>
