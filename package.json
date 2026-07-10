@@ -29,7 +29,7 @@
     "next": "^14.2.35",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react-dom": "^19.2.7",
     "tailwind-merge": "^3.6.0",
     "temporal-polyfill": "^0.3.0",
     "zod": "^3.22.4"
@@ -48,7 +48,7 @@
   "devDependencies": {
     "@types/node": "^20.11.5",
     "@types/react": "^18.2.48",
-    "@types/react-dom": "^18.2.18",
+    "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.17",
     "eslint": "^8.56.0",
     "eslint-config-next": "14.2.5",
