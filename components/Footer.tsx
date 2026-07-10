@@ -16,6 +16,12 @@ export function Footer() {
             >
               GitHub
             </a>
+            <a href="/features" className="underline hover:text-clay-700">
+              Features
+            </a>
+            <a href="/open-source" className="underline hover:text-clay-700">
+              Open Source
+            </a>
             <a href="/contributors" className="underline hover:text-clay-700">
               Contributors
             </a>

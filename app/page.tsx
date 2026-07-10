@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { Button } from '@/components/Button'
 import { Typewriter } from '@/components/Typewriter'
 import { Footer } from '@/components/Footer'
+import { PublicNav } from '@/components/PublicNav'
 import Image from 'next/image'
 import Link from 'next/link'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
@@ -16,6 +17,7 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <PublicNav />
       <main className="flex-1 flex items-center justify-center px-4 py-12 sm:py-16 bg-dotgrid">
         <div className="max-w-4xl w-full">
           <div className="border border-black border-t-4 border-t-clay-600 p-8 sm:p-12 bg-white shadow-[8px_8px_0_rgba(31,29,26,0.08)]">
@@ -112,6 +114,11 @@ export default async function Home() {
                 <li><span className="text-clay-600">▸</span> <strong>An AI ops assistant that never acts alone</strong> — drafts speaker chases, thank-yous and a weekly digest; every email waits for human approval</li>
                 <li><span className="text-clay-600">▸</span> <strong>Certificates</strong> — automatic PDFs, publicly verifiable by code</li>
               </ul>
+              <p className="mt-4 font-mono text-sm">
+                <Link href="/features" className="underline hover:text-clay-700">
+                  Explore all features →
+                </Link>
+              </p>
             </div>
 
             {/* Open source */}
@@ -137,12 +144,12 @@ export default async function Home() {
                   >
                     Star on GitHub
                   </a>
-                  <a
-                    href="https://github.com/Bytes-Medical/bytes-teaching/blob/main/docs/self-hosting.md"
+                  <Link
+                    href="/open-source"
                     className="border border-black bg-white px-4 py-2 text-center hover:bg-gray-50"
                   >
-                    Self-hosting guide
-                  </a>
+                    Self-host it
+                  </Link>
                   <Link
                     href="/contributors"
                     className="border border-black bg-white px-4 py-2 text-center hover:bg-gray-50"

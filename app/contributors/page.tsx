@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Card } from '@/components/Card'
 import { Footer } from '@/components/Footer'
+import { PublicNav } from '@/components/PublicNav'
 import { CURATED_CONTRIBUTORS, GITHUB_REPO } from '@/lib/contributors-data'
 
 export const revalidate = 3600 // refresh the GitHub contributor graph hourly
@@ -38,6 +39,7 @@ export default async function ContributorsPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <PublicNav current="contributors" />
       <main className="flex-1 px-4 py-10 sm:py-14 bg-dotgrid">
         <div className="mx-auto max-w-4xl">
           <div className="mb-8 text-center">

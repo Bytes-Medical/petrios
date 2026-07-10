@@ -61,7 +61,8 @@ surfaces (each a capability URL or genuinely public page): `/`, `/login`,
 feedback pages, teacher RSVP (`/sessions/[id]/teacher-rsvp/[code]`), slot
 claiming (`/claim/[code]`), newsletter unsubscribe
 (`/ops/unsubscribe/[token]`), recall answers (`/recall/[token]`),
-federation identity (`/.well-known/*`), and `/contributors`. `/api/*` routes self-authenticate
+federation identity (`/.well-known/*`), and the project pages
+(`/features`, `/open-source`, `/contributors`). `/api/*` routes self-authenticate
 (CRON_SECRET or tokens).
 
 ## Environment

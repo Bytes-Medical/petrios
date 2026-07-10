@@ -55,8 +55,10 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.match(/^\/recall\/[^/]+$/) ||
     // Federation instance identity (public key discovery).
     request.nextUrl.pathname.startsWith('/.well-known/') ||
-    // Open-source project page.
-    request.nextUrl.pathname === '/contributors'
+    // Open-source project pages.
+    request.nextUrl.pathname === '/contributors' ||
+    request.nextUrl.pathname === '/features' ||
+    request.nextUrl.pathname === '/open-source'
   )
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 
