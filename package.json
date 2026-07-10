@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
     "@jitsi/react-sdk": "^1.4.4",
@@ -27,6 +28,8 @@
     "clsx": "^2.1.1",
     "ical-generator": "^10.1.0",
     "next": "^16.2.10",
+    "nodemailer": "^9.0.3",
+    "pg": "^8.22.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -50,6 +53,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.5",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.17",

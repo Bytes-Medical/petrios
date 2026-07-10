@@ -1,0 +1,17 @@
+# Byte Teaching — self-hosted app container (see docs/self-hosting.md).
+#
+# The database/auth layer is Supabase: either a hosted project (simplest) or
+# Supabase's own self-host stack (https://supabase.com/docs/guides/self-hosting/docker)
+# running alongside — point the SUPABASE_* env vars at whichever you use.
+#
+#   cp .env.example .env.production   # fill in values
+#   docker compose up -d --build
+
+services:
+  app:
+    build: .
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env.production
+    restart: unless-stopped

@@ -1,33 +1,29 @@
 /**
- * Transactional email via Resend's REST API.
- *
- * Provider-neutral wrapper, so call sites read the same regardless of provider:
+ * Transactional email — provider-neutral adapter, so call sites read the same
+ * regardless of transport:
  *
  *   const mailer = getEmailClient()
  *   const { data, error } = await mailer.emails.send({ from, to, subject, html })
  *   if (error) { ... error.message ... }
- *   // data?.id  -> Resend's email id (stored in the resend_id column)
+ *   // data?.id  -> provider message id (stored in the resend_id column)
  *
- * We talk to the REST endpoint directly with fetch rather than pulling in the
- * `resend` SDK — one fewer dependency (and dependency-vuln surface) and the
- * payload is trivial. Docs: https://resend.com/docs/api-reference/emails/send-email
+ * Transport selection (server-only env), in priority order:
+ *   1. SMTP_HOST set        → SMTP via nodemailer (self-hosted deployments /
+ *      trust mail relays). SMTP_PORT (587), SMTP_USER/SMTP_PASS (optional),
+ *      SMTP_SECURE=true for implicit TLS (465).
+ *   2. RESEND_API_KEY set   → Resend REST API via fetch (no SDK — one fewer
+ *      dependency; the payload is trivial).
+ *   3. neither, in dev      → log-only sink so the whole app runs with zero
+ *      email config.
  *
- * Config (server-only env):
- *   RESEND_API_KEY  — API key from https://resend.com/api-keys ("re_..." prefix)
- *   MAIL_FROM       — default sender as "Name <email@your-domain>". For zero-setup
- *                     testing Resend offers a shared sandbox sender,
- *                     "onboarding@resend.dev", which sends without verifying a
- *                     domain but only delivers to your own account email.
- *
- * Local testing:
- *   - With no RESEND_API_KEY set, development is a log-only sink: every send is
- *     printed to the server console and reported as success, so the whole app
- *     runs on any email with zero provider config. (Sign-in links are separately
- *     printed by sendPasswordlessLoginLink.)
- *   - MAIL_DEV_REDIRECT="you@example.com" — when you DO want real rendered mail,
- *     set a key plus this and every recipient is rewritten to that one inbox.
- *   - EMAIL_DEV_MODE=true — force the console logging in a production-like build.
+ * Other config:
+ *   MAIL_FROM               — default sender "Name <email@your-domain>"
+ *   MAIL_DEV_REDIRECT       — rewrite every recipient to one inbox you control
+ *   EMAIL_DEV_MODE=true     — force console logging in a production-like build
  */
+
+import nodemailer from 'nodemailer'
+import type { Transporter } from 'nodemailer'
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
@@ -81,10 +77,57 @@ export function getFromAddress(): string {
   )
 }
 
+// SMTP transporter is created once per process; nodemailer pools connections.
+let smtpTransport: Transporter | null = null
+
+function getSmtpTransport(): Transporter {
+  if (!smtpTransport) {
+    smtpTransport = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: process.env.SMTP_USER
+        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+        : undefined,
+    })
+  }
+  return smtpTransport
+}
+
+async function sendViaSmtp(
+  params: SendEmailParams,
+  effectiveTo: string[]
+): Promise<SendEmailResult> {
+  try {
+    const info = await getSmtpTransport().sendMail({
+      from: params.from,
+      to: effectiveTo,
+      subject: params.subject,
+      html: params.html,
+      text: params.text,
+      replyTo: params.replyTo,
+      attachments: params.attachments?.map((attachment) => ({
+        filename: attachment.filename,
+        content:
+          typeof attachment.content === 'string'
+            ? Buffer.from(attachment.content, 'base64')
+            : Buffer.from(attachment.content),
+      })),
+    })
+    return { data: { id: info.messageId ?? null }, error: null }
+  } catch (err) {
+    return {
+      data: null,
+      error: { message: err instanceof Error ? err.message : 'SMTP send failed' },
+    }
+  }
+}
+
 export function getEmailClient() {
   return {
     emails: {
       async send(params: SendEmailParams): Promise<SendEmailResult> {
+        const smtpConfigured = !!process.env.SMTP_HOST
         const apiKey = process.env.RESEND_API_KEY
 
         // Optional dev redirect: funnel every recipient to one inbox you control
@@ -101,6 +144,12 @@ export function getEmailClient() {
           )
         }
 
+        // Self-hosted SMTP takes priority: local relays (or mailpit in dev)
+        // accept any sender, so the placeholder-from guard doesn't apply.
+        if (smtpConfigured) {
+          return sendViaSmtp(params, effectiveTo)
+        }
+
         // Missing MAIL_FROM resolves to dev@localhost in development. That is
         // intentionally not a real sending address, so keep the app usable by
         // treating it the same as the no-key dev sink instead of sending an
@@ -112,16 +161,16 @@ export function getEmailClient() {
           return { data: { id: null }, error: null }
         }
 
-        // No key: in dev this is a log-only sink so the whole app works on any
-        // email with zero provider config; in production it's a hard error.
+        // No transport at all: in dev this is a log-only sink so the whole app
+        // works with zero provider config; in production it's a hard error.
         if (!apiKey) {
           if (isDev) {
-            console.log('   ↳ RESEND_API_KEY not set — dev sink, email not actually sent.\n')
+            console.log('   ↳ No SMTP_HOST or RESEND_API_KEY set — dev sink, email not actually sent.\n')
             return { data: { id: null }, error: null }
           }
           return {
             data: null,
-            error: { message: 'RESEND_API_KEY environment variable is required' },
+            error: { message: 'Configure SMTP_HOST (self-hosted) or RESEND_API_KEY to send email' },
           }
         }
 

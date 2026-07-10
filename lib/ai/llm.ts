@@ -9,11 +9,16 @@
  * and the payload is trivial.
  *
  * Config (server-only env):
- *   OPENAI_API_KEY — required; without it every feature degrades gracefully
- *   OPENAI_MODEL   — optional override; defaults to gpt-5.5
+ *   OPENAI_API_KEY  — required; without it every feature degrades gracefully
+ *   OPENAI_MODEL    — optional override; defaults to gpt-5.5
+ *   OPENAI_BASE_URL — optional OpenAI-compatible endpoint base (default
+ *     https://api.openai.com/v1). Point at Azure OpenAI, a gateway, or a
+ *     locally hosted model so AI traffic never leaves your network — the
+ *     data-governance path for self-hosted NHS deployments.
  */
 
-const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions'
+const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '')
+const OPENAI_ENDPOINT = `${OPENAI_BASE_URL}/chat/completions`
 
 export const LLM_MODEL = process.env.OPENAI_MODEL || 'gpt-5.5'
 
