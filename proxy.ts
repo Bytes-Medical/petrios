@@ -50,7 +50,9 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.match(/^\/departments\/[^/]+\/feedback$/) ||
     request.nextUrl.pathname.match(/^\/claim\/[^/]+$/) ||
     // Newsletter unsubscribe: must work from an email link without a session.
-    request.nextUrl.pathname.match(/^\/ops\/unsubscribe\/[^/]+$/)
+    request.nextUrl.pathname.match(/^\/ops\/unsubscribe\/[^/]+$/) ||
+    // Recall answer page: HMAC capability link from the recall email.
+    request.nextUrl.pathname.match(/^\/recall\/[^/]+$/)
   )
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 

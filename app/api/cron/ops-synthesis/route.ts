@@ -4,12 +4,14 @@ import { notifyUser } from '@/lib/notify'
 import { opsEnabled } from '@/lib/ops/flags'
 import { startRun } from '@/lib/ops/run'
 import { runSynthesisForSession } from '@/lib/ops/synthesis'
+import { draftRecallQuestions } from '@/lib/ops/recall'
 import { formatDateLong } from '@/lib/ops/format'
 import { draftThankYouEmail } from '@/lib/ops/drafts'
 import { buildOpsEmailHtml } from '@/lib/ops/email-html'
 import { profileDisplayName } from '@/lib/contacts'
 import * as opsDb from '@/lib/db/ops'
 import * as opsReads from '@/lib/db/ops-reads'
+import * as recallDb from '@/lib/db/recall'
 import * as auditDb from '@/lib/db/audit'
 import * as feedbackDb from '@/lib/db/feedback'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -131,9 +133,33 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const summary = `${processed} session(s) synthesised, ${drafted} thank-you draft(s)`
+    // Byte Recall: draft question sets for recently ended sessions that lack
+    // one (same candidate pool). Drafts wait for moderator review/approval in
+    // the session manage Recall tab before any email goes out.
+    let recallDrafted = 0
+    const withSets = await recallDb.listSessionIdsWithSets(candidates.map((s) => s.id))
+    for (const session of candidates.filter((s) => !withSets.has(s.id)).slice(0, SYNTHESIS_CAP)) {
+      const ok = await draftRecallQuestions(session, run)
+      if (!ok) continue
+      recallDrafted++
+      const moderators = await opsReads.listDepartmentModeratorUserIds(session.department_id)
+      for (const moderator of moderators) {
+        await notifyUser({
+          orgId: session.org_id,
+          userId: moderator,
+          notification: {
+            type: 'RECALL_QUESTIONS_READY',
+            title: `Recall questions ready to review: "${session.title}"`,
+            body: 'Review, edit, and approve them to enable retention follow-ups and catch-up attendance.',
+            link: `/sessions/${session.id}/manage`,
+          },
+        })
+      }
+    }
+
+    const summary = `${processed} session(s) synthesised, ${drafted} thank-you draft(s), ${recallDrafted} recall set(s) drafted`
     await run.finish('succeeded', summary)
-    return NextResponse.json({ message: summary, processed, drafted })
+    return NextResponse.json({ message: summary, processed, drafted, recallDrafted })
   } catch (err) {
     console.error('ops-synthesis failed:', err)
     await run.finish('failed', err instanceof Error ? err.message : 'unknown error')

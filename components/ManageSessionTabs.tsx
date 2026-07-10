@@ -13,6 +13,8 @@ import { FeedbackListPanel } from './FeedbackListPanel'
 import { EditSessionForm } from './EditSessionForm'
 import { AuditPanel } from './AuditPanel'
 import { ReleaseTeacherFeedbackPanel } from './ReleaseTeacherFeedbackPanel'
+import { RecallQuestionsPanel } from './RecallQuestionsPanel'
+import type { RecallQuestionSet } from '@/lib/db/recall'
 import { Button } from './Button'
 import { LOCATION_TYPE_LABELS, type Session, type TeacherInvitation } from '@/lib/types'
 import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
@@ -27,6 +29,7 @@ interface ManageSessionTabsProps {
   emailHistory: { user_id: string; email_type: string; sent_at: string }[]
   invitations: TeacherInvitation[]
   isPersonal?: boolean
+  recallSet?: RecallQuestionSet | null
 }
 
 export function ManageSessionTabs({
@@ -38,8 +41,9 @@ export function ManageSessionTabs({
   emailHistory,
   invitations,
   isPersonal,
+  recallSet = null,
 }: ManageSessionTabsProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'meeting' | 'teachers' | 'feedback' | 'audit' | 'certificates'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'meeting' | 'teachers' | 'feedback' | 'recall' | 'audit' | 'certificates'>('overview')
   const meetingUrl = sessionMeetingUrl(session)
   const [editMode, setEditMode] = useState(false)
 
@@ -48,6 +52,7 @@ export function ManageSessionTabs({
     { id: 'meeting' as const, label: 'Meeting Link' },
     { id: 'teachers' as const, label: 'Teachers' },
     { id: 'feedback' as const, label: 'Feedback' },
+    { id: 'recall' as const, label: 'Recall' },
     { id: 'audit' as const, label: 'Audit' },
     { id: 'certificates' as const, label: 'Certificates' },
   ]
@@ -189,6 +194,13 @@ export function ManageSessionTabs({
               <FeedbackListPanel sessionId={session.id} />
             </Card>
           </div>
+        )}
+
+        {activeTab === 'recall' && (
+          <Card>
+            <h2 className="text-xl font-mono font-bold mb-4">Recall Questions</h2>
+            <RecallQuestionsPanel sessionId={session.id} initialSet={recallSet} />
+          </Card>
         )}
 
         {activeTab === 'audit' && (

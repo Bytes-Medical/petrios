@@ -14,12 +14,18 @@ export const EVIDENCE_PRIORITY: Record<EvidenceSource, number> = {
   FEEDBACK: 3,
   GROUP_CODE: 2,
   SELF_CHECKIN: 1,
+  // Catch-up attendance (passed recall questions after missing the session).
+  // Lowest priority: it can never outrank evidence of real presence, and
+  // primary_source='RECALL' keeps it visibly distinct in audit/portfolio.
+  RECALL: 0,
 }
 
 export const DEFAULT_CHECKIN_OPEN_MINS_BEFORE = 15
 export const DEFAULT_CHECKIN_CLOSE_MINS_AFTER = 45
 export const DEFAULT_FEEDBACK_VALID_MINS_AFTER_END = 120
 export const DEFAULT_LATE_AFTER_MINS = 10
+/** Recall answers count from session end until this many days after. */
+export const RECALL_VALID_DAYS_AFTER_END = 21
 
 /** The subset of a sessions row the computation needs. */
 export interface AttendanceWindowSession {
@@ -89,6 +95,13 @@ export function isWithinEvidenceWindow(
     case 'TEACHER':
     case 'TEAMS':
       return true
+    case 'RECALL': {
+      const end = new Date(session.date_end).getTime()
+      return (
+        at.getTime() >= end &&
+        at.getTime() <= end + RECALL_VALID_DAYS_AFTER_END * 24 * 60 * 60 * 1000
+      )
+    }
     default:
       return false
   }

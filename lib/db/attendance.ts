@@ -10,6 +10,7 @@ export type EvidenceSource =
   | 'FEEDBACK'
   | 'TEACHER'
   | 'TEAMS'
+  | 'RECALL'
 
 export interface EvidenceMetadata {
   code_version?: number
@@ -160,6 +161,23 @@ export async function evidenceExistsAsSystem(input: {
 
   if (error) throw toDbError('Failed to check evidence', error)
   return !!data
+}
+
+/** Service-role: recall answer flow resolves attendee vs absentee status. */
+export async function findAttendanceForUserAsSystem(
+  sessionId: string,
+  userId: string
+): Promise<{ status: AttendanceStatus } | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('attendance')
+    .select('status')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to fetch attendance row', error)
+  return (data as { status: AttendanceStatus } | null) ?? null
 }
 
 /** Service-role: see evidenceExistsAsSystem. */

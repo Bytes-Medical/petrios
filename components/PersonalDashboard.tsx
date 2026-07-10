@@ -7,7 +7,10 @@ import { AttendancePanel } from '@/components/AttendancePanel'
 import { SessionCalendar } from '@/components/SessionCalendar'
 import { TeachingAssignmentsPanel } from '@/components/TeachingAssignmentsPanel'
 import { OpenSlotsPanel } from '@/components/OpenSlotsPanel'
+import { PortfolioPanel } from '@/components/PortfolioPanel'
+import { TeachingDossierPanel } from '@/components/TeachingDossierPanel'
 import type { ClaimableSlotView } from '@/app/actions/teaching-slots'
+import type { Passport } from '@/app/actions/portfolio'
 import type {
   SessionWithDetails,
   FeedbackHistoryEntry,
@@ -28,11 +31,13 @@ interface PersonalDashboardProps {
   /** Org-wide open slots shown as Available on the calendar tab. */
   openSlots: SlotEvent[]
   calendarUrl: string
+  /** Curriculum passport + reflections + certificates (Portfolio tab). */
+  passport: Passport
   /** Deep-link target, e.g. /dashboard?tab=teaching from invitation emails. */
   initialTab?: string
 }
 
-type Tab = 'sessions' | 'calendar' | 'teaching' | 'feedback' | 'attendance'
+type Tab = 'sessions' | 'calendar' | 'teaching' | 'feedback' | 'attendance' | 'portfolio'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'sessions', label: 'Sessions' },
@@ -40,6 +45,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'teaching', label: 'Teaching' },
   { key: 'feedback', label: 'Feedback' },
   { key: 'attendance', label: 'Attendance' },
+  { key: 'portfolio', label: 'Portfolio' },
 ]
 
 export function PersonalDashboard({
@@ -51,6 +57,7 @@ export function PersonalDashboard({
   orgSessions,
   openSlots,
   calendarUrl,
+  passport,
   initialTab,
 }: PersonalDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>(
@@ -99,10 +106,14 @@ export function PersonalDashboard({
         <div className="space-y-6">
           <OpenSlotsPanel slots={claimableSlots} />
           <TeachingAssignmentsPanel assignments={teaching} />
+          <TeachingDossierPanel
+            hasTaught={teaching.some((t) => t.status === 'ACCEPTED')}
+          />
         </div>
       )}
       {activeTab === 'feedback' && <FeedbackPanel entries={feedback} />}
       {activeTab === 'attendance' && <AttendancePanel summary={attendance} />}
+      {activeTab === 'portfolio' && <PortfolioPanel passport={passport} />}
     </div>
   )
 }

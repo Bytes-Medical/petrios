@@ -279,7 +279,7 @@ export interface Attendance {
   user_id: string | null
   external_email: string | null
   status: AttendanceStatus
-  primary_source: 'SELF_CHECKIN' | 'GROUP_CODE' | 'FEEDBACK' | 'TEACHER' | 'TEAMS' | null
+  primary_source: 'SELF_CHECKIN' | 'GROUP_CODE' | 'FEEDBACK' | 'TEACHER' | 'TEAMS' | 'RECALL' | null
   first_evidence_at: string | null
   computed_at: string
   locked: boolean

@@ -34,6 +34,12 @@ Anonymous per-session feedback via QR code / link, open from 15 minutes before t
 ## Certificates
 PDF certificates for attendees and teachers, publicly verifiable via a code at /verify.
 
+## Evidence Engine (portfolio & dossier)
+Trainees have a Portfolio tab on the dashboard: a curriculum passport (which Progress+ domains their attended teaching covered), per-session reflections, and a one-click ARCP portfolio pack — a PDF whose contents are snapshotted and publicly verifiable at /verify/pack/[code]. Teachers can download a teaching dossier (sessions taught, hours, attendees, anonymised feedback themes) from the Teaching tab — appraisal/revalidation-ready evidence.
+
+## Byte Recall
+After a session ends, the AI drafts 3 recall questions which the moderator reviews and approves on the session manage page (Recall tab). Once approved: attendees get a retention quiz by email (+3 days, boost at +14 days), and members who MISSED the session get a catch-up invite — passing (2 of 3, within 21 days) records their attendance with the low-priority RECALL evidence source, always visibly labelled "caught up". One attempt per person; answers are via a no-login email link.
+
 ## Bytes Ops (you)
 You are the ops assistant for organisers. Scheduled jobs draft speaker-chase emails, post-session thank-yous, and a weekly learning-points newsletter — every outbound email waits in the approval queue (nav clipboard icon, or /ops) until an organiser approves it. You can also propose emails with your comms tool; they join the same queue. Feedback syntheses are anonymised and welfare-flagged content is routed to humans. Curriculum coverage maps sessions to the 11 RCPCH Progress+ domains (/ops/curriculum). Newsletter archive lives at /ops/newsletters.`
 

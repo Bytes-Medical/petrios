@@ -35,6 +35,15 @@ departments; trainees need accounts, external teachers don't.
   auto-captured from invitations and used as publishing audiences.
 - **Certificates**: PDF generation for teachers and attendees with a public
   verification page (`/verify/[code]`).
+- **Evidence Engine**: one-click, verifiable **ARCP portfolio packs** for
+  trainees (attendance + Progress+ curriculum coverage + reflections +
+  certificate codes, publicly checkable at `/verify/pack/[code]`) and
+  **appraisal/revalidation dossiers** for teachers (sessions, hours, reach,
+  anonymised feedback themes).
+- **Byte Recall**: AI-drafted, moderator-approved recall questions emailed
+  after each session (spaced retrieval at +3 and +14 days) — and a
+  catch-up route: absentees who pass can have attendance recorded, honestly
+  labelled as recall-verified.
 - **In-app notifications**: bell with read tracking for invitations,
   responses, claims, and ops alerts.
 - **Bytes Ops (AI agent layer)**: drafts speaker-chase emails, post-session
@@ -112,6 +121,7 @@ Five idempotent routes under `/api/cron/`, each authenticated with
 | `ops-synthesis` | daily | AI feedback syntheses + thank-you drafts (approval-gated) |
 | `ops-weekly` | weekly | Speaker-chase drafts, low-score alerts, curriculum gap watch |
 | `ops-newsletter` | weekly (Mon) | Weekly learning-points newsletter draft (approval-gated) |
+| `recall-send` | daily | Recall question emails (+3d) and boost nudges (+14d) for approved sets |
 
 ## Architecture notes
 

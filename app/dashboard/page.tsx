@@ -10,6 +10,7 @@ import { PersonalDashboard } from '@/components/PersonalDashboard'
 import { getMyDepartmentSessions, getMyFeedbackHistory, getMyAttendanceSummary } from '@/app/actions/trainee-dashboard'
 import { getMyTeachingAssignments } from '@/app/actions/teaching-assignments'
 import { getMyClaimableSlots, getOpenSlotsForCalendar } from '@/app/actions/teaching-slots'
+import { getMyPassport } from '@/app/actions/portfolio'
 import { TeachingAssignmentsPanel } from '@/components/TeachingAssignmentsPanel'
 import { OpenSlotsPanel } from '@/components/OpenSlotsPanel'
 import { ensurePersonalWorkspace } from '@/app/actions/personal-workspace'
@@ -83,7 +84,7 @@ export default async function DashboardPage(
     )
   }
 
-  const [sessions, departments, moderatedDept, orgAdmin, calendarUrl, mySessions, myFeedback, myAttendance, myTeaching, claimableSlots, openSlots] = await Promise.all([
+  const [sessions, departments, moderatedDept, orgAdmin, calendarUrl, mySessions, myFeedback, myAttendance, myTeaching, claimableSlots, openSlots, myPassport] = await Promise.all([
     getSessionsForOrg(orgId),
     getDepartmentsForOrg(orgId),
     getMyModeratedDepartment(orgId),
@@ -95,6 +96,7 @@ export default async function DashboardPage(
     getMyTeachingAssignments(),
     getMyClaimableSlots(),
     getOpenSlotsForCalendar(),
+    getMyPassport(),
   ])
 
   const pendingTeaching = myTeaching.filter((t) => t.status === 'PENDING')
@@ -144,6 +146,7 @@ export default async function DashboardPage(
             orgSessions={sessions}
             openSlots={openSlots}
             calendarUrl={calendarUrl}
+            passport={myPassport}
             initialTab={searchParams?.tab}
           />
         </div>

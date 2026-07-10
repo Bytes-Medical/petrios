@@ -4,6 +4,15 @@
 
 The attendance system uses an **evidence aggregation pipeline** approach where attendance is computed from multiple immutable evidence sources rather than being a single event.
 
+## RECALL source (Byte Recall catch-up — added in migration 039)
+
+`RECALL` is a sixth evidence source: an absentee who passes the session's
+recall questions (2 of 3, within 21 days of session end) earns attendance.
+It has the LOWEST priority (0) so it never outranks real presence, carries
+`metadata.status_override='PRESENT'` (a post-session timestamp must not read
+as LATE), and remains visible as `primary_source` in every audit/portfolio
+surface as "Caught up". Full flow: spec/08-portfolio-and-recall.md.
+
 ## Architecture
 
 ### Core Concepts

@@ -62,6 +62,13 @@ describe('isWithinEvidenceWindow', () => {
     expect(isWithinEvidenceWindow('TEACHER', at('2027-01-01T00:00:00Z'), session)).toBe(true)
     expect(isWithinEvidenceWindow('TEAMS', at('2020-01-01T00:00:00Z'), session)).toBe(true)
   })
+
+  it('accepts recall evidence from session end until 21 days after', () => {
+    expect(isWithinEvidenceWindow('RECALL', at('2026-07-01T10:59:59Z'), session)).toBe(false)
+    expect(isWithinEvidenceWindow('RECALL', at('2026-07-01T11:00:00Z'), session)).toBe(true)
+    expect(isWithinEvidenceWindow('RECALL', at('2026-07-22T11:00:00Z'), session)).toBe(true)
+    expect(isWithinEvidenceWindow('RECALL', at('2026-07-22T11:00:01Z'), session)).toBe(false)
+  })
 })
 
 describe('computeAttendanceFromEvidence', () => {
@@ -151,5 +158,39 @@ describe('computeAttendanceFromEvidence', () => {
     )
     expect(result.primarySource).toBe('GROUP_CODE')
     expect(result.status).toBe('PRESENT')
+  })
+
+  it('recall never outranks real presence evidence', () => {
+    const result = computeAttendanceFromEvidence(
+      [
+        evidence('RECALL', '2026-07-03T09:00:00.000Z', { status_override: 'PRESENT' }),
+        evidence('SELF_CHECKIN', '2026-07-01T10:02:00.000Z'),
+      ],
+      session
+    )
+    expect(result.primarySource).toBe('SELF_CHECKIN')
+  })
+
+  it('a catch-up recall pass reads PRESENT via status_override, not LATE', () => {
+    const result = computeAttendanceFromEvidence(
+      [
+        evidence('RECALL', '2026-07-03T09:00:00.000Z', {
+          status_override: 'PRESENT',
+          method: 'RECALL_CATCH_UP',
+        }),
+      ],
+      session
+    )
+    expect(result.status).toBe('PRESENT')
+    expect(result.primarySource).toBe('RECALL')
+  })
+
+  it('recall answered after the 21-day window is invalid (stays ABSENT)', () => {
+    const result = computeAttendanceFromEvidence(
+      [evidence('RECALL', '2026-08-01T09:00:00.000Z', { status_override: 'PRESENT' })],
+      session
+    )
+    expect(result.status).toBe('ABSENT')
+    expect(result.primarySource).toBeNull()
   })
 })

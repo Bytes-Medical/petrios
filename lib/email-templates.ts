@@ -566,3 +566,39 @@ export function buildModeratorWelcomeEmailHtml(params: ModeratorWelcomeEmailPara
     `
   )
 }
+
+interface RecallEmailParams {
+  recipientName: string
+  sessionTitle: string
+  kind: 'RETENTION' | 'CATCH_UP' | 'BOOST'
+  answerUrl: string
+  deadlineStr: string
+}
+
+export function buildRecallEmailHtml(params: RecallEmailParams): string {
+  const intro =
+    params.kind === 'CATCH_UP'
+      ? `You missed <strong>${params.sessionTitle}</strong> — you can still have
+         it count. Answer three quick recall questions (pass 2 of 3) by
+         <strong>${params.deadlineStr}</strong> and your attendance will be
+         recorded as caught up.`
+      : params.kind === 'BOOST'
+        ? `One week left: a final chance to lock in the learning from
+           <strong>${params.sessionTitle}</strong>. Three quick questions,
+           open until <strong>${params.deadlineStr}</strong>.`
+        : `Quick knowledge check from <strong>${params.sessionTitle}</strong> —
+           three questions, two minutes. Spaced recall is the best-evidenced
+           way to make teaching stick.`
+
+  return buildMonospaceEmailShell(
+    params.kind === 'CATCH_UP' ? 'Catch up on a missed session' : 'Quick recall check',
+    `
+      <p style="margin:20px 0;">Hi ${params.recipientName},</p>
+      <p style="margin:20px 0;">${intro}</p>
+      <p style="margin:20px 0;">
+        <a href="${params.answerUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Answer the questions</a>
+      </p>
+      <p style="font-size:12px;color:#666;">One attempt; your score and the explanations are shown straight after.</p>
+    `
+  )
+}
