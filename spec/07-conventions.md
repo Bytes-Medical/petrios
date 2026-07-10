@@ -73,7 +73,13 @@ kill switch and log to `ops_agent_runs`.
   && npm run build`. **Stop the dev server before `npm run build`** — a
   build over a live dev server corrupts `.next` (then `rm -rf .next` and
   restart).
-- CI runs lint, type-check, tests, build, and a migration numbering check.
+- CI (`.github/workflows/ci.yml`) runs lint, type-check, tests, build, and a
+  migration numbering check. The Security workflow
+  (`.github/workflows/security.yml`) runs TruffleHog, Semgrep, CodeQL
+  (standard upload to the Security tab), a production `npm audit`
+  (high+ fails on every event), and the RLS guard — policy: block PRs,
+  triage main in the Security tab, plus a weekly scheduled run. Actions are
+  SHA-pinned; `.github/dependabot.yml` keeps pins and deps fresh.
 
 ## Git
 

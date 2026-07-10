@@ -1,24 +1,31 @@
 name: Security
 
-# Robust security bot. Runs on every push to main and on every PR.
+# Security automation for a PUBLIC repository.
 #
-# Policy: BLOCK PRs, NOTIFY on main.
+# Policy: BLOCK PRs, TRIAGE main in the Security tab.
 #   - On `pull_request`, any finding fails the check and gates the merge.
-#   - On `push` to main, the same scans run but only report (the commit already
-#     exists, so failing would just be noise). Each job derives this from
-#     `github.event_name` and only exits non-zero when the event is a PR.
+#   - On `push` to main and on the weekly `schedule`, scans run and publish:
+#     CodeQL uploads SARIF to code scanning (Security tab) where alerts are
+#     visible, triageable, and dismissable; the other scanners report via the
+#     run log. Failing pushes for pre-existing findings would be noise — the
+#     exception is the dependency audit, which always fails on high+ CVEs in
+#     production dependencies so a newly published advisory is loud.
+#   - The weekly schedule exists so new CodeQL queries and new advisories are
+#     caught even when no code has changed.
 #
-# The repo is private with no GitHub Advanced Security, so nothing here relies
-# on uploading SARIF to the Security tab — every scanner fails its own job
-# directly instead.
+# Supply chain: every action is pinned to a full commit SHA and the Semgrep
+# image to a digest; .github/dependabot.yml keeps the pins fresh.
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Weekly, Monday 05:30 UTC — new queries/advisories without a push.
+    - cron: '30 5 * * 1'
 
-# Least privilege: jobs only read the checkout. No security-events:write (would
-# need GHAS) and no write scopes at all.
+# Least privilege by default; the CodeQL job adds security-events: write for
+# SARIF upload.
 permissions:
   contents: read
 
@@ -38,29 +45,27 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           # Full history so a PR can be scanned across its whole commit range,
           # not just the tip.
           fetch-depth: 0
 
       - name: TruffleHog scan
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@27b0417c16317ca9a472a9a8092acce143b49c55 # v3.95.9
         # The action exits non-zero when a verified (live) secret is found.
-        # Block PRs / notify on main: on a push the finding is reported but does
-        # not fail the job; on a PR it does.
+        # Block PRs / report on main+schedule.
         continue-on-error: ${{ github.event_name != 'pull_request' }}
         with:
           # PR: scan only the commits the PR introduces (base..head).
-          # Push: action defaults to scanning the pushed range / full history.
+          # Push/schedule: defaults to the pushed range / full history.
           base: ${{ github.event.pull_request.base.sha || '' }}
           head: ${{ github.event.pull_request.head.sha || github.sha }}
           # Report verified (live) AND unknown secrets; failure gates PRs only.
           extra_args: --results=verified,unknown
 
   # ---------------------------------------------------------------------------
-  # 2. SAST — Semgrep. Next.js/React/TS/OWASP/secrets rulesets. No token needed,
-  #    works fully on private repos.
+  # 2. SAST — Semgrep. Next.js/React/TS/OWASP/secrets rulesets. No token needed.
   # ---------------------------------------------------------------------------
   sast-semgrep:
     name: SAST (Semgrep)
@@ -68,15 +73,15 @@ jobs:
     permissions:
       contents: read
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep:1.169.0@sha256:2b33f46ba66cf8cc2ad59ccfa7d22951fd00c632c38f1339e84ec8e6e641a942
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Semgrep scan
         run: |
           set -o pipefail
           # On a PR, --error makes Semgrep exit non-zero on any finding (gates
-          # the merge). On main we drop --error and never fail.
+          # the merge). On main/schedule we drop --error and report only.
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             ERR="--error"
           else
@@ -92,35 +97,34 @@ jobs:
             --metrics off
 
   # ---------------------------------------------------------------------------
-  # 3. SAST — CodeQL. Interprocedural taint analysis. upload:false avoids the
-  #    GHAS requirement on a private repo; we gate on the local SARIF instead.
+  # 3. SAST — CodeQL, standard analyze/upload flow. Findings land in the
+  #    Security tab (free code scanning on public repos) where they can be
+  #    triaged and dismissed. PRs are ALSO gated deterministically on the local
+  #    SARIF, so merge-blocking doesn't depend on branch-protection settings.
   # ---------------------------------------------------------------------------
   sast-codeql:
     name: SAST (CodeQL)
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write # SARIF upload to code scanning
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@e5d2f324924c57b6cabef9bdd7a1c85d62a89be2 # v3.37.0
         with:
           languages: javascript-typescript
-          # security-and-quality has the broadest security coverage.
           queries: security-extended
 
-      - name: Analyze
-        uses: github/codeql-action/analyze@v3
+      - name: Analyze and upload to code scanning
+        uses: github/codeql-action/analyze@e5d2f324924c57b6cabef9bdd7a1c85d62a89be2 # v3.37.0
         with:
-          # No Security-tab upload (needs GHAS on private repos). Emit SARIF
-          # locally and gate on it below.
-          upload: false
+          # Also emit SARIF locally so the PR gate below stays deterministic.
           output: codeql-results
 
-      - name: Gate on findings
-        env:
-          IS_PR: ${{ github.event_name == 'pull_request' }}
+      - name: Gate PRs on findings
+        if: github.event_name == 'pull_request'
         run: |
           count=$(python3 - <<'PY'
           import glob, json, sys
@@ -141,16 +145,15 @@ jobs:
           )
           echo "CodeQL findings: $count"
           if [ "$count" -gt 0 ]; then
-            if [ "$IS_PR" = "true" ]; then
-              echo "Failing PR: CodeQL found $count issue(s)."
-              exit 1
-            fi
-            echo "::warning::CodeQL found $count issue(s) (reporting only on main)."
+            echo "Failing PR: CodeQL found $count issue(s). See the Security tab for triage."
+            exit 1
           fi
 
   # ---------------------------------------------------------------------------
-  # 4. Dependency audit — known CVEs. Dependabot only opens update PRs; this
-  #    actually fails the build on a vulnerable production dependency.
+  # 4. Dependency audit — known CVEs in PRODUCTION dependencies. Fails on
+  #    every event (PR, main, schedule): a high/critical advisory against a
+  #    prod dependency is always actionable, and a failing scheduled run is
+  #    the notification that a new advisory was published.
   # ---------------------------------------------------------------------------
   dependencies:
     name: Dependency audit (npm)
@@ -158,9 +161,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -169,13 +172,7 @@ jobs:
         run: npm ci
 
       - name: npm audit (production deps, high+critical)
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            npm audit --omit=dev --audit-level=high
-          else
-            npm audit --omit=dev --audit-level=high || \
-              echo "::warning::npm audit found high/critical vulnerabilities (reporting only on main)."
-          fi
+        run: npm audit --omit=dev --audit-level=high
 
   # ---------------------------------------------------------------------------
   # 5. Supabase RLS guard — every migration that CREATEs a table must also
@@ -189,7 +186,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           # Need history to diff against the base and see which migrations the
           # change actually touches.

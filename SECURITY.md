@@ -1,5 +1,16 @@
 # Security Policy
 
+## Automated scanning
+
+Every pull request is gated by the Security workflow
+(`.github/workflows/security.yml`): CodeQL (uploaded to the Security tab),
+Semgrep (Next.js/React/OWASP rulesets), TruffleHog secret scanning,
+`npm audit` on production dependencies (high+ fails everywhere, including
+main), and a Supabase RLS guard that blocks migrations creating tables
+without Row Level Security. A weekly scheduled run catches newly published
+queries and advisories; Dependabot keeps dependencies and SHA-pinned
+actions updated.
+
 ## Reporting a vulnerability
 
 Please **do not open a public issue** for security vulnerabilities.
