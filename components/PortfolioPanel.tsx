@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { generatePortfolioPack, saveReflection, type Passport } from '@/app/actions/portfolio'
+import { exportTeachingRecord } from '@/app/actions/federation'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
@@ -54,6 +55,19 @@ export function PortfolioPanel({ passport }: PortfolioPanelProps) {
     }
   }
 
+  async function handleExportRecord() {
+    setError(null)
+    try {
+      const result = await exportTeachingRecord()
+      const link = document.createElement('a')
+      link.href = `data:application/json;charset=utf-8,${encodeURIComponent(result.json)}`
+      link.download = result.filename
+      link.click()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export record')
+    }
+  }
+
   async function handleSaveReflection(sessionId: string) {
     setSavingId(sessionId)
     setError(null)
@@ -101,6 +115,9 @@ export function PortfolioPanel({ passport }: PortfolioPanelProps) {
             </label>
             <Button onClick={handleDownload} disabled={downloading}>
               {downloading ? 'Generating…' : 'Download pack'}
+            </Button>
+            <Button variant="secondary" onClick={handleExportRecord} disabled={downloading}>
+              Export record (JSON)
             </Button>
           </div>
         </div>

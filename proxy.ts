@@ -52,7 +52,9 @@ export async function proxy(request: NextRequest) {
     // Newsletter unsubscribe: must work from an email link without a session.
     request.nextUrl.pathname.match(/^\/ops\/unsubscribe\/[^/]+$/) ||
     // Recall answer page: HMAC capability link from the recall email.
-    request.nextUrl.pathname.match(/^\/recall\/[^/]+$/)
+    request.nextUrl.pathname.match(/^\/recall\/[^/]+$/) ||
+    // Federation instance identity (public key discovery).
+    request.nextUrl.pathname.startsWith('/.well-known/')
   )
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 
