@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getServiceDb } from '@/lib/db/client'
+import { pingDatabase } from '@/lib/db/organizations'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,16 +9,7 @@ export const dynamic = 'force-dynamic'
  * liveness and database reachability only.
  */
 export async function GET() {
-  let db: 'ok' | 'error' = 'ok'
-  try {
-    const client = await getServiceDb()
-    const { error } = await client
-      .from('organizations')
-      .select('id', { count: 'exact', head: true })
-    if (error) db = 'error'
-  } catch {
-    db = 'error'
-  }
+  const db: 'ok' | 'error' = (await pingDatabase()) ? 'ok' : 'error'
 
   return NextResponse.json(
     { status: db === 'ok' ? 'ok' : 'degraded', db },

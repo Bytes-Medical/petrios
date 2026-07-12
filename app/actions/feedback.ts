@@ -10,7 +10,6 @@ import {
   buildCertificateEmailHtml,
   buildTeacherFeedbackEmailHtml,
 } from '@/lib/email-templates'
-import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import {
   buildFeedbackSubmission,
   extractTextResponses,
@@ -547,30 +546,21 @@ export async function releaseTeacherFeedback(sessionId: string) {
   // -----------------------------------------------------------------------
   // Trainee reports: send attendance report + certificate to each attendee
   // -----------------------------------------------------------------------
-  const serviceClient = await createSupabaseServiceClient()
-
   // Get attendees with PRESENT status (teachers excluded — they got their email above)
-  const { data: attendees } = await serviceClient
-    .from('attendance')
-    .select('user_id')
-    .eq('session_id', sessionId)
-    .not('user_id', 'is', null)
-    .eq('status', 'PRESENT')
+  const attendeeIds = await feedbackDb.listPresentAttendeeUserIds(sessionId)
+  const attendeeProfiles = new Map(
+    (await onboardingDb.listProfilesForUsers(attendeeIds)).map((p) => [p.user_id, p])
+  )
 
   let traineesSent = 0
   const teacherUserIds = new Set(allTeachers.filter((t) => t.userId).map((t) => t.userId))
 
-  if (attendees && attendees.length > 0) {
-    for (const attendee of attendees) {
-      if (teacherUserIds.has(attendee.user_id)) continue
+  if (attendeeIds.length > 0) {
+    for (const attendeeUserId of attendeeIds) {
+      if (teacherUserIds.has(attendeeUserId)) continue
 
       try {
-        const { data: profile } = await serviceClient
-          .from('profiles')
-          .select('email, full_name, first_name, last_name')
-          .eq('user_id', attendee.user_id)
-          .single()
-
+        const profile = attendeeProfiles.get(attendeeUserId)
         if (!profile?.email) continue
 
         const recipientName =
@@ -580,7 +570,7 @@ export async function releaseTeacherFeedback(sessionId: string) {
 
         // Generate or find certificate
         const existingCert = await certificatesDb.findCertificateByUserAndSession(
-          attendee.user_id, sessionId
+          attendeeUserId, sessionId
         )
 
         let certCode: string
@@ -592,7 +582,7 @@ export async function releaseTeacherFeedback(sessionId: string) {
             orgId,
             departmentId: session.department_id,
             sessionId,
-            userId: attendee.user_id,
+            userId: attendeeUserId,
             role: 'ATTENDEE',
             certificateCode: certCode,
             recipientName,
@@ -610,7 +600,7 @@ export async function releaseTeacherFeedback(sessionId: string) {
 
         traineesSent++
       } catch (err) {
-        console.error(`Failed to send trainee certificate to ${attendee.user_id}:`, err)
+        console.error(`Failed to send trainee certificate to ${attendeeUserId}:`, err)
       }
     }
   }

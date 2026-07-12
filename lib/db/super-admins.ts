@@ -186,3 +186,47 @@ export async function deleteDepartmentModeratorRole(input: {
 
   if (error) throw toDbError('Failed to revoke moderator', error)
 }
+
+/**
+ * Service-role: super-admin user deletion removes membership + profile rows
+ * before the auth-plane account delete (cascades don't reach auth.users).
+ */
+export async function deleteUserDataRows(userId: string): Promise<void> {
+  const db = await getServiceDb()
+
+  const memberships = await db.from('department_members').delete().eq('user_id', userId)
+  if (memberships.error) throw toDbError('Failed to remove department memberships', memberships.error)
+
+  const orgs = await db.from('organization_members').delete().eq('user_id', userId)
+  if (orgs.error) throw toDbError('Failed to remove organization memberships', orgs.error)
+
+  const profiles = await db.from('profiles').delete().eq('user_id', userId)
+  if (profiles.error) throw toDbError('Failed to remove profile', profiles.error)
+}
+
+export interface DepartmentWithOrgName {
+  id: string
+  name: string
+  org_id: string
+  org_name: string
+}
+
+/** Service-role: super-admin moderator provisioning spans organizations. */
+export async function findDepartmentWithOrgName(
+  departmentId: string
+): Promise<DepartmentWithOrgName | null> {
+  const db = await getServiceDb()
+
+  const { data, error } = await db
+    .from('departments')
+    .select('id, name, org_id, organizations:org_id(name)')
+    .eq('id', departmentId)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to fetch department', error)
+  if (!data) return null
+
+  const row = data as { id: string; name: string; org_id: string; organizations: { name: string } | { name: string }[] | null }
+  const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations
+  return { id: row.id, name: row.name, org_id: row.org_id, org_name: org?.name ?? 'Unknown' }
+}

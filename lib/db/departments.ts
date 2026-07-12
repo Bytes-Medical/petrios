@@ -327,3 +327,54 @@ export async function deleteOrgMember(
 
   if (error) throw toDbError('Failed to remove organization member', error)
 }
+
+export interface DepartmentMemberWithProfile {
+  user_id: string
+  role: UserRole
+  grade: string | null
+  created_at: string
+  email: string
+  full_name: string | null
+  first_name: string | null
+  last_name: string | null
+}
+
+/** Service-role: member management view joins memberships with profiles. */
+export async function listDepartmentMembersWithProfiles(
+  orgId: string,
+  departmentId: string
+): Promise<DepartmentMemberWithProfile[]> {
+  const db = await getServiceDb()
+
+  const { data: members, error: memError } = await db
+    .from('department_members')
+    .select('user_id, role, grade, created_at')
+    .eq('department_id', departmentId)
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: true })
+
+  if (memError) throw toDbError('Failed to fetch department members', memError)
+  if (!members || members.length === 0) return []
+
+  const userIds = (members as { user_id: string }[]).map((m) => m.user_id)
+  const { data: profiles, error: profError } = await db
+    .from('profiles')
+    .select('user_id, email, full_name, first_name, last_name')
+    .in('user_id', userIds)
+
+  if (profError) throw toDbError('Failed to fetch member profiles', profError)
+  const profileMap = new Map(
+    ((profiles as { user_id: string; email: string; full_name: string | null; first_name: string | null; last_name: string | null }[] | null) ?? []).map((p) => [p.user_id, p])
+  )
+
+  return (members as { user_id: string; role: UserRole; grade: string | null; created_at: string }[]).map((m) => {
+    const profile = profileMap.get(m.user_id)
+    return {
+      ...m,
+      email: profile?.email ?? '',
+      full_name: profile?.full_name ?? null,
+      first_name: profile?.first_name ?? null,
+      last_name: profile?.last_name ?? null,
+    }
+  })
+}

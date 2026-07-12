@@ -97,6 +97,13 @@ kill switch and log to `ops_agent_runs`.
   landing page carries SoftwareApplication/Organization JSON-LD.
 - Public pages must have exactly one `h1`.
 
+## Contributor entry points
+
+`AGENTS.md` is the tool-neutral guide (canonical content stays in CLAUDE.md
++ spec/); `s/dev`, `s/test`, `s/lint`, `s/typecheck`, `s/build` are thin
+root-level wrappers forwarding to npm scripts. `.editorconfig` pins
+charset/indentation for non-Node editors.
+
 ## Git
 
 - Commit per feature with detailed bodies; never push unless explicitly

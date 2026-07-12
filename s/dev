@@ -1,0 +1,3 @@
+#!/bin/sh
+# Dev server (tool-neutral wrapper — see AGENTS.md)
+cd "$(dirname "$0")/.." && exec npm run dev -- "$@"

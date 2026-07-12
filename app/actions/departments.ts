@@ -10,7 +10,6 @@ import {
 import { normalizeDepartmentFeedbackFields } from '@/lib/feedback-form'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import * as departmentsDb from '@/lib/db/departments'
-import { getServiceDb } from '@/lib/db/client'
 import { DbNotFoundError } from '@/lib/db'
 import type { TraineeGrade, UserRole } from '@/lib/types'
 
@@ -169,42 +168,17 @@ export async function getDepartmentMembersWithProfiles(
   await requireDepartmentModerator(departmentId)
   const orgId = await requireOrg()
 
-  const db = await getServiceDb()
-
-  const { data: members, error: memError } = await db
-    .from('department_members')
-    .select('user_id, role, grade, created_at')
-    .eq('department_id', departmentId)
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: true })
-
-  if (memError) throw new Error(`Failed to fetch department members: ${memError.message}`)
-  if (!members || members.length === 0) return []
-
-  const userIds = members.map((m) => m.user_id)
-
-  const { data: profiles } = await db
-    .from('profiles')
-    .select('user_id, email, full_name, first_name, last_name')
-    .in('user_id', userIds)
-
-  const profileMap = new Map(
-    (profiles ?? []).map((p) => [p.user_id, p])
-  )
-
-  return members.map((m) => {
-    const profile = profileMap.get(m.user_id)
-    return {
-      user_id: m.user_id,
-      email: profile?.email ?? '',
-      full_name: profile?.full_name ?? null,
-      first_name: profile?.first_name ?? null,
-      last_name: profile?.last_name ?? null,
-      grade: m.grade as TraineeGrade | null,
-      role: m.role,
-      joined_at: m.created_at,
-    }
-  })
+  const members = await departmentsDb.listDepartmentMembersWithProfiles(orgId, departmentId)
+  return members.map((m) => ({
+    user_id: m.user_id,
+    email: m.email,
+    full_name: m.full_name,
+    first_name: m.first_name,
+    last_name: m.last_name,
+    grade: m.grade as TraineeGrade | null,
+    role: m.role,
+    joined_at: m.created_at,
+  }))
 }
 
 export async function removeDepartmentMember(

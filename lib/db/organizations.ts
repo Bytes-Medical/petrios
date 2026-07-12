@@ -154,3 +154,17 @@ export async function listMyOrganizations(
   if (error) throw toDbError('Failed to list organizations', error)
   return (data as OrganizationMembershipWithOrg[] | null) ?? []
 }
+
+/** Service-role: /api/health db-reachability probe (no user session). */
+export async function pingDatabase(): Promise<boolean> {
+  try {
+    const { getServiceDb } = await import('./client')
+    const db = await getServiceDb()
+    const { error } = await db
+      .from('organizations')
+      .select('id', { count: 'exact', head: true })
+    return !error
+  } catch {
+    return false
+  }
+}

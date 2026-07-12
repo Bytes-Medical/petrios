@@ -4,6 +4,7 @@ import { requireAuth, requireOrg, isOrgAdmin, isSuperAdmin } from '@/lib/auth'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { getMyModeratedDepartments, getDepartments } from './departments'
 import * as auditDb from '@/lib/db/audit'
+import * as onboardingDb from '@/lib/db/onboarding'
 
 export interface AuditSummaryStats {
   totalSessions: number
@@ -324,42 +325,19 @@ export async function generateMemberAttendanceReportPDF(
   }
 
   // Get member profile
-  const supabase = await createSupabaseServiceClient()
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('email, full_name, first_name, last_name, grade')
-    .eq('user_id', userId)
-    .maybeSingle()
+  const profile = await onboardingDb.findProfileByUserId(userId)
 
   const memberName = profile?.full_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || userId
 
-  // Get past published sessions
-  const now = new Date().toISOString()
-  const { data: sessions } = await supabase
-    .from('sessions')
-    .select('id, title, date_start, department_id')
-    .eq('org_id', orgId)
-    .eq('status', 'PUBLISHED')
-    .in('department_id', departmentIds)
-    .lte('date_start', now)
-    .order('date_start', { ascending: false })
-
-  // Get attendance for this user
-  const sessionIds = (sessions ?? []).map((s) => s.id)
-  let attendanceMap = new Map<string, { status: string; source: string | null }>()
-  if (sessionIds.length > 0) {
-    const { data: attendance } = await supabase
-      .from('attendance')
-      .select('session_id, status, primary_source')
-      .eq('user_id', userId)
-      .in('session_id', sessionIds)
-
-    if (attendance) {
-      for (const a of attendance) {
-        attendanceMap.set(a.session_id, { status: a.status, source: a.primary_source })
-      }
-    }
-  }
+  // Get past published sessions + this member's attendance rows
+  const sessions = await auditDb.listPastPublishedSessionsMeta(orgId, departmentIds)
+  const attendance = await auditDb.listMemberAttendanceRows(
+    userId,
+    sessions.map((s) => s.id)
+  )
+  const attendanceMap = new Map<string, { status: string; source: string | null }>(
+    attendance.map((a) => [a.session_id, { status: a.status, source: a.primary_source }])
+  )
 
   const sessionRows = (sessions ?? []).map((s) => {
     const att = attendanceMap.get(s.id)

@@ -263,3 +263,19 @@ export async function findTeacherProfile(
   if (error) throw toDbError('Failed to fetch teacher profile', error)
   return (data as TeacherProfile | null) ?? null
 }
+
+/** Service-role: post-session report recipients (PRESENT registered users). */
+export async function listPresentAttendeeUserIds(sessionId: string): Promise<string[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('attendance')
+    .select('user_id')
+    .eq('session_id', sessionId)
+    .eq('status', 'PRESENT')
+    .not('user_id', 'is', null)
+
+  if (error) throw toDbError('Failed to list present attendees', error)
+  return (((data as { user_id: string | null }[] | null) ?? [])
+    .map((r) => r.user_id)
+    .filter((id): id is string => !!id))
+}

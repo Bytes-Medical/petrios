@@ -151,9 +151,7 @@ export async function deleteUser(userId: string) {
   const supabase = await createSupabaseServiceClient()
 
   // Remove from all tables (cascade will handle most, but auth needs explicit delete)
-  await supabase.from('department_members').delete().eq('user_id', userId)
-  await supabase.from('organization_members').delete().eq('user_id', userId)
-  await supabase.from('profiles').delete().eq('user_id', userId)
+  await superAdminsDb.deleteUserDataRows(userId)
   await superAdminsDb.deleteSuperAdmin(userId).catch(() => {})
 
   // Delete from Supabase Auth
@@ -176,23 +174,12 @@ export async function createModeratorAccount(input: {
   const supabase = await createSupabaseServiceClient()
 
   // Look up department to get org_id
-  const { data: dept, error: deptErr } = await supabase
-    .from('departments')
-    .select('id, name, org_id, organizations:org_id(name)')
-    .eq('id', input.departmentId)
-    .single()
-
-  if (deptErr || !dept) throw new DbNotFoundError('Department not found')
-
-  const org = Array.isArray(dept.organizations) ? dept.organizations[0] : dept.organizations
-  const orgName = org?.name ?? 'Unknown'
+  const dept = await superAdminsDb.findDepartmentWithOrgName(input.departmentId)
+  if (!dept) throw new DbNotFoundError('Department not found')
+  const orgName = dept.org_name
 
   // Check if user already exists
-  const { data: existingProfile } = await supabase
-    .from('profiles')
-    .select('user_id')
-    .eq('email', email)
-    .maybeSingle()
+  const existingProfile = await onboardingDb.findProfileByEmail(email)
 
   let userId: string
 
@@ -210,14 +197,14 @@ export async function createModeratorAccount(input: {
     userId = linkData.user.id
 
     // Create profile
-    await supabase.from('profiles').upsert(
-      {
-        user_id: userId,
-        email,
-        email_verified_at: null,
-      },
-      { onConflict: 'user_id' }
-    )
+    await onboardingDb.upsertProfile({
+      userId,
+      email,
+      firstName: null,
+      lastName: null,
+      fullName: null,
+      emailVerifiedAt: null,
+    })
 
     // Send magic link to new user using our callback
     const appUrl = getAppUrl()
@@ -240,15 +227,13 @@ export async function createModeratorAccount(input: {
   }
 
   // Assign department_admin role
-  await supabase.from('organization_members').upsert(
-    { org_id: dept.org_id, user_id: userId, role: 'department_admin' },
-    { onConflict: 'org_id,user_id' }
-  )
-
-  await supabase.from('department_members').upsert(
-    { org_id: dept.org_id, department_id: input.departmentId, user_id: userId, role: 'department_admin' },
-    { onConflict: 'department_id,user_id' }
-  )
+  await onboardingDb.upsertOrganizationMember({ orgId: dept.org_id, userId, role: 'department_admin' })
+  await onboardingDb.upsertDepartmentMember({
+    orgId: dept.org_id,
+    departmentId: input.departmentId,
+    userId,
+    role: 'department_admin',
+  })
 
   // If existing user, send notification email
   if (existingProfile) {

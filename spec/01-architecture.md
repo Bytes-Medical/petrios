@@ -30,6 +30,10 @@ UI (app/ pages, components/)          — rendering + client state only
   Supabase client for data queries; `supabase.auth.*` (auth-plane) is the
   sole sanctioned direct use.
 - Why: swapping the database layer must only ever touch `lib/db/`.
+- **Enforced by lint**: `no-restricted-imports` in `eslint.config.mjs` bans
+  `@/lib/supabase/*` and `@/lib/db/client` outside `lib/db/`; the explicit
+  allow-list covers `lib/auth.ts` (the authorization layer) and files whose
+  direct use is auth-plane only. Adding to the list is a review decision.
 
 ## Multi-tenancy & roles
 

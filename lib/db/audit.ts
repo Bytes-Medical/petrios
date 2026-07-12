@@ -339,3 +339,47 @@ export async function listMemberAttendanceDetails(
     }
   })
 }
+
+export interface PastSessionMeta {
+  id: string
+  title: string
+  date_start: string
+  department_id: string
+}
+
+/** Past published sessions across departments (member report scope). */
+export async function listPastPublishedSessionsMeta(
+  orgId: string,
+  departmentIds: string[]
+): Promise<PastSessionMeta[]> {
+  if (departmentIds.length === 0) return []
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('sessions')
+    .select('id, title, date_start, department_id')
+    .eq('org_id', orgId)
+    .eq('status', 'PUBLISHED')
+    .in('department_id', departmentIds)
+    .lte('date_start', new Date().toISOString())
+    .order('date_start', { ascending: false })
+
+  if (error) throw toDbError('Failed to list past sessions', error)
+  return (data as PastSessionMeta[] | null) ?? []
+}
+
+/** One member's attendance rows for the given sessions. */
+export async function listMemberAttendanceRows(
+  userId: string,
+  sessionIds: string[]
+): Promise<{ session_id: string; status: string; primary_source: string | null }[]> {
+  if (sessionIds.length === 0) return []
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('attendance')
+    .select('session_id, status, primary_source')
+    .eq('user_id', userId)
+    .in('session_id', sessionIds)
+
+  if (error) throw toDbError('Failed to list member attendance', error)
+  return (data as { session_id: string; status: string; primary_source: string | null }[] | null) ?? []
+}
