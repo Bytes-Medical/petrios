@@ -110,8 +110,8 @@ export default function PrivacyPolicyPage() {
               <p>
                 Questions or data requests: contact your organisation&rsquo;s administrator or the
                 Petrios team at{' '}
-                <a href="mailto:privacy@byteteaching.example" className="underline">
-                  privacy@byteteaching.example
+                <a href="mailto:privacy@petrios.example" className="underline">
+                  privacy@petrios.example
                 </a>
                 . (Update this address before publishing.)
               </p>

@@ -1,6 +1,6 @@
--- 036: Bytes Ops — additive AI agent layer.
+-- 036: Petrios Ops — additive AI agent layer.
 --
--- Design contract (see CLAUDE.md "Bytes Ops"):
+-- Design contract (see CLAUDE.md "Petrios Ops"):
 --   * This migration only CREATEs ops_* tables. It never alters existing
 --     tables — the ops layer must be droppable without touching the core app.
 --   * Every table is deny-all RLS (enabled, no policies): all access goes

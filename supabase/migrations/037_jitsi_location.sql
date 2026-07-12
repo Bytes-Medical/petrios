@@ -1,4 +1,4 @@
--- 037: Byte Meet — built-in Jitsi video rooms as a session location type.
+-- 037: Petrios Meet — built-in Jitsi video rooms as a session location type.
 --
 -- Adds 'JITSI' to the location_type CHECK on sessions and teaching_slots.
 -- No new columns: the room is derived from the session id

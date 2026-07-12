@@ -5,8 +5,8 @@ export const dynamic = 'force-dynamic'
 
 /**
  * PUBLIC verification of portable teaching records (federation v1) — under
- * the public /verify/* prefix. Works for records issued by ANY Byte
- * Teaching instance: the signature is checked against the embedded key and
+ * the public /verify/* prefix. Works for records issued by ANY Petrios
+ * instance: the signature is checked against the embedded key and
  * cross-checked against the issuer's /.well-known/petrios identity.
  */
 export default function VerifyRecordPage() {

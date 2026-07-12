@@ -1,7 +1,7 @@
 # Petrios — production image (see docs/self-hosting.md)
 #
-# Build:  docker build -t byte-teaching .
-# Run:    docker run --env-file .env.local -p 3000:3000 byte-teaching
+# Build:  docker build -t petrios .
+# Run:    docker run --env-file .env.local -p 3000:3000 petrios
 #
 # The app talks to Supabase (hosted or self-hosted) over the network; this
 # image contains only the Next.js standalone server.

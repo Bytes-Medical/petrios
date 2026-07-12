@@ -1,6 +1,6 @@
 /**
  * Server-side LLM client (OpenAI Chat Completions). The single entry point
- * for AI in the app — nothing else may call the OpenAI API except the Bytes
+ * for AI in the app — nothing else may call the OpenAI API except the Petrios
  * Ops tool-use loop in lib/ops/agent-loop.ts, which needs raw tool-call
  * messages.
  *

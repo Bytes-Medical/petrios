@@ -1,9 +1,9 @@
 -- 040: Public API v1 + webhooks.
 --
 -- api_tokens: org-scoped bearer tokens for /api/v1. Only the sha256 hash is
--- stored — the plaintext ("bt_..." prefix) is shown once at creation.
+-- stored — the plaintext ("pt_..." prefix) is shown once at creation.
 -- webhook_endpoints/deliveries: org-admin-registered HTTPS endpoints that
--- receive signed event POSTs (X-Bytes-Signature HMAC).
+-- receive signed event POSTs (X-Petrios-Signature HMAC).
 --
 -- All deny-all RLS: managed through org-admin-gated server actions and the
 -- API auth layer via the service DAL (lib/db/api-platform.ts).
@@ -27,7 +27,7 @@ CREATE TABLE public.webhook_endpoints (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   org_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   url TEXT NOT NULL,
-  secret TEXT NOT NULL,            -- HMAC key for X-Bytes-Signature
+  secret TEXT NOT NULL,            -- HMAC key for X-Petrios-Signature
   events TEXT[] NOT NULL,          -- e.g. {'session.published','certificate.issued'}
   active BOOLEAN NOT NULL DEFAULT TRUE,
   created_by UUID NOT NULL REFERENCES auth.users(id),

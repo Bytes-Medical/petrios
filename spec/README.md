@@ -17,7 +17,7 @@ the code is a bug in the spec.
 | [03-attendance.md](./03-attendance.md) | Evidence-based attendance pipeline |
 | [04-sessions-and-scheduling.md](./04-sessions-and-scheduling.md) | Sessions, teacher invitations/RSVP, teaching slots, Petrios Meet video |
 | [05-feedback-and-certificates.md](./05-feedback-and-certificates.md) | Anonymous feedback, AI summaries, certificates + verification |
-| [06-bytes-ops.md](./06-bytes-ops.md) | The AI agent layer: invariants, approval gate, gateway, crons, assistant |
+| [06-petrios-ops.md](./06-petrios-ops.md) | The AI agent layer: invariants, approval gate, gateway, crons, assistant |
 | [07-conventions.md](./07-conventions.md) | Code, UI, email, notification, cron, and testing conventions |
 | [08-portfolio-and-recall.md](./08-portfolio-and-recall.md) | Evidence Engine (ARCP packs, teacher dossiers) + Petrios Recall with catch-up attendance |
 | [09-platform-api-and-self-hosting.md](./09-platform-api-and-self-hosting.md) | Public API + webhooks, federation, provider adapters, deployment |

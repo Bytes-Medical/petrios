@@ -24,7 +24,7 @@ export default function OpenSourcePage() {
             <p className="mx-auto mt-3 max-w-2xl font-mono text-sm text-gray-700 leading-relaxed">
               Petrios is free software under AGPL-3.0. No procurement
               cycle, no per-seat licence, no lock-in — clone it, deploy it
-              inside your trust, and keep every byte of your data where you
+              inside your trust, and keep all of your data where you
               can see it.
             </p>
           </div>

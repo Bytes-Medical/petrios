@@ -1,4 +1,4 @@
--- 039: Byte Recall — spaced-repetition recall questions after sessions,
+-- 039: Petrios Recall — spaced-repetition recall questions after sessions,
 -- with catch-up attendance: an absentee who passes the recall questions
 -- (within 21 days) earns attendance evidence with the new RECALL source.
 --

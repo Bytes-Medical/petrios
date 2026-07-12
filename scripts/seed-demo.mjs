@@ -8,13 +8,13 @@
  *   NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run seed:demo
  *
  * SAFETY: refuses to run against a database that already has organizations
- * unless --force is passed. Demo accounts (password: demo-byte-2026):
+ * unless --force is passed. Demo accounts (password: demo-petrios-2026):
  *   demo-moderator@example.org, demo-trainee-1..5@example.org
  */
 import { createClient } from '@supabase/supabase-js'
 
 const FORCE = process.argv.includes('--force')
-const PASSWORD = 'demo-byte-2026'
+const PASSWORD = 'demo-petrios-2026'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY

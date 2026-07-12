@@ -16,7 +16,7 @@ Verify against the current DTAC version before submission.
   for clinical safety cases. *[deployment-specific]*
 - The AI layer never evaluates trainee performance, and anonymous feedback
   containing welfare/safety signals is deterministically routed to humans
-  and excluded from AI summaries (`spec/06-bytes-ops.md`, safety rails).
+  and excluded from AI summaries (`spec/06-petrios-ops.md`, safety rails).
 
 ## B. Data protection
 

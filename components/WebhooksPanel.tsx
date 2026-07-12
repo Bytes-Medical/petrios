@@ -77,7 +77,7 @@ export function WebhooksPanel({ endpoints, deliveries }: WebhooksPanelProps) {
           label="Endpoint URL"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://your-system.example/hooks/byte-teaching"
+          placeholder="https://your-system.example/hooks/petrios"
         />
         <div className="flex flex-wrap gap-2 pt-1">
           {WEBHOOK_EVENTS.map((event) => (
