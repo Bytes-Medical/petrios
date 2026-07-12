@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
   keywords: [
+    'Petrios',
     'NHS teaching platform',
     'clinical education software',
     'medical education platform',

@@ -5,7 +5,7 @@ import { Footer } from '@/components/Footer'
 export const metadata = {
   title: 'Features',
   description:
-    'Everything a clinical teaching programme runs on: evidence-based attendance, built-in video, claimable slots, AI with human approval, and portfolio-ready evidence.',
+    'Everything a clinical teaching programme runs on with Petrios: evidence-based attendance, built-in video, claimable slots, AI with human approval, and portfolio-ready evidence.',
   alternates: { canonical: '/features' },
 }
 

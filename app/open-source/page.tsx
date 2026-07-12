@@ -5,7 +5,7 @@ import { Footer } from '@/components/Footer'
 export const metadata = {
   title: 'Open Source',
   description:
-    'AGPL-licensed, self-hostable teaching platform with an org-scoped REST API, signed webhooks, and portable teaching records. Run it on your own servers.',
+    'Petrios is an AGPL-licensed, self-hostable teaching platform with an org-scoped REST API, signed webhooks, and portable teaching records. Run it on your own servers.',
   alternates: { canonical: '/open-source' },
 }
 
