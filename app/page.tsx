@@ -8,6 +8,39 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
 import { NEWS } from '@/lib/news-data'
+import { GITHUB_URL, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from '@/lib/site'
+
+export const metadata = {
+  title: { absolute: `${SITE_NAME} — ${SITE_TAGLINE}` },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: '/' },
+}
+
+// Structured data: helps Google show the project as software with rich
+// results. Values are all our own constants — nothing user-supplied.
+const JSON_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'SoftwareApplication',
+      name: SITE_NAME,
+      applicationCategory: 'EducationalApplication',
+      operatingSystem: 'Web',
+      description: SITE_DESCRIPTION,
+      url: SITE_URL,
+      license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'GBP' },
+      sameAs: [GITHUB_URL],
+    },
+    {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/assets/byte_logo.png`,
+      sameAs: [GITHUB_URL],
+    },
+  ],
+}
 
 const AUDIENCES = [
   {
@@ -84,6 +117,10 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+      />
       <PublicNav />
       <main className="flex-1 px-4 py-12 sm:py-16 bg-dotgrid">
         <div className="mx-auto max-w-4xl w-full space-y-8 sm:space-y-10">
@@ -113,13 +150,13 @@ export default async function Home() {
                   priority
                 />
               </div>
-              <div className="h-8 sm:h-10 mb-6">
+              <h1 className="h-8 sm:h-10 mb-6 font-normal">
                 <Typewriter
                   text="The operating system for clinical teaching"
                   speed={30}
                   className="text-xl sm:text-2xl md:text-3xl font-mono text-gray-800"
                 />
-              </div>
+              </h1>
               <p className="font-mono text-sm sm:text-base text-gray-700 max-w-2xl mx-auto leading-relaxed">
                 A learning platform stores course content. Byte Teaching runs
                 the live teaching around it — scheduling, attendance evidence,

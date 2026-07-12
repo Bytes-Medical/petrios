@@ -3,9 +3,10 @@ import { PublicNav } from '@/components/PublicNav'
 import { Footer } from '@/components/Footer'
 
 export const metadata = {
-  title: 'Features — Byte Teaching',
+  title: 'Features',
   description:
     'Everything a clinical teaching programme runs on: evidence-based attendance, built-in video, claimable slots, AI with human approval, and portfolio-ready evidence.',
+  alternates: { canonical: '/features' },
 }
 
 interface Feature {

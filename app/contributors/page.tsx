@@ -6,6 +6,13 @@ import { CURATED_CONTRIBUTORS, GITHUB_REPO } from '@/lib/contributors-data'
 
 export const revalidate = 3600 // refresh the GitHub contributor graph hourly
 
+export const metadata = {
+  title: 'Contributors',
+  description:
+    'The people building Byte Teaching — founder, clinical advisors, and open-source code contributors.',
+  alternates: { canonical: '/contributors' },
+}
+
 interface GithubContributor {
   login: string
   avatar_url: string

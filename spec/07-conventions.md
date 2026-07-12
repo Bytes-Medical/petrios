@@ -85,6 +85,18 @@ kill switch and log to `ops_agent_runs`.
   triage main in the Security tab, plus a weekly scheduled run. Actions are
   SHA-pinned; `.github/dependabot.yml` keeps pins and deps fresh.
 
+## Public site & SEO
+
+- Site identity constants live in `lib/site.ts` (build-safe, never throws);
+  root metadata (title template, Open Graph, keywords, Search Console
+  verification via `GOOGLE_SITE_VERIFICATION`) in `app/layout.tsx`.
+- Every public page exports `metadata` with a short `title` (the layout
+  template appends "— Byte Teaching") and `alternates.canonical`.
+- `app/robots.ts` (app routes disallowed), `app/sitemap.ts` (public pages
+  only), `app/opengraph-image.tsx` (generated card, house style). The
+  landing page carries SoftwareApplication/Organization JSON-LD.
+- Public pages must have exactly one `h1`.
+
 ## Git
 
 - Commit per feature with detailed bodies; never push unless explicitly

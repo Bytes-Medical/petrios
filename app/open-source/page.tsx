@@ -3,9 +3,10 @@ import { PublicNav } from '@/components/PublicNav'
 import { Footer } from '@/components/Footer'
 
 export const metadata = {
-  title: 'Open Source — Byte Teaching',
+  title: 'Open Source',
   description:
     'AGPL-licensed, self-hostable teaching platform with an org-scoped REST API, signed webhooks, and portable teaching records. Run it on your own servers.',
+  alternates: { canonical: '/open-source' },
 }
 
 const REPO = 'https://github.com/Bytes-Medical/bytes-teaching'

@@ -4,9 +4,10 @@ import { Badge } from '@/components/Badge'
 import { NEWS } from '@/lib/news-data'
 
 export const metadata = {
-  title: 'News — Byte Teaching',
+  title: 'News',
   description:
     'Announcements from the Byte Teaching project: releases, conferences, and community news.',
+  alternates: { canonical: '/news' },
 }
 
 function formatDate(iso: string): string {

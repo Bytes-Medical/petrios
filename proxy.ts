@@ -59,7 +59,11 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname === '/contributors' ||
     request.nextUrl.pathname === '/features' ||
     request.nextUrl.pathname === '/open-source' ||
-    request.nextUrl.pathname === '/news'
+    request.nextUrl.pathname === '/news' ||
+    // SEO surfaces: crawlers must reach these without a session.
+    request.nextUrl.pathname === '/robots.txt' ||
+    request.nextUrl.pathname === '/sitemap.xml' ||
+    request.nextUrl.pathname.startsWith('/opengraph-image')
   )
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 
