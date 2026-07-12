@@ -29,7 +29,7 @@ import * as onboardingDb from '@/lib/db/onboarding'
  *
  * The 2-day floor lets the feedback window close; syntheses are ready before
  * the Monday newsletter covers the prior week. Cap 5 sessions per run.
- * Run daily: GET /api/cron/ops-synthesis?secret=CRON_SECRET
+ * Run daily: GET /api/cron/ops-synthesis with Authorization: Bearer CRON_SECRET
  */
 
 const SYNTHESIS_CAP = 5

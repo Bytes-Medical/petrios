@@ -49,7 +49,7 @@ All variables are documented in [`.env.example`](../.env.example).
 ## Cron jobs
 
 Schedule with any scheduler (cron, systemd timers, Kubernetes CronJobs) —
-each route is idempotent and authenticated with `?secret=$CRON_SECRET`:
+each route is idempotent and authenticated with an `Authorization: Bearer $CRON_SECRET` header:
 
 | Route | Schedule |
 |---|---|
@@ -63,7 +63,7 @@ each route is idempotent and authenticated with `?secret=$CRON_SECRET`:
 Example crontab entry:
 
 ```
-0 * * * * curl -fsS "https://teaching.your-trust.nhs.uk/api/cron/session-reminders?secret=$CRON_SECRET"
+0 * * * * curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://teaching.your-trust.nhs.uk/api/cron/session-reminders"
 ```
 
 ## Operations

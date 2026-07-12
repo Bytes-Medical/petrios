@@ -25,7 +25,7 @@ import * as organizationsDb from '@/lib/db/organizations'
  *
  * UNIQUE(org_id, week_start) makes reruns idempotent; orgs with no delivered
  * sessions are skipped ("nothing to say" beats a hollow digest).
- * Run weekly, ideally Monday: GET /api/cron/ops-newsletter?secret=CRON_SECRET
+ * Run weekly, ideally Monday: GET /api/cron/ops-newsletter with Authorization: Bearer CRON_SECRET
  */
 
 export async function GET(request: NextRequest) {

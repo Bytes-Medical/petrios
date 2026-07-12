@@ -14,7 +14,7 @@ import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
 /**
  * Emails every department member a reminder ~24h before a published session
  * starts. Idempotent via sessions.reminder_sent_at (migration 029). Run on a
- * schedule, e.g. hourly: GET /api/cron/session-reminders?secret=CRON_SECRET
+ * schedule, e.g. hourly: GET /api/cron/session-reminders with Authorization: Bearer CRON_SECRET
  */
 export async function GET(request: NextRequest) {
   const unauthorized = unauthorizedCronResponse(request)

@@ -130,7 +130,7 @@ npm run build
 ### Cron jobs (production)
 
 Five idempotent routes under `/api/cron/`, each authenticated with
-`?secret=CRON_SECRET` — schedule them with Vercel Cron or any scheduler:
+an `Authorization: Bearer CRON_SECRET` header — schedule them with Vercel Cron or any scheduler:
 
 | Route | Suggested schedule | What it does |
 |---|---|---|

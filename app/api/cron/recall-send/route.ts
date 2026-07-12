@@ -23,7 +23,7 @@ import * as onboardingDb from '@/lib/db/onboarding'
  *     ("one week left" — the window closes at end + 21 days)
  * Watermark columns on the set make every pass idempotent; sets whose
  * window already closed are watermarked without sending.
- * Run daily: GET /api/cron/recall-send?secret=CRON_SECRET
+ * Run daily: GET /api/cron/recall-send with Authorization: Bearer CRON_SECRET
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000

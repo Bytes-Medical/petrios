@@ -5,6 +5,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Cooldown: give newly published releases time to be noticed/yanked
+    # before they enter the project. Security updates bypass this.
+    cooldown:
+      default-days: 1
+      semver-patch-days: 3
+      semver-minor-days: 7
+      semver-major-days: 14
     groups:
       # One PR for all minor/patch bumps; majors still get individual PRs.
       minor-and-patch:
@@ -16,3 +23,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - '*'

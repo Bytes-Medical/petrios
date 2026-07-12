@@ -58,7 +58,7 @@ THANK_YOU_EMAIL / CUSTOM_EMAIL (send payload), NEWSLETTER_ISSUE (fan-out to
 org members minus opt-outs, per-recipient HMAC unsubscribe link replacing
 `UNSUBSCRIBE_PLACEHOLDER`, updates issue status/sent_count).
 
-## Crons (all `?secret=CRON_SECRET` + kill-switch guard + batch caps + run logging)
+## Crons (all an `Authorization: Bearer CRON_SECRET` header + kill-switch guard + batch caps + run logging)
 
 - **ops-weekly**: (1) speaker chase — published sessions ≤21 days out with
   zero ACCEPTED teacher → drafted chase per PENDING invitee (registered →

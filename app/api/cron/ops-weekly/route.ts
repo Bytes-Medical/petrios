@@ -27,7 +27,7 @@ import * as onboardingDb from '@/lib/db/onboarding'
  *   3. Curriculum gap watch — maps unmapped recent sessions to Progress+
  *      domains and alerts org admins when the uncovered-domain set changes.
  *
- * Run weekly: GET /api/cron/ops-weekly?secret=CRON_SECRET
+ * Run weekly: GET /api/cron/ops-weekly with Authorization: Bearer CRON_SECRET
  */
 
 const CHASE_DRAFT_CAP = 10

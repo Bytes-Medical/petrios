@@ -61,7 +61,7 @@ bell (and, for org managers, the ops approvals bell) on every page.
 ## Cron routes
 
 `app/api/cron/<name>/route.ts`, GET, authenticated by
-`unauthorizedCronResponse(request)` (`?secret=CRON_SECRET`). Idempotency is
+`unauthorizedCronResponse(request)` (an `Authorization: Bearer CRON_SECRET` header). Idempotency is
 mandatory: watermark columns (`report_sent_at`, `reminder_sent_at`), UNIQUE
 constraints (synthesis per session, newsletter per org+week), or window
 maths. Batch caps keep runs inside serverless limits; per-item failures are
