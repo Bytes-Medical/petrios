@@ -190,7 +190,7 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
         <DurationSelect name="duration" defaultMinutes={60} required />
 
         <Select label="Location Type" name="location_type" defaultValue="MS_TEAMS" required>
-          <option value="JITSI">Byte Meet (Video)</option>
+          <option value="JITSI">Petrios Meet (Video)</option>
         <option value="MS_TEAMS">MS Teams</option>
           <option value="IN_PERSON">In Person</option>
           <option value="HYBRID">Hybrid</option>

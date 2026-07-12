@@ -1,4 +1,4 @@
-# Byte Teaching — production image (see docs/self-hosting.md)
+# Petrios — production image (see docs/self-hosting.md)
 #
 # Build:  docker build -t byte-teaching .
 # Run:    docker run --env-file .env.local -p 3000:3000 byte-teaching

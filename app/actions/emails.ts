@@ -176,7 +176,7 @@ function buildEmailHtml(
       </table>
       ${respondSection}
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching.
+        This email was sent via Petrios.
       </p>
     </div>
   `

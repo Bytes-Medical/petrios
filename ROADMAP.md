@@ -1,13 +1,13 @@
 # Roadmap
 
-Where Byte Teaching is heading, and why some obvious things aren't built
+Where Petrios is heading, and why some obvious things aren't built
 yet. Issues and PRs against these items are very welcome — please read
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) and the relevant [`spec/`](./spec/README.md)
 first.
 
 ## Interoperability
 
-- **LTI 1.3 tool provider** — surface Byte Teaching sessions and attendance
+- **LTI 1.3 tool provider** — surface Petrios sessions and attendance
   inside institutional LMSs (Blackboard, Moodle, Canvas). Deliberately not
   stubbed: a conformant implementation needs OIDC login initiation, deep
   linking, and Assignment & Grade Services, tested against a real platform.

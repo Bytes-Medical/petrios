@@ -28,7 +28,7 @@ export function isLlmConfigured(): boolean {
 
 /**
  * Shared POST to the chat-completions endpoint (auth, error shaping). Also
- * used by the Bytes Ops tool-use loop — the one sanctioned caller outside
+ * used by the Petrios Ops tool-use loop — the one sanctioned caller outside
  * this module.
  */
 export async function postOpenAiChatCompletion(
@@ -64,7 +64,7 @@ export interface LlmResult {
 
 /**
  * One system+user completion, reporting token usage and the model that
- * served the request (the Bytes Ops gateway records both in its audit
+ * served the request (the Petrios Ops gateway records both in its audit
  * trail). Returns null when no key is configured; throws on API errors and
  * on refusals so callers can degrade per-item.
  */

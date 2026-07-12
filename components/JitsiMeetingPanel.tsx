@@ -28,7 +28,7 @@ const ROOM_OPEN_MINS_BEFORE = 30
 const ROOM_CLOSE_MINS_AFTER = 30
 
 /**
- * Byte Meet: the session's built-in video room, embedded in the session
+ * Petrios Meet: the session's built-in video room, embedded in the session
  * page. Joining fires the normal self check-in (best-effort — outside the
  * check-in window it simply doesn't record, matching existing semantics).
  */
@@ -68,7 +68,7 @@ export function JitsiMeetingPanel({
     <Card className="mb-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-mono text-lg font-bold">Byte Meet — video room</h2>
+          <h2 className="font-mono text-lg font-bold">Petrios Meet — video room</h2>
           <p className="font-mono text-xs text-gray-600">
             This session has a built-in video room. Joining here also checks
             you in when the attendance window is open.

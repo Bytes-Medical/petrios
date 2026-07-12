@@ -1,14 +1,14 @@
-# DTAC self-assessment — Byte Teaching
+# DTAC self-assessment — Petrios
 
 A working self-assessment against NHS England's **Digital Technology
-Assessment Criteria (DTAC)**, for trusts evaluating a self-hosted Byte
-Teaching deployment. This is a starting pack, not a completed assessment:
+Assessment Criteria (DTAC)**, for trusts evaluating a self-hosted Petrios
+deployment. This is a starting pack, not a completed assessment:
 sections marked *[deployment-specific]* depend on how and where you host it.
 Verify against the current DTAC version before submission.
 
 ## A. Clinical safety (DCB0129/DCB0160)
 
-- Byte Teaching is a **teaching administration** tool: it manages teaching
+- Petrios is a **teaching administration** tool: it manages teaching
   sessions, attendance evidence, feedback, and certificates. It does not
   process patient data, provide clinical decision support, or influence
   direct care — trusts should confirm their own DCB0160 scoping, but the

@@ -6,7 +6,7 @@ import { opsInference } from './gateway'
 import type { OpsRun } from './run'
 
 /**
- * Byte Recall drafting. AI drafts the question set; a MODERATOR edits and
+ * Petrios Recall drafting. AI drafts the question set; a MODERATOR edits and
  * approves it in the session manage UI before anything is emailed — that
  * human gate is the quality bar. Deliberately no deterministic fallback:
  * bad recall questions are worse than none, so with no LLM configured no

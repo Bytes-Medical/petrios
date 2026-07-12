@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { Input } from '@/components/Input'
 import { Button } from '@/components/Button'
 import Link from 'next/link'
+import { Wordmark } from '@/components/Wordmark'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -75,14 +75,7 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md border border-black p-6 sm:p-8">
         <div className="flex justify-center mb-6">
-          <Image
-            src="/assets/byte_logo.png"
-            alt="Byte Teaching Logo"
-            width={200}
-            height={133}
-            className="w-auto h-auto max-w-full"
-            priority
-          />
+          <Wordmark size="lg" />
         </div>
         <h2 className="text-lg sm:text-xl font-mono font-bold mb-4 sm:mb-6 text-center">Sign Up</h2>
         

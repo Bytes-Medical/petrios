@@ -82,7 +82,7 @@ export function buildTeacherFeedbackEmailHtml(params: TeacherFeedbackEmailParams
       <p style="margin:24px 0 12px;"><strong>Your teaching certificate is attached to this email.</strong></p>
 
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching.
+        This email was sent via Petrios.
       </p>
     </div>
   `
@@ -98,7 +98,7 @@ export function buildCertificateEmailHtml(
       <p style="margin:20px 0;">Dear ${recipientName},</p>
       <p style="margin:20px 0;">Thank you for attending <strong>${sessionTitle}</strong>. Your attendance certificate is now ready for download when you sign in to your dashboard.</p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching.
+        This email was sent via Petrios.
       </p>
     </div>
   `
@@ -145,7 +145,7 @@ function buildSlotOfferEmailHtml(params: SlotOfferEmailParams): string {
       </p>
       <p style="font-size:12px;color:#666;">Slots are first come, first served — once a slot is claimed it disappears for everyone else. The ${departmentName} organiser will confirm the topic with you afterwards.</p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching.
+        This email was sent via Petrios.
       </p>
     </div>
   `
@@ -199,7 +199,7 @@ export function buildSlotClaimedEmailHtml(params: {
         <a href="${manageUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Manage Session</a>
       </p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching.
+        This email was sent via Petrios.
       </p>
     </div>
   `
@@ -228,7 +228,7 @@ export function buildTeacherResponseEmailHtml(params: TeacherResponseEmailParams
         <a href="${manageUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">View Session</a>
       </p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching.
+        This email was sent via Petrios.
       </p>
     </div>
   `
@@ -291,7 +291,7 @@ export function buildSessionReminderEmailHtml(params: SessionReminderEmailParams
       </p>
 
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching.
+        This email was sent via Petrios.
       </p>
     </div>
   `
@@ -353,7 +353,7 @@ export function buildInvitationEmailHtml(
         Respond to Invitation
       </a>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching.
+        This email was sent via Petrios.
       </p>
     </div>
   `
@@ -377,7 +377,7 @@ function buildMonospaceEmailShell(title: string, body: string) {
       <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">${title}</h2>
       ${body}
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching.
+        This email was sent via Petrios.
       </p>
     </div>
   `
@@ -439,7 +439,7 @@ export function buildPasswordlessLoginEmailHtml(
     `
       <p style="margin:20px 0;">${greeting}</p>
       <p style="margin:20px 0;">
-        Click the link below to sign in to Byte Teaching.
+        Click the link below to sign in to Petrios.
       </p>
       <a href="${params.inviteUrl}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
         Sign In

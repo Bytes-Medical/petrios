@@ -91,7 +91,7 @@ kill switch and log to `ops_agent_runs`.
   root metadata (title template, Open Graph, keywords, Search Console
   verification via `GOOGLE_SITE_VERIFICATION`) in `app/layout.tsx`.
 - Every public page exports `metadata` with a short `title` (the layout
-  template appends "— Byte Teaching") and `alternates.canonical`.
+  template appends "— Petrios") and `alternates.canonical`.
 - `app/robots.ts` (app routes disallowed), `app/sitemap.ts` (public pages
   only), `app/opengraph-image.tsx` (generated card, house style). The
   landing page carries SoftwareApplication/Organization JSON-LD.

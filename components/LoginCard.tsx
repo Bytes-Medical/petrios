@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { Input } from '@/components/Input'
 import { Button } from '@/components/Button'
 import { PasswordlessLoginForm } from '@/components/PasswordlessLoginForm'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
+import { Wordmark } from '@/components/Wordmark'
 
 export type LoginVariant = 'individual' | 'organisation' | 'neutral'
 
@@ -71,14 +71,7 @@ export function LoginCard({ variant }: { variant: LoginVariant }) {
     <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-dotgrid">
       <div className="w-full max-w-md border border-black border-t-4 border-t-clay-600 bg-white p-6 sm:p-8 shadow-[8px_8px_0_rgba(31,29,26,0.08)]">
         <div className="flex justify-center mb-6">
-          <Image
-            src="/assets/byte_logo.png"
-            alt="Byte Teaching Logo"
-            width={200}
-            height={133}
-            className="w-auto h-auto max-w-full mix-blend-multiply"
-            priority
-          />
+          <Wordmark size="lg" />
         </div>
 
         <h2 className="text-lg sm:text-xl font-mono font-bold mb-2 text-center">{heading}</h2>

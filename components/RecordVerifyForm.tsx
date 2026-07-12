@@ -26,7 +26,7 @@ export function RecordVerifyForm() {
         value={json}
         onChange={(e) => setJson(e.target.value)}
         rows={10}
-        placeholder='Paste a teaching record JSON ({"format":"bytes-teaching-record/v1", …})'
+        placeholder='Paste a teaching record JSON ({"format":"petrios-record/v1", …})'
         className="w-full border border-black px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-clay-600"
       />
       <Button onClick={handleVerify} disabled={busy || !json.trim()}>

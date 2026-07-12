@@ -1,4 +1,4 @@
-# 06 — Bytes Ops (the AI agent layer)
+# 06 — Petrios Ops (the AI agent layer)
 
 An additive agent layer that runs programme operations semi-autonomously.
 Everything lives under `lib/ops/`, `/ops` routes, `app/actions/ops*.ts`,

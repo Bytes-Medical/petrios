@@ -39,7 +39,7 @@ export default async function OpsCurriculumPage() {
       <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-8 sm:py-8">
         <div className="mb-6">
           <Link href="/ops" className="font-mono text-sm underline underline-offset-2">
-            ← Bytes Ops
+            ← Petrios Ops
           </Link>
           <h1 className="mt-2 font-mono text-2xl font-bold sm:text-3xl">Curriculum coverage</h1>
           <p className="font-mono text-sm text-gray-600">

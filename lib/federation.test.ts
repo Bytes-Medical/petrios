@@ -41,7 +41,7 @@ describe('sign/verify roundtrip', () => {
   })
 
   it('verifies a signed payload with the derived public key', () => {
-    const payload = { format: 'bytes-teaching-record/v1', subject: { name: 'A' } }
+    const payload = { format: 'petrios-record/v1', subject: { name: 'A' } }
     const signature = signPayload(payload)
     expect(verifyPayload(payload, signature, getInstancePublicKey())).toBe(true)
   })
@@ -59,7 +59,7 @@ describe('sign/verify roundtrip', () => {
 
   it('splitRecord separates the signature from the signed payload', () => {
     const record = {
-      format: 'bytes-teaching-record/v1',
+      format: 'petrios-record/v1',
       issuer: 'https://x',
       issued_at: 'now',
       public_key: 'k',

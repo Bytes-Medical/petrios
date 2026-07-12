@@ -1,14 +1,14 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Byte Teaching API",
+    "title": "Petrios API",
     "version": "1.0.0",
-    "description": "Org-scoped REST API for Byte Teaching. Authenticate with an org-admin-issued bearer token (Settings → API Tokens). See docs/api.md for webhooks and signature verification."
+    "description": "Org-scoped REST API for Petrios. Authenticate with an org-admin-issued bearer token (Settings → API Tokens). See docs/api.md for webhooks and signature verification."
   },
   "servers": [{ "url": "/api/v1" }],
   "components": {
     "securitySchemes": {
-      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "bt_<48 hex>" }
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "pt_<48 hex>" }
     },
     "schemas": {
       "Session": {

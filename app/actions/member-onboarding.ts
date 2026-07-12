@@ -751,7 +751,7 @@ export async function sendPasswordlessLoginLink(emailInput: string) {
   const { error: emailError } = await mailer.emails.send({
     from: fromAddress,
     to: email,
-    subject: 'Your Byte Teaching sign-in link',
+    subject: 'Your Petrios sign-in link',
     html: buildPasswordlessLoginEmailHtml({
       inviteUrl,
       firstName,

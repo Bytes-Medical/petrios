@@ -1,4 +1,4 @@
-# Byte Teaching
+# Petrios
 
 A teaching management platform for NHS training programmes — scheduling,
 attendance, feedback, certificates, built-in video, and an AI operations
@@ -14,7 +14,7 @@ departments; trainees need accounts, external teachers don't.
 - **Session management**: create, edit, publish, and cancel teaching
   sessions (30 min–4 h, typed: STEPP / Clinical Skills / Simulation /
   Academic), with an org-wide calendar and a subscribable ICS feed.
-- **Byte Meet video**: sessions can use a built-in Jitsi video room —
+- **Petrios Meet video**: sessions can use a built-in Jitsi video room —
   auto-generated per session (nothing to paste), embedded on the session
   page, joinable by external guests via a plain link. Joining the embedded
   room records attendance automatically. Microsoft Teams links are equally
@@ -40,13 +40,13 @@ departments; trainees need accounts, external teachers don't.
   certificate codes, publicly checkable at `/verify/pack/[code]`) and
   **appraisal/revalidation dossiers** for teachers (sessions, hours, reach,
   anonymised feedback themes).
-- **Byte Recall**: AI-drafted, moderator-approved recall questions emailed
+- **Petrios Recall**: AI-drafted, moderator-approved recall questions emailed
   after each session (spaced retrieval at +3 and +14 days) — and a
   catch-up route: absentees who pass can have attendance recorded, honestly
   labelled as recall-verified.
 - **In-app notifications**: bell with read tracking for invitations,
   responses, claims, and ops alerts.
-- **Bytes Ops (AI agent layer)**: drafts speaker-chase emails, post-session
+- **Petrios Ops (AI agent layer)**: drafts speaker-chase emails, post-session
   thank-yous with feedback insights, and a weekly learning-points
   newsletter; watches curriculum coverage (RCPCH Progress+ domains) and low
   feedback scores; includes an organiser-only chat assistant that knows the
@@ -69,7 +69,7 @@ departments; trainees need accounts, external teachers don't.
 
 ## Self-hosting & API
 
-Byte Teaching is built to run on **your own infrastructure**: Docker image +
+Petrios is built to run on **your own infrastructure**: Docker image +
 compose file, SMTP email, an OpenAI-compatible `OPENAI_BASE_URL` for
 in-network AI (or none), self-hosted Jitsi, a plain-Postgres migration
 runner, and a health endpoint — see [docs/self-hosting.md](./docs/self-hosting.md).
@@ -77,7 +77,7 @@ runner, and a health endpoint — see [docs/self-hosting.md](./docs/self-hosting
 Integrate anything via the **org-scoped REST API** (`/api/v1`, tokens with
 scopes, [OpenAPI schema](./public/openapi.json)) and **signed webhooks** —
 see [docs/api.md](./docs/api.md). Instances publish a federation identity at
-`/.well-known/bytes-teaching`, and members can export **signed, portable
+`/.well-known/petrios`, and members can export **signed, portable
 teaching records** any instance can verify at `/verify/record`.
 
 For NHS deployments: [DTAC self-assessment](./docs/compliance/dtac.md) and a
@@ -149,7 +149,7 @@ Five idempotent routes under `/api/cron/`, each authenticated with
 - Several tables are **deny-all RLS** by design (notifications, address book,
   teaching slots, all `ops_*` tables): they are reachable only through the
   service-role DAL, with authorization enforced in the calling actions.
-- The **Bytes Ops** layer is strictly additive (`lib/ops/`, `/ops` routes,
+- The **Petrios Ops** layer is strictly additive (`lib/ops/`, `/ops` routes,
   `ops_*` tables) with hard invariants documented in [CLAUDE.md](./CLAUDE.md):
   one inference gateway, one email send path, approval gate on everything
   outbound.
@@ -161,17 +161,17 @@ Five idempotent routes under `/api/cron/`, each authenticated with
 
 1. Sign up, then create an organization via the Admin panel.
 2. Create departments; share each department's 6-digit code with trainees.
-3. Create and publish sessions (pick Byte Meet video, Teams, in person, or
+3. Create and publish sessions (pick Petrios Meet video, Teams, in person, or
    hybrid) — or publish open teaching slots and let teachers claim them.
 4. During a session: attendees check in via QR/feedback/video join; after it,
    generate certificates and read the AI feedback summary.
-5. Organisers: watch the approvals bell — Bytes Ops drafts, you decide.
+5. Organisers: watch the approvals bell — Petrios Ops drafts, you decide.
 
 ## License
 
 Copyright (C) 2026 Akanimoh Osutuk.
 
-Byte Teaching is licensed under the **GNU Affero General Public License
+Petrios is licensed under the **GNU Affero General Public License
 v3.0 or later (AGPL-3.0-or-later)**. See [`LICENSE`](./LICENSE) for the
 full license text and [`NOTICE`](./NOTICE) for attribution requirements.
 

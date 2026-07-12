@@ -54,7 +54,7 @@ export default async function OpengraphImage() {
               letterSpacing: -2,
             }}
           >
-            BYTE TEACHING
+            PETRIOS
           </div>
           <div
             style={{

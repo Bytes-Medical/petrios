@@ -9,6 +9,7 @@ import { NotificationsBell } from './NotificationsBell'
 import { ApprovalsBell } from './ApprovalsBell'
 import type { User } from '@supabase/supabase-js'
 import type { AppNotification, OpsPendingAction } from '@/lib/types'
+import { Wordmark } from './Wordmark'
 
 interface AdminLink {
   href: string
@@ -96,11 +97,7 @@ export function Nav({
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <Link href="/dashboard">
-            <img
-              src="/assets/byte_logo.png"
-              alt="Byte Teaching"
-              className="h-10 sm:h-12 w-auto mix-blend-multiply"
-            />
+            <Wordmark />
           </Link>
           
           {/* Desktop Navigation */}

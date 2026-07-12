@@ -26,7 +26,7 @@ receive an acknowledgement within a week.
   `ops_*`) are deliberately deny-all and only reachable through the
   service-role data-access layer in `lib/db/` — authorization for those paths
   lives in the server actions (`app/actions/`) and CRON_SECRET-guarded routes.
-- The Bytes Ops AI layer must never send outbound email without an approved
+- The Petrios Ops AI layer must never send outbound email without an approved
   `ops_pending_actions` row (`lib/ops/executors.ts` is the only send path)
   and never passes untrusted feedback text as instructions. Reports of any
   bypass of these invariants are especially welcome.

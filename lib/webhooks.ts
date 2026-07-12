@@ -78,8 +78,8 @@ export async function emitWebhook(
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Bytes-Event': event,
-              'X-Bytes-Signature': signWebhookBody(endpoint.secret, body),
+              'X-Petrios-Event': event,
+              'X-Petrios-Signature': signWebhookBody(endpoint.secret, body),
             },
             body,
             signal: AbortSignal.timeout(5000),

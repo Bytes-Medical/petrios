@@ -1,4 +1,4 @@
-# Byte Teaching — self-hosted app container (see docs/self-hosting.md).
+# Petrios — self-hosted app container (see docs/self-hosting.md).
 #
 # The database/auth layer is Supabase: either a hosted project (simplest) or
 # Supabase's own self-host stack (https://supabase.com/docs/guides/self-hosting/docker)

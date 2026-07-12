@@ -110,7 +110,7 @@ export function ManageSessionTabs({
                     <p>
                       <strong>Meeting link:</strong>{' '}
                       <a href={meetingUrl} target="_blank" rel="noopener noreferrer" className="underline">
-                        {session.location_type === 'JITSI' ? 'Open Byte Meet room' : 'Join Meeting'}
+                        {session.location_type === 'JITSI' ? 'Open Petrios Meet room' : 'Join Meeting'}
                       </a>
                     </p>
                   )}
@@ -143,12 +143,12 @@ export function ManageSessionTabs({
         {activeTab === 'meeting' && (
           <Card>
             <h2 className="text-xl font-mono font-bold mb-4">
-              {session.location_type === 'JITSI' ? 'Byte Meet Room' : 'Update Meeting Link'}
+              {session.location_type === 'JITSI' ? 'Petrios Meet Room' : 'Update Meeting Link'}
             </h2>
             {session.location_type === 'JITSI' ? (
               <div className="space-y-3 font-mono text-sm">
                 <p className="text-gray-600">
-                  This session uses a built-in Byte Meet video room — no link to
+                  This session uses a built-in Petrios Meet video room — no link to
                   paste. Members join from the session page; share the link
                   below with external guests who don&apos;t have an account.
                 </p>

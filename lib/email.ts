@@ -71,9 +71,9 @@ const DEV_PLACEHOLDER_FROM = 'dev@localhost'
 export function getFromAddress(): string {
   const from = process.env.MAIL_FROM || process.env.RESEND_FROM_EMAIL
   if (from) return from
-  if (isDev) return 'Byte Teaching <dev@localhost>'
+  if (isDev) return 'Petrios <dev@localhost>'
   throw new Error(
-    'MAIL_FROM environment variable is required (e.g. "Byte Teaching <no-reply@your-domain>")'
+    'MAIL_FROM environment variable is required (e.g. "Petrios <no-reply@your-domain>")'
   )
 }
 

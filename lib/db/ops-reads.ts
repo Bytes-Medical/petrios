@@ -2,7 +2,7 @@ import { getServiceDb } from './client'
 import { toDbError } from './errors'
 
 /**
- * Read-only core-table queries for the Bytes Ops layer (crons + assistant
+ * Read-only core-table queries for the Petrios Ops layer (crons + assistant
  * tools). Kept separate from both the core entity modules (so the ops layer
  * stays droppable) and lib/db/ops.ts (which touches ops_* tables only).
  *

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import * as apiPlatformDb from '@/lib/db/api-platform'
 
 /**
- * Bearer-token auth for /api/v1. Tokens look like `bt_<48 hex chars>`; only
+ * Bearer-token auth for /api/v1. Tokens look like `pt_<48 hex chars>`; only
  * the sha256 hash is stored, so a database leak never leaks live tokens.
  * Every request resolves to an org — API access is always org-scoped, and
  * scope checks are explicit per route.
@@ -13,7 +13,7 @@ import type { ApiScope } from './scopes'
 export { API_SCOPES, type ApiScope } from './scopes'
 
 export function generateApiToken(): { token: string; hash: string; prefix: string } {
-  const token = `bt_${randomBytes(24).toString('hex')}`
+  const token = `pt_${randomBytes(24).toString('hex')}`
   return { token, hash: hashApiToken(token), prefix: `${token.slice(0, 7)}…` }
 }
 
@@ -40,9 +40,9 @@ export async function authenticateApiRequest(
   requiredScope: ApiScope
 ): Promise<ApiAuthContext | NextResponse> {
   const header = request.headers.get('authorization') ?? ''
-  const match = header.match(/^Bearer\s+(bt_[a-f0-9]{48})$/i)
+  const match = header.match(/^Bearer\s+(pt_[a-f0-9]{48})$/i)
   if (!match) {
-    return apiError(401, 'unauthorized', 'Provide an API token: Authorization: Bearer bt_…')
+    return apiError(401, 'unauthorized', 'Provide an API token: Authorization: Bearer pt_…')
   }
 
   const token = await apiPlatformDb.findActiveTokenByHash(hashApiToken(match[1]))

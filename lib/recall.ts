@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 
 /**
- * Byte Recall pure logic: question-set schema, answer scoring, and the
+ * Petrios Recall pure logic: question-set schema, answer scoring, and the
  * HMAC capability tokens that let recipients answer from an email link
  * without logging in (same trick as newsletter unsubscribe links).
  */

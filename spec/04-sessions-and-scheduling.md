@@ -51,10 +51,10 @@
 - Slot lifecycle: OPEN → CLAIMED or CLOSED; expired OPEN slots are filtered
   by query, never rewritten; CLAIMED never auto-reopens.
 
-## Byte Meet (built-in Jitsi video)
+## Petrios Meet (built-in Jitsi video)
 
 - `location_type='JITSI'`: the room is **derived, not stored** —
-  `jitsiRoomName(sessionId)` = `ByteTeaching-{uuid}` on
+  `jitsiRoomName(sessionId)` = `Petrios-{uuid}` on
   `NEXT_PUBLIC_JITSI_DOMAIN` (default meet.jit.si). Same trust model as a
   pasted Teams link (unguessable capability URL).
 - `sessionMeetingUrl(session)` (`lib/jitsi.ts`) is the **single join-URL

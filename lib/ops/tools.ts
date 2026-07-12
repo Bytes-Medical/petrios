@@ -11,7 +11,7 @@ import { opsInference } from './gateway'
 import type { OpsRun } from './run'
 
 /**
- * The assistant's tool registry. Design rules (from the Bytes Ops spec):
+ * The assistant's tool registry. Design rules (from the Petrios Ops spec):
  *   - org scope comes from the AUTHENTICATED caller's context, never from
  *     model input — a tool argument can never reach outside the org
  *   - read tools cap output at 20 rows

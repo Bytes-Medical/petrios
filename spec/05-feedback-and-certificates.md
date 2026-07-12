@@ -20,7 +20,7 @@
 - **AI summaries**: `summarizeFeedback` (`lib/ai/feedback-summary.ts`) via
   `askLlm` — plain-text Overall/Themes/Suggestions, anonymised by prompt
   rule, gracefully absent without `OPENAI_API_KEY`. (The deeper,
-  safety-railed synthesis artifact lives in Bytes Ops — see 06.)
+  safety-railed synthesis artifact lives in Petrios Ops — see 06.)
 - Teacher feedback release: moderators can share a session's feedback with
   its teachers (`ReleaseTeacherFeedbackPanel`).
 - **Feedback free text is untrusted input** everywhere it meets an LLM:

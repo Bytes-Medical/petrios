@@ -32,7 +32,7 @@ export function buildOpsEmailHtml(input: {
       ${paragraphs}
       ${cta}
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Byte Teaching after review by a teaching programme organiser.
+        This email was sent via Petrios after review by a teaching programme organiser.
       </p>
     </div>
   `

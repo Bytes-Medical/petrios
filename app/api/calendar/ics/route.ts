@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   const calendar = ical({
     name: orgName ? `${orgName} Teaching Sessions` : 'Teaching Sessions',
     method: ICalCalendarMethod.PUBLISH,
-    prodId: { company: 'Byte Teaching', product: 'Dashboard' },
+    prodId: { company: 'Petrios', product: 'Dashboard' },
     ttl: 3600,
   })
 
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       locationParts.push('In Person')
     }
     if (session.location_type === 'JITSI') {
-      locationParts.push(sessionMeetingUrl(session) || 'Byte Meet (Video)')
+      locationParts.push(sessionMeetingUrl(session) || 'Petrios Meet (Video)')
     }
 
     calendar.createEvent({

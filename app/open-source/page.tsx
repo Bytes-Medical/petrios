@@ -22,7 +22,7 @@ export default function OpenSourcePage() {
               Your servers. Your data. Your platform.
             </h1>
             <p className="mx-auto mt-3 max-w-2xl font-mono text-sm text-gray-700 leading-relaxed">
-              Byte Teaching is free software under AGPL-3.0. No procurement
+              Petrios is free software under AGPL-3.0. No procurement
               cycle, no per-seat licence, no lock-in — clone it, deploy it
               inside your trust, and keep every byte of your data where you
               can see it.
@@ -62,7 +62,7 @@ curl localhost:3000/api/health    # {"status":"ok","db":"ok"}`}</pre>
               An API and webhooks, not an island
             </h2>
             <p className="mt-3 font-mono text-sm text-gray-700 leading-relaxed">
-              Wire Byte Teaching into rota systems, data warehouses, or your
+              Wire Petrios into rota systems, data warehouses, or your
               own frontends: an org-scoped REST API with scoped bearer tokens
               (OpenAPI schema included), plus HMAC-signed webhooks for session
               publishes, computed attendance, issued certificates, and claimed
@@ -70,7 +70,7 @@ curl localhost:3000/api/health    # {"status":"ok","db":"ok"}`}</pre>
             </p>
             <ul className="mt-4 space-y-1.5 font-mono text-sm text-gray-700">
               <li><span className="text-clay-600">▸</span> Tokens created in Settings, hashed at rest, revocable, per-scope</li>
-              <li><span className="text-clay-600">▸</span> <code>X-Bytes-Signature</code> on every webhook delivery</li>
+              <li><span className="text-clay-600">▸</span> <code>X-Petrios-Signature</code> on every webhook delivery</li>
               <li><span className="text-clay-600">▸</span> iCalendar feeds and CSV exports for everything tabular</li>
             </ul>
             <p className="mt-3 font-mono text-sm">

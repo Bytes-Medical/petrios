@@ -53,7 +53,7 @@ export function WebhooksPanel({ endpoints, deliveries }: WebhooksPanelProps) {
     <div className="space-y-4">
       <p className="font-mono text-sm text-gray-600">
         Receive signed POSTs when events happen (verify the{' '}
-        <code>X-Bytes-Signature</code> header — see docs/api.md).
+        <code>X-Petrios-Signature</code> header — see docs/api.md).
       </p>
 
       {error && (

@@ -98,7 +98,7 @@ export async function verifyTeachingRecord(json: string): Promise<RecordVerifica
   // identity (best-effort; offline verification is still meaningful).
   let issuerKeyConfirmed: boolean | null = null
   try {
-    const response = await fetch(`${record.issuer}/.well-known/bytes-teaching`, {
+    const response = await fetch(`${record.issuer}/.well-known/petrios`, {
       signal: AbortSignal.timeout(5000),
     })
     if (response.ok) {

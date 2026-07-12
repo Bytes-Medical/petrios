@@ -1,7 +1,7 @@
 import type { LocationType } from '@/lib/types'
 
 /**
- * Byte Meet: built-in video rooms backed by Jitsi. Rooms are derived from
+ * Petrios Meet: built-in video rooms backed by Jitsi. Rooms are derived from
  * the session id (a UUID, so the URL is unguessable — the same trust model
  * as a pasted Teams link) rather than stored, which means every JITSI
  * session has a working room with zero setup.
@@ -13,7 +13,7 @@ import type { LocationType } from '@/lib/types'
 export const JITSI_DOMAIN = process.env.NEXT_PUBLIC_JITSI_DOMAIN || 'meet.jit.si'
 
 export function jitsiRoomName(sessionId: string): string {
-  return `ByteTeaching-${sessionId}`
+  return `Petrios-${sessionId}`
 }
 
 export function jitsiMeetingUrl(sessionId: string): string {

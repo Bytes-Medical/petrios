@@ -34,7 +34,7 @@ export default async function SessionPage(
   const attendance = await getAttendance(params.id)
   const canManage = await isDepartmentModerator(session.department_id)
 
-  // Byte Meet sessions embed their video room; name shown to the room.
+  // Petrios Meet sessions embed their video room; name shown to the room.
   let videoDisplayName: string | null = null
   if (session.location_type === 'JITSI' && session.status === 'PUBLISHED') {
     const profile = await onboardingDb.findProfileByUserId(user.id)

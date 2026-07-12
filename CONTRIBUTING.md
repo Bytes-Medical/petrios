@@ -1,4 +1,4 @@
-# Contributing to Byte Teaching
+# Contributing to Petrios
 
 Thanks for your interest in contributing. A few things to read before
 you send a pull request.

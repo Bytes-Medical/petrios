@@ -44,7 +44,7 @@ export async function sendChatMessage(
 ): Promise<SendChatMessageResult> {
   const { userId, orgId } = await requireOpsManager()
   if (!opsEnabled()) {
-    throw new Error('Bytes Ops is disabled (OPS_ENABLED=false) — the assistant is paused.')
+    throw new Error('Petrios Ops is disabled (OPS_ENABLED=false) — the assistant is paused.')
   }
 
   const trimmed = text.trim()

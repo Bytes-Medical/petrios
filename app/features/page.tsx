@@ -29,7 +29,7 @@ const FEATURES: Feature[] = [
     ],
   },
   {
-    eyebrow: 'Byte Meet',
+    eyebrow: 'Petrios Meet',
     title: 'Video built in, not bolted on',
     body: 'Give any session a video room with zero setup — no links to paste, ever. Rooms are generated per session, embedded in the session page for members, and joinable by external guests with a plain link. Swap the backend for your own Jitsi server with one environment variable.',
     points: [
@@ -69,7 +69,7 @@ const FEATURES: Feature[] = [
     ],
   },
   {
-    eyebrow: 'Bytes Ops',
+    eyebrow: 'Petrios Ops',
     title: 'An AI assistant that never acts alone',
     body: 'The ops layer drafts what programme admin eats your week: speaker chases for unconfirmed sessions, post-session thank-yous with feedback insights, and a weekly learning-points newsletter. Every outbound email waits in an approval queue until a human says send — that invariant is enforced in code, not policy.',
     points: [

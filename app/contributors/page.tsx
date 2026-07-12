@@ -9,7 +9,7 @@ export const revalidate = 3600 // refresh the GitHub contributor graph hourly
 export const metadata = {
   title: 'Contributors',
   description:
-    'The people building Byte Teaching — founder, clinical advisors, and open-source code contributors.',
+    'The people building Petrios — founder, clinical advisors, and open-source code contributors.',
   alternates: { canonical: '/contributors' },
 }
 
@@ -52,7 +52,7 @@ export default async function ContributorsPage() {
           <div className="mb-8 text-center">
             <h1 className="font-mono text-3xl font-bold sm:text-4xl">Contributors</h1>
             <p className="mx-auto mt-3 max-w-2xl font-mono text-sm text-gray-700">
-              Byte Teaching is open source (AGPL-3.0) and built in the open.
+              Petrios is open source (AGPL-3.0) and built in the open.
               These are the people making it happen — code and beyond.
             </p>
             <p className="mt-3 font-mono text-xs text-gray-500">
@@ -148,7 +148,7 @@ export default async function ContributorsPage() {
 
             <div className="text-center">
               <Link href="/" className="font-mono text-sm underline hover:text-clay-700">
-                ← Back to Byte Teaching
+                ← Back to Petrios
               </Link>
             </div>
           </div>

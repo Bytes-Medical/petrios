@@ -1,7 +1,7 @@
-# DPIA template — Byte Teaching deployment
+# DPIA template — Petrios deployment
 
 Pre-filled Data Protection Impact Assessment skeleton for a trust deploying
-Byte Teaching. Complete the *[fill in]* sections with your deployment's
+Petrios. Complete the *[fill in]* sections with your deployment's
 specifics and route through your IG process.
 
 ## 1. Processing overview
@@ -10,7 +10,7 @@ specifics and route through your IG process.
 |---|---|
 | Controller | *[fill in: your trust]* |
 | Processor(s) | Self-hosted: none beyond the trust. Hosted variants: Supabase (database/auth), email provider (Resend or trust SMTP), optional AI provider *[fill in]* |
-| System | Byte Teaching (open source, AGPL-3.0), version *[fill in]* |
+| System | Petrios (open source, AGPL-3.0), version *[fill in]* |
 | Purpose | Administration of postgraduate teaching: scheduling, attendance evidence, anonymous session feedback, certificates, teaching-portfolio evidence |
 
 ## 2. Data categories & subjects

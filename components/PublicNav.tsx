@@ -1,5 +1,5 @@
-import Image from 'next/image'
 import Link from 'next/link'
+import { Wordmark } from './Wordmark'
 
 /**
  * Navigation for the public (signed-out) site: landing, features,
@@ -15,13 +15,7 @@ export function PublicNav({ current }: { current?: 'features' | 'open-source' | 
     <nav className="border-b border-black bg-white">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <Link href="/" className="flex items-center">
-          <Image
-            src="/assets/byte_logo.png"
-            alt="Byte Teaching"
-            width={120}
-            height={48}
-            className="h-9 w-auto mix-blend-multiply sm:h-10"
-          />
+          <Wordmark />
         </Link>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-sm">
           <Link href="/features" className={linkClass('features')}>

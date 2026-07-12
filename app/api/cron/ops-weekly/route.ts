@@ -16,7 +16,7 @@ import * as auditDb from '@/lib/db/audit'
 import * as onboardingDb from '@/lib/db/onboarding'
 
 /**
- * Bytes Ops weekly pass. Three jobs, all read-only against core tables:
+ * Petrios Ops weekly pass. Three jobs, all read-only against core tables:
  *   1. Speaker chase — sessions <21 days out with no accepted teacher get a
  *      DRAFTED chase email per unresponsive invitee (max 2 chases each, 5-day
  *      spacing), queued as pending actions for human approval. Nothing sends
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   const unauthorized = unauthorizedCronResponse(request)
   if (unauthorized) return unauthorized
   if (!opsEnabled()) {
-    return NextResponse.json({ message: 'Bytes Ops is disabled', skipped: true })
+    return NextResponse.json({ message: 'Petrios Ops is disabled', skipped: true })
   }
 
   const run = await startRun('ops_weekly', 'cron')

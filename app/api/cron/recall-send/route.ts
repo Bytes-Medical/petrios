@@ -14,7 +14,7 @@ import * as departmentsDb from '@/lib/db/departments'
 import * as onboardingDb from '@/lib/db/onboarding'
 
 /**
- * Byte Recall delivery. Deterministic sends of MODERATOR-APPROVED question
+ * Petrios Recall delivery. Deterministic sends of MODERATOR-APPROVED question
  * sets (the human gate lives on the session manage Recall tab), same class
  * of core-platform email as session reminders:
  *   - end + 3 days: retention questions to attendees AND catch-up invites

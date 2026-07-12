@@ -87,7 +87,7 @@ export function buildNewsletterHtml(input: {
       <table style="width:100%;border-collapse:collapse;">${points}</table>
       ${lookingAhead}
       <p style="font-size:12px;color:#666;margin-top:24px;border-top:1px solid #ccc;padding-top:10px;">
-        Sent by Byte Teaching after review by your teaching programme organisers.
+        Sent by Petrios after review by your teaching programme organisers.
         <a href="${UNSUBSCRIBE_PLACEHOLDER}" style="color:#666;">Unsubscribe from this digest</a>
       </p>
     </div>

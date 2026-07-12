@@ -9,7 +9,7 @@ import { RecentRunsPanel } from '@/components/ops/RecentRunsPanel'
 export const dynamic = 'force-dynamic'
 
 /**
- * Bytes Ops hub: the human control room for the agent layer. Organisers
+ * Petrios Ops hub: the human control room for the agent layer. Organisers
  * review drafted outbound actions, audit what the agent did, and reach the
  * assistant, newsletter archive, and curriculum coverage.
  */
@@ -26,7 +26,7 @@ export default async function OpsPage() {
       <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
         <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="mb-2 font-mono text-2xl font-bold sm:text-3xl">Bytes Ops</h1>
+            <h1 className="mb-2 font-mono text-2xl font-bold sm:text-3xl">Petrios Ops</h1>
             <p className="font-mono text-sm text-gray-600">
               Your teaching programme&apos;s assistant — it drafts, you decide.
             </p>
@@ -55,7 +55,7 @@ export default async function OpsPage() {
 
         {!overview.enabled && (
           <p className="mb-6 border border-amber-600 bg-amber-50 px-4 py-3 font-mono text-sm text-amber-800">
-            Bytes Ops is currently disabled (OPS_ENABLED=false). Scheduled jobs,
+            Petrios Ops is currently disabled (OPS_ENABLED=false). Scheduled jobs,
             the assistant, and approvals are paused; nothing will run or send.
           </p>
         )}

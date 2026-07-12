@@ -18,7 +18,7 @@ import * as attendanceDb from '@/lib/db/attendance'
 import type { RecallQuestionSet } from '@/lib/db/recall'
 
 /**
- * Byte Recall actions. Moderator surface (review/edit/approve question
+ * Petrios Recall actions. Moderator surface (review/edit/approve question
  * sets) is requireDepartmentModerator-gated; the answer surface is public
  * and authorized by the HMAC capability token from the recall email (the
  * same trust model as slot claim links).

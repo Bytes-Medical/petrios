@@ -12,7 +12,7 @@ interface ApprovalsBellProps {
 }
 
 /**
- * The Bytes Ops approval queue in the nav — the "upgraded notifications"
+ * The Petrios Ops approval queue in the nav — the "upgraded notifications"
  * panel. Nothing the agent drafts goes out until it is approved here (or on
  * the full /ops queue, which shows the complete preview body).
  */

@@ -19,7 +19,7 @@ export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
   MS_TEAMS: 'Microsoft Teams (Online)',
   IN_PERSON: 'In Person',
   HYBRID: 'Hybrid (In Person + Online)',
-  JITSI: 'Byte Meet (Video)',
+  JITSI: 'Petrios Meet (Video)',
 }
 
 export const LOCATION_TYPE_LABELS_SHORT: Record<LocationType, string> = {
@@ -334,7 +334,7 @@ export interface Certificate {
 
 
 // ---------------------------------------------------------------------------
-// Bytes Ops (AI agent layer) — rows live in deny-all-RLS ops_* tables and are
+// Petrios Ops (AI agent layer) — rows live in deny-all-RLS ops_* tables and are
 // only reachable through lib/db/ops.ts.
 // ---------------------------------------------------------------------------
 

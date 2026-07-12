@@ -6,7 +6,7 @@ import { NEWS } from '@/lib/news-data'
 export const metadata = {
   title: 'News',
   description:
-    'Announcements from the Byte Teaching project: releases, conferences, and community news.',
+    'Announcements from the Petrios project: releases, conferences, and community news.',
   alternates: { canonical: '/news' },
 }
 

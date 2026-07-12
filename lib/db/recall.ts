@@ -3,7 +3,7 @@ import { getServiceDb } from './client'
 import { toDbError } from './errors'
 
 /**
- * Byte Recall DAL. Both tables are deny-all RLS: question sets are managed
+ * Petrios Recall DAL. Both tables are deny-all RLS: question sets are managed
  * by moderators through requireDepartmentModerator-gated actions and the
  * CRON_SECRET-authenticated crons; answers arrive through HMAC capability
  * tokens on the public answer page (the token IS the authorization, same

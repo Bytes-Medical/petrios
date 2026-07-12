@@ -1,4 +1,4 @@
-# Self-hosting Byte Teaching
+# Self-hosting Petrios
 
 Run the whole platform on your own infrastructure — the recommended path for
 NHS trusts and anyone with data-residency requirements. Nothing needs to

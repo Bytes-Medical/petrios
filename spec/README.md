@@ -1,4 +1,4 @@
-# Byte Teaching — Platform Specification
+# Petrios — Platform Specification
 
 Detailed specs of how this platform is built, written primarily for LLMs
 (and humans) working on the codebase. `CLAUDE.md` at the repo root is the
@@ -15,11 +15,11 @@ the code is a bug in the spec.
 | [01-architecture.md](./01-architecture.md) | Stack, layering rules, auth model, multi-tenancy, middleware |
 | [02-data-model.md](./02-data-model.md) | Tables, RLS strategies, migration conventions |
 | [03-attendance.md](./03-attendance.md) | Evidence-based attendance pipeline |
-| [04-sessions-and-scheduling.md](./04-sessions-and-scheduling.md) | Sessions, teacher invitations/RSVP, teaching slots, Byte Meet video |
+| [04-sessions-and-scheduling.md](./04-sessions-and-scheduling.md) | Sessions, teacher invitations/RSVP, teaching slots, Petrios Meet video |
 | [05-feedback-and-certificates.md](./05-feedback-and-certificates.md) | Anonymous feedback, AI summaries, certificates + verification |
 | [06-bytes-ops.md](./06-bytes-ops.md) | The AI agent layer: invariants, approval gate, gateway, crons, assistant |
 | [07-conventions.md](./07-conventions.md) | Code, UI, email, notification, cron, and testing conventions |
-| [08-portfolio-and-recall.md](./08-portfolio-and-recall.md) | Evidence Engine (ARCP packs, teacher dossiers) + Byte Recall with catch-up attendance |
+| [08-portfolio-and-recall.md](./08-portfolio-and-recall.md) | Evidence Engine (ARCP packs, teacher dossiers) + Petrios Recall with catch-up attendance |
 | [09-platform-api-and-self-hosting.md](./09-platform-api-and-self-hosting.md) | Public API + webhooks, federation, provider adapters, deployment |
 
 ## Non-negotiable invariants (summary)
@@ -32,10 +32,10 @@ these is a defect regardless of what a task seems to require:
    (auth-plane `supabase.auth.*` calls are the only exception).
 2. **`attendance_evidence` is append-only**; `attendance` is derived and
    recomputable, never hand-edited, and locking freezes it.
-3. **No Bytes Ops outbound email without an approved `ops_pending_actions`
+3. **No Petrios Ops outbound email without an approved `ops_pending_actions`
    row** — `lib/ops/executors.ts` is the only ops send path.
 4. **All LLM traffic goes through `lib/ai/llm.ts`** (plus the one sanctioned
-   tool-loop in `lib/ops/agent-loop.ts`), and within Bytes Ops through the
+   tool-loop in `lib/ops/agent-loop.ts`), and within Petrios Ops through the
    `opsInference` gateway with its purpose allow-list and hash-only audit.
 5. **`OPS_ENABLED=false` halts every ops surface.**
 6. **Feedback free text is untrusted input** — always fenced as data in

@@ -7,7 +7,7 @@
   (`.github/workflows/ci.yml`) enforces numbering and uniqueness.
 - **Never edit an applied migration**; correct forward with a new one.
 - Additive bias: features add tables/columns; they don't repurpose existing
-  ones. The Bytes Ops layer (036) is the extreme case — `ops_*` tables only,
+  ones. The Petrios Ops layer (036) is the extreme case — `ops_*` tables only,
   droppable without touching the core app.
 - UUIDs via `uuid_generate_v4()`, timestamps `TIMESTAMPTZ DEFAULT NOW()`,
   org scoping via `org_id UUID REFERENCES organizations ON DELETE CASCADE`.
@@ -45,7 +45,7 @@ token), `teacher_emails` (send log), `attendance_evidence` (append-only) →
 
 Idempotency watermarks on `sessions`: `report_sent_at`, `reminder_sent_at`.
 
-## Bytes Ops tables (migration 036; all deny-all)
+## Petrios Ops tables (migration 036; all deny-all)
 
 - `ops_pending_actions` — the approval gate. `type` CHECK:
   SPEAKER_CHASE_EMAIL / THANK_YOU_EMAIL / NEWSLETTER_ISSUE / CUSTOM_EMAIL;

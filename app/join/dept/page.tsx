@@ -2,6 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
 import { JoinByDeptCodeForm } from './JoinByDeptCodeForm'
+import { Wordmark } from '@/components/Wordmark'
 
 export default async function JoinByDeptCodePage() {
   const user = await getCurrentUser()
@@ -16,14 +17,7 @@ export default async function JoinByDeptCodePage() {
     <div className="min-h-screen flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-6">
-          <Image
-            src="/assets/byte_logo.png"
-            alt="Byte Teaching Logo"
-            width={200}
-            height={133}
-            className="w-auto h-auto max-w-full"
-            priority
-          />
+          <Wordmark size="lg" />
         </div>
 
         <h1 className="text-xl font-mono font-bold text-center mb-2">Join a Department</h1>

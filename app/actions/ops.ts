@@ -21,7 +21,7 @@ import type {
 import type { DomainCoverage } from '@/lib/ops/curriculum'
 
 /**
- * Bytes Ops server actions — every entry point re-checks requireOpsManager
+ * Petrios Ops server actions — every entry point re-checks requireOpsManager
  * (organisers only) and scopes to the caller's org. The ops_* tables are
  * deny-all RLS, so these actions are the only interactive path to them.
  */
@@ -49,7 +49,7 @@ export async function getOpsOverview(): Promise<OpsOverview> {
 export async function approveOpsAction(actionId: string): Promise<{ success: true }> {
   const { userId, orgId } = await requireOpsManager()
   if (!opsEnabled()) {
-    throw new Error('Bytes Ops is disabled (OPS_ENABLED=false) — actions cannot be executed.')
+    throw new Error('Petrios Ops is disabled (OPS_ENABLED=false) — actions cannot be executed.')
   }
 
   // Compare-and-set claim: null means someone else already reviewed it.
@@ -138,7 +138,7 @@ export interface EnrichSessionResult {
 export async function enrichSession(sessionId: string): Promise<EnrichSessionResult> {
   const { orgId } = await requireOpsManager()
   if (!opsEnabled()) {
-    throw new Error('Bytes Ops is disabled (OPS_ENABLED=false).')
+    throw new Error('Petrios Ops is disabled (OPS_ENABLED=false).')
   }
 
   const session = await sessionsDb.findSession(sessionId, orgId)

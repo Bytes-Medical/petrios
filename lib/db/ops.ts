@@ -19,7 +19,7 @@ import { getServiceDb } from './client'
 import { toDbError } from './errors'
 
 /**
- * Bytes Ops DAL. Every ops_* table is deny-all RLS (migration 036), so all
+ * Petrios Ops DAL. Every ops_* table is deny-all RLS (migration 036), so all
  * access here is service-role by design. Authorization therefore lives with
  * the callers, never here:
  *   - server actions gate with requireOrgManager (organisers only)

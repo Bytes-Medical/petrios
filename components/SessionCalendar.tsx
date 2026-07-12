@@ -146,7 +146,7 @@ function formatSessionDuration(session: Session) {
 function getLocationLabel(session: Session) {
   if (session.location_type === 'HYBRID') return 'Hybrid session'
   if (session.location_type === 'MS_TEAMS') return session.teams_meeting_url ? 'Microsoft Teams' : 'Online'
-  if (session.location_type === 'JITSI') return 'Byte Meet video'
+  if (session.location_type === 'JITSI') return 'Petrios Meet video'
   return 'In person'
 }
 
@@ -452,7 +452,7 @@ export function SessionCalendar({
               </div>
 
               <div className="mb-5 flex flex-wrap gap-3">
-                {/* Byte Meet joins go via the session page: the embedded room
+                {/* Petrios Meet joins go via the session page: the embedded room
                     there also records the member's self check-in. */}
                 {selectedSession.location_type === 'JITSI' ? (
                   <button

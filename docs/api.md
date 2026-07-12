@@ -1,4 +1,4 @@
-# Byte Teaching API (v1)
+# Petrios API (v1)
 
 Org-scoped REST API for integrating rota systems, data warehouses, or your
 own frontends. Full schema: [`/openapi.json`](../public/openapi.json).
@@ -9,7 +9,7 @@ Create a token in **Settings → API Tokens** (org admins only). Tokens are
 shown once, scoped, and revocable; only a hash is stored server-side.
 
 ```bash
-curl -H "Authorization: Bearer bt_..." \
+curl -H "Authorization: Bearer pt_..." \
   "https://your-instance.example/api/v1/sessions?status=PUBLISHED&from=2026-09-01T00:00:00Z"
 ```
 
@@ -43,8 +43,8 @@ Register endpoints in **Settings → Webhooks**. Events:
 
 Each delivery is a POST with:
 
-- `X-Bytes-Event`: the event name
-- `X-Bytes-Signature`: `sha256=<hex HMAC of the raw body, keyed by your endpoint secret>`
+- `X-Petrios-Event`: the event name
+- `X-Petrios-Signature`: `sha256=<hex HMAC of the raw body, keyed by your endpoint secret>`
 - Body: `{ "event": string, "created_at": iso8601, "data": { … } }`
 
 Verify (Node example):

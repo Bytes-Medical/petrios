@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   const unauthorized = unauthorizedCronResponse(request)
   if (unauthorized) return unauthorized
   if (!opsEnabled()) {
-    return NextResponse.json({ message: 'Bytes Ops is disabled', skipped: true })
+    return NextResponse.json({ message: 'Petrios Ops is disabled', skipped: true })
   }
 
   const run = await startRun('ops_synthesis', 'cron')
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Byte Recall: draft question sets for recently ended sessions that lack
+    // Petrios Recall: draft question sets for recently ended sessions that lack
     // one (same candidate pool). Drafts wait for moderator review/approval in
     // the session manage Recall tab before any email goes out.
     let recallDrafted = 0

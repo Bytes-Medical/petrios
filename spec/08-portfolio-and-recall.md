@@ -1,4 +1,4 @@
-# 08 — Evidence Engine (portfolio & dossier) + Byte Recall
+# 08 — Evidence Engine (portfolio & dossier) + Petrios Recall
 
 ## Evidence Engine
 
@@ -29,7 +29,7 @@ teaching activity — package it for the people who need it.
 - Strategic point: the dossier makes teaching on the platform career
   currency for seniors — it is the recruitment lever for slot claiming.
 
-## Byte Recall (spaced retrieval + catch-up attendance)
+## Petrios Recall (spaced retrieval + catch-up attendance)
 
 ### The flow
 1. **Draft** — the ops-synthesis cron drafts 3 single-best-answer questions

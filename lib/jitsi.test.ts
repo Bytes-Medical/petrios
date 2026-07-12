@@ -5,7 +5,7 @@ const SESSION_ID = '3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b'
 
 describe('jitsiRoomName', () => {
   it('derives deterministically from the session id', () => {
-    expect(jitsiRoomName(SESSION_ID)).toBe(`ByteTeaching-${SESSION_ID}`)
+    expect(jitsiRoomName(SESSION_ID)).toBe(`Petrios-${SESSION_ID}`)
     expect(jitsiRoomName(SESSION_ID)).toBe(jitsiRoomName(SESSION_ID))
   })
 })
@@ -13,7 +13,7 @@ describe('jitsiRoomName', () => {
 describe('jitsiMeetingUrl', () => {
   it('builds an https URL on the configured domain', () => {
     expect(jitsiMeetingUrl(SESSION_ID)).toBe(
-      `https://${JITSI_DOMAIN}/ByteTeaching-${SESSION_ID}`
+      `https://${JITSI_DOMAIN}/Petrios-${SESSION_ID}`
     )
     expect(JITSI_DOMAIN).toBe('meet.jit.si') // default when env unset (tests)
   })

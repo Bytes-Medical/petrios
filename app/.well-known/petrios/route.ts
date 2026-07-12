@@ -5,7 +5,7 @@ import { getInstancePublicKey, isFederationConfigured, TEACHING_RECORD_FORMAT } 
 export const dynamic = 'force-dynamic'
 
 /**
- * Instance identity for federation: other Byte Teaching deployments (and
+ * Instance identity for federation: other Petrios deployments (and
  * anyone verifying an exported teaching record) fetch this to get the
  * public key that signs this instance's records.
  */

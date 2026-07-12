@@ -52,7 +52,7 @@ export async function NavShell() {
       roleLabel = 'Moderator'
     }
 
-    // Bytes Ops surfaces (Ops link + approvals bell) are organiser-only.
+    // Petrios Ops surfaces (Ops link + approvals bell) are organiser-only.
     if (!superAdmin && !isPersonal) {
       try {
         const orgId = await getCurrentOrgId()

@@ -1,6 +1,6 @@
 # 09 — Platform: public API, webhooks, federation, self-hosting
 
-The open-platform layer: everything that makes Byte Teaching deployable on
+The open-platform layer: everything that makes Petrios deployable on
 your own infrastructure and integrable with other systems.
 
 ## Provider adapters (self-hosting)
@@ -20,7 +20,7 @@ your own infrastructure and integrable with other systems.
 
 ## Public API v1 (`/api/v1`, spec: `public/openapi.json`, guide: `docs/api.md`)
 
-- **Auth** (`lib/api/auth.ts`): `Bearer bt_<48hex>` tokens, sha256-hashed at
+- **Auth** (`lib/api/auth.ts`): `Bearer pt_<48hex>` tokens, sha256-hashed at
   rest (`api_tokens`, migration 040, deny-all RLS), org-scoped with explicit
   scopes (`read:sessions`, `write:sessions`, `read:attendance`,
   `read:certificates`, `read:departments`, `read:slots`). Org scope comes
@@ -39,7 +39,7 @@ your own infrastructure and integrable with other systems.
   `slot.claimed`. Emitted at: `updateSession` publish transition + API
   publish route; post-session cron; certificate issue in that cron; slot
   `performClaim`.
-- Contract: POST with `X-Bytes-Event` and `X-Bytes-Signature: sha256=HMAC`
+- Contract: POST with `X-Petrios-Event` and `X-Petrios-Signature: sha256=HMAC`
   over the raw body, keyed by the per-endpoint secret; 5s timeout; one
   attempt; result logged to `webhook_deliveries`.
 - **Invariants**: `emitWebhook` is fire-and-forget and never throws into the
@@ -50,9 +50,9 @@ your own infrastructure and integrable with other systems.
 
 - Instance identity: Ed25519 from `INSTANCE_SIGNING_KEY` (pkcs8 DER,
   base64; `scripts/generate-instance-key.mjs`); public key served at
-  `/.well-known/bytes-teaching` (public route in proxy.ts). Unset key =
+  `/.well-known/petrios` (public route in proxy.ts). Unset key =
   feature disabled with a clear message.
-- Record format `bytes-teaching-record/v1`: `{format, issuer, issued_at,
+- Record format `petrios-record/v1`: `{format, issuer, issued_at,
   public_key, subject, attendance[], certificates[], coverage[], signature}`
   — signature is Ed25519 over the **canonical JSON** (recursively sorted
   keys, `canonicalize()`) of everything except `signature`.

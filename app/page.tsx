@@ -4,7 +4,7 @@ import { Button } from '@/components/Button'
 import { Typewriter } from '@/components/Typewriter'
 import { Footer } from '@/components/Footer'
 import { PublicNav } from '@/components/PublicNav'
-import Image from 'next/image'
+import { Wordmark } from '@/components/Wordmark'
 import Link from 'next/link'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
 import { NEWS } from '@/lib/news-data'
@@ -36,7 +36,7 @@ const JSON_LD = {
       '@type': 'Organization',
       name: SITE_NAME,
       url: SITE_URL,
-      logo: `${SITE_URL}/assets/byte_logo.png`,
+      logo: `${SITE_URL}/opengraph-image`,
       sameAs: [GITHUB_URL],
     },
   ],
@@ -141,14 +141,7 @@ export default async function Home() {
             {/* Hero */}
             <div className="text-center mb-8 sm:mb-12">
               <div className="flex justify-center mb-6">
-                <Image
-                  src="/assets/byte_logo.png"
-                  alt="Byte Teaching Logo"
-                  width={300}
-                  height={200}
-                  className="w-auto h-auto max-w-full mix-blend-multiply"
-                  priority
-                />
+                <Wordmark size="lg" />
               </div>
               <h1 className="h-8 sm:h-10 mb-6 font-normal">
                 <Typewriter
@@ -158,7 +151,7 @@ export default async function Home() {
                 />
               </h1>
               <p className="font-mono text-sm sm:text-base text-gray-700 max-w-2xl mx-auto leading-relaxed">
-                A learning platform stores course content. Byte Teaching runs
+                A learning platform stores course content. Petrios runs
                 the live teaching around it — scheduling, attendance evidence,
                 feedback, video, certificates, and the admin in between
                 {INDIVIDUAL_SIGNUP_ENABLED
@@ -273,7 +266,7 @@ export default async function Home() {
               </div>
               <div>
                 <p className="mb-3 font-mono text-xs uppercase tracking-wide text-clay-700">
-                  The Byte Teaching way
+                  The Petrios way
                 </p>
                 <div className="space-y-3">
                   {CONTRASTS.map((row) => (
@@ -318,7 +311,7 @@ export default async function Home() {
                   Open source. Your servers. Your data.
                 </h2>
                 <p className="font-mono text-sm text-gray-700 leading-relaxed max-w-xl">
-                  Byte Teaching is free software (AGPL-3.0). Self-host the whole
+                  Petrios is free software (AGPL-3.0). Self-host the whole
                   platform inside your trust — your own database, mail relay, video
                   server, even an in-network AI model — and integrate anything through
                   the org-scoped REST API and signed webhooks. Teaching records are

@@ -4,7 +4,7 @@
 
 The attendance system uses an **evidence aggregation pipeline** approach where attendance is computed from multiple immutable evidence sources rather than being a single event.
 
-## RECALL source (Byte Recall catch-up — added in migration 039)
+## RECALL source (Petrios Recall catch-up — added in migration 039)
 
 `RECALL` is a sixth evidence source: an absentee who passes the session's
 recall questions (2 of 3, within 21 days of session end) earns attendance.

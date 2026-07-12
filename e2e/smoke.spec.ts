@@ -34,7 +34,7 @@ test('teaching record verify page renders its form', async ({ page }) => {
 })
 
 test('well-known federation identity responds with JSON', async ({ request }) => {
-  const response = await request.get('/.well-known/bytes-teaching')
+  const response = await request.get('/.well-known/petrios')
   // 404 JSON when INSTANCE_SIGNING_KEY is unset; 200 when configured.
   expect([200, 404]).toContain(response.status())
   expect((response.headers()['content-type'] ?? '')).toContain('application/json')

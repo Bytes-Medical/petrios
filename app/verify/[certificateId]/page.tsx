@@ -1,6 +1,7 @@
 import { getCertificateByCode } from '@/app/actions/certificates'
 import { buildSignatories } from '@/lib/certificates/signatories'
 import Image from 'next/image'
+import { Wordmark } from '@/components/Wordmark'
 
 export default async function VerifyCertificatePage(
   props: {
@@ -15,13 +16,7 @@ export default async function VerifyCertificatePage(
       <div className="max-w-lg w-full">
         {/* Logo */}
         <div className="flex justify-center mb-6">
-          <Image
-            src="/assets/byte_logo.png"
-            alt="Byte Teaching"
-            width={120}
-            height={80}
-            className="w-auto h-auto"
-          />
+          <Wordmark />
         </div>
 
         {certificate ? (

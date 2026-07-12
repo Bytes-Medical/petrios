@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   const unauthorized = unauthorizedCronResponse(request)
   if (unauthorized) return unauthorized
   if (!opsEnabled()) {
-    return NextResponse.json({ message: 'Bytes Ops is disabled', skipped: true })
+    return NextResponse.json({ message: 'Petrios Ops is disabled', skipped: true })
   }
 
   const run = await startRun('ops_newsletter', 'cron')

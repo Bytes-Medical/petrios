@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Footer } from '@/components/Footer'
 
 export const metadata = {
-  title: 'Privacy Policy — Byte Teaching',
+  title: 'Privacy Policy — Petrios',
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -33,7 +33,7 @@ export default function PrivacyPolicyPage() {
           <div className="mt-8">
             <Section title="Who we are">
               <p>
-                Byte Teaching is a teaching-management platform for NHS educators and trainees. It
+                Petrios is a teaching-management platform for NHS educators and trainees. It
                 lets organisers schedule teaching sessions, record attendance, collect feedback,
                 and issue certificates.
               </p>
@@ -109,7 +109,7 @@ export default function PrivacyPolicyPage() {
             <Section title="Contact">
               <p>
                 Questions or data requests: contact your organisation&rsquo;s administrator or the
-                Byte Teaching team at{' '}
+                Petrios team at{' '}
                 <a href="mailto:privacy@byteteaching.example" className="underline">
                   privacy@byteteaching.example
                 </a>
