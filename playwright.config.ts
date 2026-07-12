@@ -10,18 +10,21 @@ export default defineConfig({
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
   use: {
-    baseURL: 'http://127.0.0.1:3100',
+    baseURL: 'http://localhost:3100',
   },
   webServer: {
     command: 'npm run dev -- --port 3100',
-    url: 'http://127.0.0.1:3100/login',
+    url: 'http://localhost:3100/login',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
+      // NOTE: origin must be 'localhost', not 127.0.0.1 — Next 16 dev treats
+      // them as different origins (allowedDevOrigins) and silently blocks
+      // cross-origin dev scripts, which kills hydration in the test browser.
       NEXT_PUBLIC_SUPABASE_URL: 'https://placeholder.supabase.co',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'e2e-placeholder',
       SUPABASE_SERVICE_ROLE_KEY: 'e2e-placeholder',
-      NEXT_PUBLIC_APP_URL: 'http://127.0.0.1:3100',
+      NEXT_PUBLIC_APP_URL: 'http://localhost:3100',
     },
   },
 })
