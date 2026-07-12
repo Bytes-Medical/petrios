@@ -58,7 +58,8 @@ export async function proxy(request: NextRequest) {
     // Open-source project pages.
     request.nextUrl.pathname === '/contributors' ||
     request.nextUrl.pathname === '/features' ||
-    request.nextUrl.pathname === '/open-source'
+    request.nextUrl.pathname === '/open-source' ||
+    request.nextUrl.pathname === '/news'
   )
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 

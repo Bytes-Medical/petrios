@@ -22,6 +22,12 @@ test('recall page rejects an invalid capability token gracefully', async ({ page
   await expect(page.getByText(/not valid/i).first()).toBeVisible()
 })
 
+test('news page lists announcements', async ({ page }) => {
+  await page.goto('/news')
+  await expect(page.getByRole('heading', { name: 'News', exact: true })).toBeVisible()
+  await expect(page.locator('article').first()).toBeVisible()
+})
+
 test('teaching record verify page renders its form', async ({ page }) => {
   await page.goto('/verify/record')
   await expect(page.getByRole('button', { name: /verify record/i })).toBeVisible()

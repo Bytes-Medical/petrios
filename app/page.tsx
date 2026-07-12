@@ -7,6 +7,7 @@ import { PublicNav } from '@/components/PublicNav'
 import Image from 'next/image'
 import Link from 'next/link'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
+import { NEWS } from '@/lib/news-data'
 
 const AUDIENCES = [
   {
@@ -86,6 +87,19 @@ export default async function Home() {
       <PublicNav />
       <main className="flex-1 px-4 py-12 sm:py-16 bg-dotgrid">
         <div className="mx-auto max-w-4xl w-full space-y-8 sm:space-y-10">
+          {/* Announcement strip: always the newest entry in lib/news-data.ts */}
+          {NEWS[0] && (
+            <Link
+              href={`/news#${NEWS[0].slug}`}
+              className="flex items-center justify-center gap-2 border border-black bg-white px-4 py-2.5 font-mono text-xs sm:text-sm transition-all hover:-translate-x-px hover:-translate-y-px hover:shadow-[3px_3px_0_0_#1F1D1A]"
+            >
+              <span className="border border-clay-600 bg-clay-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                {NEWS[0].tag}
+              </span>
+              <span className="min-w-0 truncate">{NEWS[0].title}</span>
+              <span className="shrink-0 text-clay-700">→</span>
+            </Link>
+          )}
           <div className="border border-black border-t-4 border-t-clay-600 p-8 sm:p-12 bg-white shadow-[8px_8px_0_rgba(31,29,26,0.08)]">
             {/* Hero */}
             <div className="text-center mb-8 sm:mb-12">

@@ -62,7 +62,9 @@ feedback pages, teacher RSVP (`/sessions/[id]/teacher-rsvp/[code]`), slot
 claiming (`/claim/[code]`), newsletter unsubscribe
 (`/ops/unsubscribe/[token]`), recall answers (`/recall/[token]`),
 federation identity (`/.well-known/*`), and the project pages
-(`/features`, `/open-source`, `/contributors`). `/api/*` routes self-authenticate
+(`/features`, `/open-source`, `/contributors`, `/news` — announcements
+are curated in `lib/news-data.ts`, newest entry doubles as the landing
+announcement strip). `/api/*` routes self-authenticate
 (CRON_SECRET or tokens).
 
 ## Environment

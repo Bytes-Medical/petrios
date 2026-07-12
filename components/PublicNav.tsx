@@ -5,7 +5,7 @@ import Link from 'next/link'
  * Navigation for the public (signed-out) site: landing, features,
  * open-source, contributors. The signed-in app uses NavShell/Nav instead.
  */
-export function PublicNav({ current }: { current?: 'features' | 'open-source' | 'contributors' }) {
+export function PublicNav({ current }: { current?: 'features' | 'open-source' | 'contributors' | 'news' }) {
   const linkClass = (key: string) =>
     current === key
       ? 'underline underline-offset-4 decoration-clay-600 decoration-2'
@@ -26,6 +26,9 @@ export function PublicNav({ current }: { current?: 'features' | 'open-source' | 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-sm">
           <Link href="/features" className={linkClass('features')}>
             Features
+          </Link>
+          <Link href="/news" className={linkClass('news')}>
+            News
           </Link>
           <Link href="/open-source" className={linkClass('open-source')}>
             Open Source

@@ -19,6 +19,9 @@ export function Footer() {
             <a href="/features" className="underline hover:text-clay-700">
               Features
             </a>
+            <a href="/news" className="underline hover:text-clay-700">
+              News
+            </a>
             <a href="/open-source" className="underline hover:text-clay-700">
               Open Source
             </a>
