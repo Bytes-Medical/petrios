@@ -46,7 +46,7 @@ export const NEWS: NewsEntry[] = [
       'Petrios is now API-first: an org-scoped REST API with scoped tokens and an OpenAPI schema, HMAC-signed webhooks for session, attendance, certificate, and slot events, and full self-hosting support — Docker image, SMTP transport, a plain-Postgres migration runner, and an OpenAI-compatible endpoint override so AI can run in-network.',
       'Instances also gained a federation identity: members can export signed, portable teaching records that any other instance — or anyone at all — can verify. A trainee’s teaching history now survives rotating between trusts.',
     ],
-    link: { label: 'Read the API docs', href: 'https://github.com/Bytes-Medical/bytes-teaching/blob/main/docs/api.md' },
+    link: { label: 'Read the API docs', href: 'https://github.com/Bytes-Medical/petrios/blob/main/docs/api.md' },
   },
   {
     slug: 'open-source',
@@ -57,6 +57,6 @@ export const NEWS: NewsEntry[] = [
       'The full platform is on GitHub under AGPL-3.0: scheduling, evidence-based attendance, built-in video, anonymous feedback, certificates, portfolio evidence, and the approval-gated AI ops layer — all of it readable, auditable, and self-hostable.',
       'Star the repo, read the roadmap, open an issue, or pick up a contribution — the spec/ folder documents how every subsystem works so you can be productive on day one.',
     ],
-    link: { label: 'View on GitHub', href: 'https://github.com/Bytes-Medical/bytes-teaching' },
+    link: { label: 'View on GitHub', href: 'https://github.com/Bytes-Medical/petrios' },
   },
 ]

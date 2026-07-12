@@ -9,7 +9,7 @@ export const metadata = {
   alternates: { canonical: '/open-source' },
 }
 
-const REPO = 'https://github.com/Bytes-Medical/bytes-teaching'
+const REPO = 'https://github.com/Bytes-Medical/petrios'
 
 export default function OpenSourcePage() {
   return (

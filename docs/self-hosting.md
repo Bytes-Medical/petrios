@@ -17,7 +17,7 @@ Two moving parts:
 ## Quickstart (Docker)
 
 ```bash
-git clone https://github.com/Bytes-Medical/bytes-teaching.git
+git clone https://github.com/Bytes-Medical/petrios.git
 cd bytes-teaching
 cp .env.example .env.production   # fill in values (see matrix below)
 docker compose up -d --build

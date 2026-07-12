@@ -14,4 +14,4 @@ export const SITE_TAGLINE = 'The operating system for clinical teaching'
 export const SITE_DESCRIPTION =
   'Petrios is open-source teaching management for NHS and clinical education programmes: evidence-based attendance, built-in video, claimable teaching slots, anonymous feedback with AI summaries, ARCP portfolio evidence, and an approval-gated AI assistant. Self-hostable, API-first, AGPL-3.0.'
 
-export const GITHUB_URL = 'https://github.com/Bytes-Medical/bytes-teaching'
+export const GITHUB_URL = 'https://github.com/Bytes-Medical/petrios'

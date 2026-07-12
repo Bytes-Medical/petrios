@@ -31,7 +31,7 @@ export function PublicNav({ current }: { current?: 'features' | 'open-source' | 
             Contributors
           </Link>
           <a
-            href="https://github.com/Bytes-Medical/bytes-teaching"
+            href="https://github.com/Bytes-Medical/petrios"
             className="hover:underline hover:underline-offset-4"
           >
             GitHub ↗

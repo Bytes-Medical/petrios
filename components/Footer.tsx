@@ -11,7 +11,7 @@ export function Footer() {
           </p>
           <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 font-mono text-xs text-gray-500">
             <a
-              href="https://github.com/Bytes-Medical/bytes-teaching"
+              href="https://github.com/Bytes-Medical/petrios"
               className="underline hover:text-clay-700"
             >
               GitHub
@@ -29,13 +29,13 @@ export function Footer() {
               Contributors
             </a>
             <a
-              href="https://github.com/Bytes-Medical/bytes-teaching/blob/main/ROADMAP.md"
+              href="https://github.com/Bytes-Medical/petrios/blob/main/ROADMAP.md"
               className="underline hover:text-clay-700"
             >
               Roadmap
             </a>
             <a
-              href="https://github.com/Bytes-Medical/bytes-teaching/blob/main/docs/api.md"
+              href="https://github.com/Bytes-Medical/petrios/blob/main/docs/api.md"
               className="underline hover:text-clay-700"
             >
               API

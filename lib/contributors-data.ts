@@ -31,4 +31,4 @@ export const CURATED_CONTRIBUTORS: CuratedContributor[] = [
 ]
 
 /** The public repository backing the contributor graph and issue links. */
-export const GITHUB_REPO = 'Bytes-Medical/bytes-teaching'
+export const GITHUB_REPO = 'Bytes-Medical/petrios'

@@ -321,7 +321,7 @@ export default async function Home() {
               </div>
               <div className="flex shrink-0 flex-col gap-2 font-mono text-sm">
                 <a
-                  href="https://github.com/Bytes-Medical/bytes-teaching"
+                  href="https://github.com/Bytes-Medical/petrios"
                   className="border border-black bg-black px-4 py-2 text-center text-white hover:bg-gray-800"
                 >
                   Star on GitHub
