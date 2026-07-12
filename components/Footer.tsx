@@ -44,6 +44,23 @@ export function Footer() {
               Privacy
             </a>
           </div>
+          <p className="mt-2 font-mono text-xs text-gray-500">
+            Licensed under{' '}
+            <a
+              href="https://www.gnu.org/licenses/agpl-3.0.en.html"
+              className="underline hover:text-clay-700"
+            >
+              AGPL-3.0
+            </a>{' '}
+            (code) and{' '}
+            <a
+              href="https://creativecommons.org/licenses/by-sa/4.0/"
+              className="underline hover:text-clay-700"
+            >
+              CC-BY-SA 4.0
+            </a>{' '}
+            (docs &amp; specifications).
+          </p>
         </div>
       </div>
     </footer>

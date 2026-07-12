@@ -8,6 +8,13 @@ compact per-session entry point; these documents carry the depth.
 update the spec in the same PR if behaviour changes. A spec that contradicts
 the code is a bug in the spec.
 
+**License:** these specifications are licensed under
+[CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) — you are
+welcome to build independent, compatible implementations of what they
+describe, with attribution ("Petrios"), share-alike. The Petrios source
+code itself is separately licensed under AGPL-3.0-or-later (see the
+repository `LICENSE` and `NOTICE`).
+
 ## Contents
 
 | Spec | Covers |

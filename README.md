@@ -171,9 +171,18 @@ an `Authorization: Bearer CRON_SECRET` header — schedule them with Vercel Cron
 
 Copyright (C) 2026 Akanimoh Osutuk.
 
-Petrios is licensed under the **GNU Affero General Public License
-v3.0 or later (AGPL-3.0-or-later)**. See [`LICENSE`](./LICENSE) for the
-full license text and [`NOTICE`](./NOTICE) for attribution requirements.
+Petrios is dual-licensed by material type, following the convention of
+sibling open-health projects such as [GitEHR](https://gitehr.org/):
+
+- **Code** — the **GNU Affero General Public License v3.0 or later
+  (AGPL-3.0-or-later)**. See [`LICENSE`](./LICENSE) for the full license
+  text and [`NOTICE`](./NOTICE) for attribution requirements.
+- **Concepts, documentation, and specifications** — [`docs/`](./docs),
+  [`spec/`](./spec), this README, and the public website copy are
+  licensed under [**CC-BY-SA 4.0**](https://creativecommons.org/licenses/by-sa/4.0/),
+  so anyone may study, share, and reimplement the ideas (the federation
+  record format, the API surface, the attendance-evidence model) with
+  attribution, share-alike.
 
 **What this means in practice:**
 

@@ -5,10 +5,18 @@ you send a pull request.
 
 ## License of your contribution
 
-This project is licensed under **AGPL-3.0-or-later**. By contributing
-code, documentation, or other materials to this repository, you agree
-that your contributions will be licensed under the same AGPL-3.0-or-later
-terms as the rest of the project, as described in [`LICENSE`](./LICENSE).
+Petrios is dual-licensed by material type (see [`NOTICE`](./NOTICE)):
+
+- **Code** is licensed under **AGPL-3.0-or-later**, as described in
+  [`LICENSE`](./LICENSE).
+- **Documentation, specifications, and website copy** (`docs/`, `spec/`,
+  README content, and the public site text) are licensed under
+  **CC-BY-SA 4.0**.
+
+By contributing to this repository, you agree that your contributions
+will be licensed under the same terms as the material you are
+contributing to — AGPL-3.0-or-later for code, CC-BY-SA 4.0 for
+documentation and specifications.
 
 ## Developer Certificate of Origin (DCO)
 

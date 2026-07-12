@@ -47,6 +47,26 @@ it as a managed service without publishing modifications.
 For commercial licensing inquiries, contact the copyright holder.
 
 --------------------------------------------------------------------------
+Documentation and specification license
+--------------------------------------------------------------------------
+
+The AGPL-3.0-or-later license above applies to the Petrios software
+(source code). The written concepts, documentation, and specifications —
+the contents of docs/ and spec/, README/markdown documentation, and the
+public website copy — are licensed separately under the Creative Commons
+Attribution-ShareAlike 4.0 International license (CC-BY-SA 4.0):
+
+  https://creativecommons.org/licenses/by-sa/4.0/
+
+You are free to share and adapt that material — including building
+independent, compatible implementations of the concepts it describes
+(e.g. the teaching-record federation format, the public API surface, the
+attendance-evidence model) — provided you credit "Petrios" and the
+copyright holder, and distribute derivative documents under the same
+license. Reimplementing a specification in your own code does not make
+your code a derivative of Petrios's code.
+
+--------------------------------------------------------------------------
 Third-party components
 --------------------------------------------------------------------------
 
