@@ -3,6 +3,37 @@
 import { createSupabaseClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
+import { getAppUrlFromHeaders } from '@/lib/app-url'
+
+/**
+ * Microsoft Entra ID SSO (works with NHSmail accounts). Auth-plane: builds
+ * the provider redirect URL via Supabase's `azure` OAuth provider — the
+ * PKCE code verifier is stored in cookies by the server client, and
+ * /join/callback completes the exchange when Microsoft redirects back.
+ * Requires the Azure provider to be configured in Supabase Auth.
+ */
+export async function getMicrosoftSignInUrl(): Promise<{ url?: string; error?: string }> {
+  const supabase = await createSupabaseClient()
+  const baseUrl = await getAppUrlFromHeaders()
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'azure',
+    options: {
+      redirectTo: `${baseUrl}/join/callback?mode=login&next=/dashboard`,
+      scopes: 'email',
+    },
+  })
+
+  if (error || !data?.url) {
+    console.error(`[auth] Microsoft sign-in unavailable: ${error?.message ?? 'no URL returned'}`)
+    return {
+      error:
+        'Microsoft sign-in is not available on this deployment. Use the email sign-in link instead.',
+    }
+  }
+
+  return { url: data.url }
+}
 
 export async function signIn(email: string, password: string) {
   const supabase = await createSupabaseClient()

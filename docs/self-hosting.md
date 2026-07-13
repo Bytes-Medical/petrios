@@ -79,6 +79,30 @@ Example crontab entry:
   with `node scripts/generate-instance-key.mjs`) to enable signed, portable
   teaching-record exports that other instances can verify.
 
+## Microsoft Entra SSO (NHSmail)
+
+The login card offers "Continue with Microsoft" alongside the email
+sign-in link. It uses Supabase Auth's `azure` OAuth provider, so no
+Petrios environment variables are involved — configuration lives in your
+identity provider and Supabase:
+
+1. **Entra ID** (portal.azure.com → App registrations → New):
+   - Redirect URI (Web): `https://<your-supabase-project>.supabase.co/auth/v1/callback`
+     (self-hosted GoTrue: `https://<auth-host>/auth/v1/callback`).
+   - Create a client secret; note the Application (client) ID.
+   - Under *API permissions*, `email openid profile` delegated Microsoft
+     Graph permissions (granted by default for new registrations).
+2. **Supabase** (Dashboard → Authentication → Providers → Azure):
+   - Enable, paste the client ID + secret.
+   - Set *Azure Tenant URL* to your tenant (or leave multi-tenant to
+     accept any Microsoft account, including all NHSmail tenants).
+3. No app redeploy needed. Until the provider is enabled, the button
+   returns a readable "not available on this deployment" message.
+
+Accounts created via SSO follow the same onboarding as magic-link users:
+membership comes from department codes/invitations, not from the identity
+provider.
+
 ## Compliance
 
 For NHS deployments see [`docs/compliance/dtac.md`](./compliance/dtac.md)

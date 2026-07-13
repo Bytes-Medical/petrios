@@ -56,6 +56,29 @@ UI (app/ pages, components/)          — rendering + client state only
   `INDIVIDUAL_SIGNUP_ENABLED` in `lib/flags.ts`); enterprise-only surfaces
   (audit, ops, admin) are hidden for them.
 
+## Sign-in methods
+
+- **Passwordless magic link (default)**: `sendPasswordlessLoginLink`
+  (`app/actions/member-onboarding.ts`) generates the link via the
+  service-role admin API (auto-creating the account for a new email) and
+  sends it through the normal email adapter. Because this bypasses
+  GoTrue's built-in throttles, the action enforces its own rate limit:
+  per-email and per-IP windows decided by the pure policy in
+  `lib/rate-limit.ts`, backed by the deny-all `login_link_requests` table
+  (migration 041, DAL `lib/db/login-links.ts`, rows pruned after 24h).
+  Expected failures (rate limit, missing MAIL_FROM, provider errors)
+  return `{ success: false, message }` rather than throwing — thrown
+  server-action errors are masked in production builds.
+- **Microsoft Entra ID SSO** ("Continue with Microsoft", covers NHSmail):
+  `getMicrosoftSignInUrl` (`app/actions/auth.ts`) calls Supabase's `azure`
+  OAuth provider and returns the redirect URL; `/join/callback` completes
+  the PKCE code exchange. Requires the Azure provider to be configured in
+  Supabase Auth (see `docs/self-hosting.md`); the button degrades to a
+  readable error when it isn't.
+- **Email + password**: admin-oriented toggle on the login card.
+- **No account at all**: externals act through HMAC capability URLs (RSVP,
+  claim, recall, feedback) — see the roles section above.
+
 ## Middleware & public routes
 
 `proxy.ts` (the Next 16 proxy convention, formerly middleware.ts) redirects

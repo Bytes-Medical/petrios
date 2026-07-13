@@ -1,7 +1,14 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
+import {
+  clientIpFromHeaders,
+  evaluateLoginLinkRateLimit,
+  LOGIN_LINK_WINDOW_MINUTES,
+} from '@/lib/rate-limit'
+import * as loginLinksDb from '@/lib/db/login-links'
 import {
   getCurrentOrgId,
   getCurrentUser,
@@ -692,10 +699,36 @@ export async function finalizeMemberOnboarding(requestId: string) {
   return { success: true, redirectTo: '/dashboard' }
 }
 
-export async function sendPasswordlessLoginLink(emailInput: string) {
+export async function sendPasswordlessLoginLink(
+  emailInput: string
+): Promise<{ success: boolean; message: string }> {
   const email = normalizeEmail(emailInput)
   if (!email) {
-    throw new Error('Email is required')
+    return { success: false, message: 'Email is required' }
+  }
+
+  // Rate limit: this form is public and our send path bypasses GoTrue's
+  // built-in email throttles, so enforce our own per-email and per-IP
+  // windows (policy in lib/rate-limit.ts, log in login_link_requests).
+  // Fail open: a limiter outage (e.g. migration 041 not applied yet) must
+  // degrade to unthrottled sign-in, not block sign-in entirely.
+  try {
+    const ip = clientIpFromHeaders(await headers())
+    const sinceIso = new Date(
+      Date.now() - LOGIN_LINK_WINDOW_MINUTES * 60 * 1000
+    ).toISOString()
+    const counts = await loginLinksDb.countRecentLoginLinkRequests({ email, ip, sinceIso })
+    const decision = evaluateLoginLinkRateLimit(counts)
+    if (!decision.allowed) {
+      return { success: false, message: decision.message ?? 'Too many requests.' }
+    }
+    await loginLinksDb.recordLoginLinkRequest({ email, ip })
+  } catch (rateLimitError) {
+    console.error(
+      `[auth] Sign-in rate limiter unavailable, proceeding without it: ${
+        rateLimitError instanceof Error ? rateLimitError.message : rateLimitError
+      }`
+    )
   }
 
   // Auth-plane: generate magic link via GoTrue.
@@ -720,7 +753,14 @@ export async function sendPasswordlessLoginLink(emailInput: string) {
   const { data, error } = linkResult
 
   if (error) {
-    throw new Error(`Failed to generate sign-in link: ${error.message}`)
+    // Thrown server-action errors are masked in production ("An error
+    // occurred in the Server Components render…"), so log the real cause
+    // and return a readable message instead.
+    console.error(`[auth] Failed to generate sign-in link for ${email}: ${error.message}`)
+    return {
+      success: false,
+      message: 'We could not create a sign-in link right now. Please try again shortly.',
+    }
   }
 
   const linkType = data.properties.verification_type === 'invite' ? 'invite' : 'magiclink'
@@ -745,27 +785,42 @@ export async function sendPasswordlessLoginLink(emailInput: string) {
     console.log(`\n🔗 [auth] Sign-in link for ${email}:\n${inviteUrl}\n`)
   }
 
-  const mailer = getEmailClient()
-  const fromAddress = getFromAddress()
+  // getFromAddress() throws when MAIL_FROM is unset in production — catch
+  // config errors here so the visitor sees a real message, not a masked
+  // digest, and the cause lands in the server logs.
+  let emailErrorMessage: string | null = null
+  try {
+    const mailer = getEmailClient()
+    const fromAddress = getFromAddress()
 
-  const { error: emailError } = await mailer.emails.send({
-    from: fromAddress,
-    to: email,
-    subject: 'Your Petrios sign-in link',
-    html: buildPasswordlessLoginEmailHtml({
-      inviteUrl,
-      firstName,
-    }),
-  })
+    const { error: emailError } = await mailer.emails.send({
+      from: fromAddress,
+      to: email,
+      subject: 'Your Petrios sign-in link',
+      html: buildPasswordlessLoginEmailHtml({
+        inviteUrl,
+        firstName,
+      }),
+    })
+    emailErrorMessage = emailError?.message ?? null
+  } catch (configError) {
+    emailErrorMessage =
+      configError instanceof Error ? configError.message : 'email transport misconfigured'
+  }
 
-  if (emailError) {
+  if (emailErrorMessage) {
     if (devLinksEnabled) {
       return {
         success: true,
-        message: `Email delivery failed (${emailError.message}). Dev mode: open the sign-in link printed in the server console.`,
+        message: `Email delivery failed (${emailErrorMessage}). Dev mode: open the sign-in link printed in the server console.`,
       }
     }
-    throw new Error(`Failed to send sign-in email: ${emailError.message}`)
+    console.error(`[auth] Failed to send sign-in email to ${email}: ${emailErrorMessage}`)
+    return {
+      success: false,
+      message:
+        'We could not send the sign-in email. Please try again shortly, or contact your organiser if this keeps happening.',
+    }
   }
 
   return {

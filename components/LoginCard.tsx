@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Input } from '@/components/Input'
 import { Button } from '@/components/Button'
 import { PasswordlessLoginForm } from '@/components/PasswordlessLoginForm'
+import { MicrosoftSignInButton } from '@/components/MicrosoftSignInButton'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
 import { Wordmark } from '@/components/Wordmark'
 
@@ -84,7 +85,17 @@ export function LoginCard({ variant }: { variant: LoginVariant }) {
         )}
 
         {/* Passwordless login (default) */}
-        {!showPassword && <PasswordlessLoginForm submitLabel={formLabel} />}
+        {!showPassword && (
+          <>
+            <PasswordlessLoginForm submitLabel={formLabel} />
+            <div className="my-4 flex items-center gap-3" aria-hidden="true">
+              <div className="h-px flex-1 bg-gray-300" />
+              <span className="font-mono text-xs text-gray-500">or</span>
+              <div className="h-px flex-1 bg-gray-300" />
+            </div>
+            <MicrosoftSignInButton />
+          </>
+        )}
 
         {/* Password login (admin toggle, not offered to individuals) */}
         {showPassword && allowPassword && (

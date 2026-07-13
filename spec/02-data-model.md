@@ -41,7 +41,9 @@ token), `teacher_emails` (send log), `attendance_evidence` (append-only) →
 `answers` JSONB of `SubmittedFeedbackAnswer[]`), `certificates`
 (public `certificate_code`), `notifications`, `external_contacts` +
 `contact_groups` + `contact_group_members`, `teaching_slots` +
-`slot_publications` + `slot_publication_slots` + `slot_claim_links`.
+`slot_publications` + `slot_publication_slots` + `slot_claim_links`,
+`login_link_requests` (deny-all; sign-in rate-limit log, pruned after
+24h — spec/01 "Sign-in methods").
 
 Idempotency watermarks on `sessions`: `report_sent_at`, `reminder_sent_at`.
 

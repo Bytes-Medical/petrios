@@ -25,7 +25,11 @@ export function PasswordlessLoginForm({
 
     try {
       const response = await sendPasswordlessLoginLink(email)
-      setSuccess(response.message)
+      if (response.success) {
+        setSuccess(response.message)
+      } else {
+        setError(response.message)
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Failed to send sign-in link')
     } finally {

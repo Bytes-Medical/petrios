@@ -27,7 +27,7 @@ All data mutations use **Next.js Server Actions** in `app/actions/`. There is no
 
 ### Auth & Middleware
 
-- Supabase Auth with email/password. Session managed via cookies.
+- Supabase Auth. Sign-in methods: passwordless magic link (default; rate-limited via `lib/rate-limit.ts` + `login_link_requests`), Microsoft Entra ID SSO (`azure` provider, works with NHSmail), and email/password for admins. Session managed via cookies. See `spec/01-architecture.md` → "Sign-in methods".
 - `proxy.ts` (Next 16 proxy convention, formerly middleware) — redirects unauthenticated users to `/login`. Public routes: `/`, `/login`, `/signup`, `/verify/*`, feedback pages, teacher RSVP pages.
 - `lib/auth.ts` — helper functions: `getCurrentUser()`, `getCurrentOrgId()`, `requireAuth()`, `requireOrg()`, `isOrgAdmin()`, `isSuperAdmin()`, `isDepartmentModerator()`.
 
