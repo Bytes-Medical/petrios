@@ -1,53 +1,126 @@
-# Petrios — Platform Specification
+# Petrios platform specification
 
-Detailed specs of how this platform is built, written primarily for LLMs
-(and humans) working on the codebase. `CLAUDE.md` at the repo root is the
-compact per-session entry point; these documents carry the depth.
+This directory is the detailed, implementation-facing specification for
+Petrios. It describes the application represented by the source tree and by
+database migrations through `043_audio_recaps.sql`. `CLAUDE.md` is the short
+architecture briefing; these documents are the durable contract for maintainers,
+reviewers, operators, and coding agents.
 
-**Rule of use:** when a change touches a subsystem, read its spec first and
-update the spec in the same PR if behaviour changes. A spec that contradicts
-the code is a bug in the spec.
+The source code remains authoritative when investigating an incident. A
+contradiction between source and spec is nevertheless a defect: either the code
+has drifted from an intended invariant or this directory has not been updated.
+Resolve the contradiction in the same change that discovers it.
 
-**License:** these specifications are licensed under
-[CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) — you are
-welcome to build independent, compatible implementations of what they
-describe, with attribution ("Petrios"), share-alike. The Petrios source
-code itself is separately licensed under AGPL-3.0-or-later (see the
-repository `LICENSE` and `NOTICE`).
+These specifications are licensed under
+[CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Independent,
+compatible implementations may use them with attribution to Petrios and under
+the share-alike terms. The application source is separately licensed under
+AGPL-3.0-or-later; see `LICENSE` and `NOTICE`.
+
+## How to read the specification
+
+Each document distinguishes four kinds of statement:
+
+- **Invariant**: a property that must continue to hold. A change that violates
+  one is a defect unless the invariant is deliberately redesigned and the code,
+  tests, migration, and specification change together.
+- **Implemented behaviour**: what the current application actually does,
+  including failure and retry behaviour.
+- **Current limitation**: a known gap, weak boundary, or surprising behaviour.
+  These are documented to prevent callers from assuming a stronger guarantee.
+- **RFC**: a future protocol or design. RFC text is not a statement that the
+  corresponding route, table, or workflow exists.
+
+Terms such as “public”, “authenticated”, and “service role” describe access
+boundaries, not sensitivity. A public capability URL can still expose personal
+data to whoever possesses it.
 
 ## Contents
 
-| Spec | Covers |
+| Spec | Primary contract |
 |---|---|
-| [01-architecture.md](./01-architecture.md) | Stack, layering rules, auth model, multi-tenancy, middleware |
-| [02-data-model.md](./02-data-model.md) | Tables, RLS strategies, migration conventions |
-| [03-attendance.md](./03-attendance.md) | Evidence-based attendance pipeline |
-| [04-sessions-and-scheduling.md](./04-sessions-and-scheduling.md) | Sessions, teacher invitations/RSVP, teaching slots, Petrios Meet video |
-| [05-feedback-and-certificates.md](./05-feedback-and-certificates.md) | Anonymous feedback, AI summaries, certificates + verification |
-| [06-petrios-ops.md](./06-petrios-ops.md) | The AI agent layer: invariants, approval gate, gateway, crons, assistant |
-| [07-conventions.md](./07-conventions.md) | Code, UI, email, notification, cron, and testing conventions |
-| [08-portfolio-and-recall.md](./08-portfolio-and-recall.md) | Evidence Engine (ARCP packs, teacher dossiers) + Petrios Recall with catch-up attendance |
-| [09-platform-api-and-self-hosting.md](./09-platform-api-and-self-hosting.md) | Public API + webhooks, federation, provider adapters, deployment |
-| [10-federated-benchmarking.md](./10-federated-benchmarking.md) | RFC (not implemented): opt-in, signed, aggregate-only cross-instance benchmarking |
+| [01 — Architecture](./01-architecture.md) | Runtime stack, trust boundaries, layering, tenancy, authorization, routing, and configuration |
+| [02 — Data model](./02-data-model.md) | Migration discipline, table families, relationships, RLS strategies, and data-access ownership |
+| [03 — Attendance](./03-attendance.md) | Append-oriented evidence, validation windows, deterministic derivation, locking, and check-in channels |
+| [04 — Sessions and scheduling](./04-sessions-and-scheduling.md) | Session lifecycle, teacher assignment, invitations, calendar feeds, slots, claims, and reminders |
+| [05 — Feedback and certificates](./05-feedback-and-certificates.md) | Feedback identity/privacy, configurable forms, statistics, releases, and every certificate issue path |
+| [06 — Petrios Ops](./06-petrios-ops.md) | AI operations layer, inference audit, approval gate, assistant tools, jobs, and audio recap approval |
+| [07 — Engineering conventions](./07-conventions.md) | Code boundaries, validation, errors, email, jobs, testing, CI, and change procedure |
+| [08 — Portfolio and Recall](./08-portfolio-and-recall.md) | Passport, durable portfolio snapshots, teacher dossier, recall questions, analytics, and catch-up attendance |
+| [09 — API, federation, and self-hosting](./09-platform-api-and-self-hosting.md) | Bearer API, webhooks, portable signed records, provider adapters, deployment, health, and environment variables |
+| [10 — Federated benchmarking](./10-federated-benchmarking.md) | **RFC, not implemented:** opt-in, signed, aggregate-only cross-instance comparison |
+| [11 — Identity and administration](./11-identity-and-administration.md) | Login methods, signup posture, join workflow, profiles, memberships, roles, and administrator surfaces |
+| [12 — Audit and reporting](./12-audit-and-reporting.md) | Audit scope, metric denominators, equity views, member reports, exports, and privacy caveats |
 
-## Non-negotiable invariants (summary)
+## Non-negotiable invariants
 
-The long-form rationale lives in the individual specs; violating any of
-these is a defect regardless of what a task seems to require:
+The subsystem documents supply the precise scope and exceptions. This summary
+must not be used to erase those details.
 
-1. **All data-plane Supabase access goes through `lib/db/`** — server
-   actions and components never import Supabase clients for queries
-   (auth-plane `supabase.auth.*` calls are the only exception).
-2. **`attendance_evidence` is append-only**; `attendance` is derived and
-   recomputable, never hand-edited, and locking freezes it.
-3. **No Petrios Ops outbound email without an approved `ops_pending_actions`
-   row** — `lib/ops/executors.ts` is the only ops send path.
-4. **All LLM traffic goes through `lib/ai/llm.ts`** (plus the one sanctioned
-   tool-loop in `lib/ops/agent-loop.ts`), and within Petrios Ops through the
-   `opsInference` gateway with its purpose allow-list and hash-only audit.
-5. **`OPS_ENABLED=false` halts every ops surface.**
-6. **Feedback free text is untrusted input** — always fenced as data in
-   prompts, never interpreted as instructions; ops never evaluates trainee
-   performance.
-7. **Migrations are additive and numbered** — never edit an applied
-   migration; new ones only CREATE/ALTER forward.
+1. **Data-plane access is owned by `lib/db/`.** Components, route handlers,
+   cron handlers, and server actions use DAL functions instead of querying
+   tables directly. `lib/auth.ts` is the deliberate authorization-seam
+   exception and performs membership reads. Auth-plane `supabase.auth.*` calls
+   are separately allow-listed by ESLint. Any new exception is a review decision.
+2. **Attendance is evidence-derived.** Normal application flows append
+   `attendance_evidence`; they do not edit evidence in place or hand-edit the
+   derived `attendance` result. The database currently permits an org admin to
+   delete evidence, so the stronger claim “evidence can never be deleted” is not
+   true. See spec 03 before changing that policy.
+3. **An attendance lock freezes derivation.** New evidence may still be written,
+   but interactive and background recomputation must not overwrite a locked
+   result until an authorized unlock.
+4. **Petrios Ops cannot send unapproved email.** Every Ops-originated outbound
+   email must be represented by an approved `ops_pending_actions` row and sent
+   through `lib/ops/executors.ts`. Core deterministic mail such as authentication,
+   invitations, reminders, certificates, and Recall is outside the Ops subsystem
+   and follows its own explicitly documented trigger.
+5. **Ops inference is constrained and auditable.** It uses the purpose allow-list,
+   stores hashes rather than prompt text in its run log, treats feedback as
+   untrusted data, and does not evaluate individual trainee performance.
+6. **`OPS_ENABLED=false` disables every Ops surface.** Jobs no-op, inference and
+   actions refuse work, and audio-recap delivery is unavailable.
+7. **Public and token-authenticated routes authorize themselves.** The routing
+   proxy deliberately bypasses all `/api/*` paths. A route must not rely on the
+   proxy to establish either a browser session or an organization.
+8. **Tenant scope comes from trusted context.** It is derived from a membership,
+   API token, invite/claim capability, or the cron's enumerated organization—not
+   from an unchecked model response or request-body `org_id`.
+9. **Migrations move forward.** Applied numbered migrations are not edited.
+   Schema changes use the next unique `NNN_snake_case.sql` file, enable RLS on
+   new tables, and deliberately choose policies or deny-all service access.
+10. **Specifications change with behaviour.** New status values, access paths,
+    delivery guarantees, data retention, privacy boundaries, or failure modes
+    require a same-change update here.
+
+## Change protocol
+
+Before modifying a subsystem:
+
+1. Read `CLAUDE.md`, this file, and every linked subsystem spec.
+2. Locate the owning server action or route, DAL module, migration constraints,
+   RLS policies, background jobs, email/webhook side effects, and tests.
+3. Decide whether the proposed guarantee is enforced in the database, on the
+   server, only in the UI, or not at all. Document that enforcement level.
+4. Preserve idempotency and failure semantics. A “best-effort” side effect must
+   not be rewritten in prose as transactional or guaranteed.
+5. Add a forward migration where storage or policy changes. Never rewrite a
+   migration that may already have run.
+6. Update the affected specification and, if the cross-cutting boundary changes,
+   this index and `CLAUDE.md`.
+7. Run `s/lint && s/typecheck && s/test && s/build`; run the relevant Playwright
+   smoke tests when a public/browser journey changes.
+
+## Documentation accuracy rules
+
+- Describe observed enforcement, not UI intention. For example, a field labelled
+  “anonymous” is not anonymous if the server stores and emails the submitter's
+  name.
+- Name the time reference and boundary (`date_start`, `date_end`, inclusive or
+  exclusive) for every window.
+- State which actor may call a flow, which tenant is used, and how the subject is
+  identified.
+- State whether retries, deduplication, uniqueness, revocation, or expiry exist.
+  Silence must not be interpreted as a guarantee.
+- Call out legacy or dormant schema rather than presenting it as an active path.
+- Keep future design in an explicitly labelled RFC section or file.
