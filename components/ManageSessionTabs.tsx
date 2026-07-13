@@ -16,8 +16,10 @@ import { ReleaseTeacherFeedbackPanel } from './ReleaseTeacherFeedbackPanel'
 import { RecallQuestionsPanel } from './RecallQuestionsPanel'
 import { RecallAnalyticsPanel } from './RecallAnalyticsPanel'
 import { FeedbackActionsPanel } from './FeedbackActionsPanel'
+import { AudioRecapPanel } from './AudioRecapPanel'
 import type { RecallQuestionSet } from '@/lib/db/recall'
 import type { FeedbackAction } from '@/lib/db/feedback-actions'
+import type { AudioRecapMeta } from '@/lib/db/audio-recaps'
 import { Button } from './Button'
 import { LOCATION_TYPE_LABELS, type Session, type TeacherInvitation } from '@/lib/types'
 import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
@@ -34,6 +36,9 @@ interface ManageSessionTabsProps {
   isPersonal?: boolean
   recallSet?: RecallQuestionSet | null
   feedbackActions?: FeedbackAction[]
+  /** Server-computed opsEnabled() — OPS_ENABLED=false removes the surface. */
+  showAudioRecap?: boolean
+  audioRecap?: AudioRecapMeta | null
 }
 
 export function ManageSessionTabs({
@@ -47,6 +52,8 @@ export function ManageSessionTabs({
   isPersonal,
   recallSet = null,
   feedbackActions = [],
+  showAudioRecap = false,
+  audioRecap = null,
 }: ManageSessionTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'meeting' | 'teachers' | 'feedback' | 'recall' | 'audit' | 'certificates'>('overview')
   const meetingUrl = sessionMeetingUrl(session)
@@ -202,6 +209,12 @@ export function ManageSessionTabs({
               <h2 className="text-xl font-mono font-bold mb-4">You Said, We Did</h2>
               <FeedbackActionsPanel sessionId={session.id} initialActions={feedbackActions} />
             </Card>
+            {showAudioRecap && (
+              <Card>
+                <h2 className="text-xl font-mono font-bold mb-4">Audio Recap</h2>
+                <AudioRecapPanel sessionId={session.id} initialRecap={audioRecap} />
+              </Card>
+            )}
           </div>
         )}
 

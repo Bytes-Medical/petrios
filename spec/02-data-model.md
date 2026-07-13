@@ -46,6 +46,8 @@ token), `teacher_emails` (send log), `attendance_evidence` (append-only) →
 24h — spec/01 "Sign-in methods").
 Also `feedback_actions` (deny-all; moderator-authored "you said, we did"
 entries rendered on public feedback pages — spec/05).
+Also `audio_recaps` (deny-all; moderator-approved AI audio recaps, MP3 as
+BYTEA, one per session — spec/06).
 
 Idempotency watermarks on `sessions`: `report_sent_at`, `reminder_sent_at`.
 

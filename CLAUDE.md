@@ -50,7 +50,7 @@ The attendance system is an append-only evidence aggregation pipeline (documente
 - **Certificates**: PDF generation via `@react-pdf/renderer` in `lib/certificates/pdf.tsx`. Server action in `app/actions/certificates.ts`. Public verification at `/verify/[certificateId]`.
 - **Email**: Resend REST API (`lib/email.ts`, a `getEmailClient()` adapter over `fetch`). Templates in `lib/email-templates.ts`. Used for teacher invitations, session reminders, and certificates.
 - **Feedback**: Anonymous session feedback with QR code distribution. Stats endpoint at `/api/sessions/[id]/feedback/stats`. AI summaries via `summarizeSessionFeedback` in `app/actions/feedback.ts`. Moderator-authored "You said, we did" entries (`feedback_actions`, migration 042) render publicly on feedback pages.
-- **AI (OpenAI)**: `lib/ai/llm.ts` calls the OpenAI Chat Completions REST API via `fetch` (no SDK; default model `gpt-5.5`, override with `OPENAI_MODEL`). Used by feedback summarization (`lib/ai/feedback-summary.ts`) and Petrios Ops. Degrades gracefully when no key is configured.
+- **AI (OpenAI)**: `lib/ai/llm.ts` calls the OpenAI Chat Completions REST API via `fetch` (no SDK; default model `gpt-5.5`, override with `OPENAI_MODEL`). Used by feedback summarization (`lib/ai/feedback-summary.ts`) and Petrios Ops. `lib/ai/tts.ts` is the one sanctioned text-to-speech caller (audio recaps; `OPENAI_TTS_MODEL`/`OPENAI_TTS_VOICE`). Degrades gracefully when no key is configured.
 - **Petrios Meet (Jitsi video)**: `JITSI` location type whose room is DERIVED from the session id (`lib/jitsi.ts` — no stored URL) and embedded on the session page via `@jitsi/react-sdk` (`components/JitsiMeetingPanel.tsx`, client-only). Joining fires the normal `checkIn` self check-in. `sessionMeetingUrl()` in `lib/jitsi.ts` is the single join-URL resolver for ICS/reminders/teacher emails/RSVP — use it instead of reading `teams_meeting_url` directly. Backend swaps via `NEXT_PUBLIC_JITSI_DOMAIN` (default meet.jit.si).
 - **Cron jobs**: `app/api/cron/post-session-reports` (certificates + report emails after sessions end), `app/api/cron/session-reminders` (reminder emails ~24h before a session), and `app/api/cron/recall-send` (Petrios Recall emails at end+3d/+14d). All idempotent via watermark columns and authenticated with an `Authorization: Bearer CRON_SECRET` header (`unauthorizedCronResponse`).
 - **Evidence Engine (spec/08)**: trainee curriculum passport + ARCP portfolio packs (`app/actions/portfolio.ts`, `lib/portfolio/*`, `session_reflections` + `portfolio_packs` tables, public verify at `/verify/pack/[code]`) and teacher appraisal dossiers (Teaching tab).
@@ -73,6 +73,8 @@ CRON_SECRET                   # Shared secret for /api/cron/* routes (server-onl
 OPENAI_API_KEY                # OpenAI API key for AI feedback summaries + Petrios Ops (server-only, optional)
 OPENAI_MODEL                  # Optional model override (default gpt-5.5)
 OPENAI_BASE_URL               # Optional OpenAI-compatible endpoint (Azure/local models; default api.openai.com/v1)
+OPENAI_TTS_MODEL              # Optional TTS model for audio recaps (default gpt-4o-mini-tts)
+OPENAI_TTS_VOICE              # Optional TTS voice for audio recaps (default alloy)
 DATABASE_URL                  # Optional: plain-Postgres migration runner (npm run db:migrate)
 INSTANCE_SIGNING_KEY          # Optional: Ed25519 identity enabling signed teaching-record exports (federation)
 NEXT_PUBLIC_JITSI_DOMAIN      # Jitsi domain for Petrios Meet rooms (optional, default meet.jit.si)

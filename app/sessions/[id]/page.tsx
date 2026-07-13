@@ -9,6 +9,8 @@ import { Button } from '@/components/Button'
 import Link from 'next/link'
 import { isDepartmentModerator } from '@/lib/auth'
 import { profileDisplayName } from '@/lib/contacts'
+import { getApprovedAudioRecap } from '@/app/actions/audio-recaps'
+import { AudioRecapPlayer } from '@/components/AudioRecapPlayer'
 import * as onboardingDb from '@/lib/db/onboarding'
 
 export default async function SessionPage(
@@ -33,6 +35,7 @@ export default async function SessionPage(
   const teachers = await getSessionTeachers(params.id)
   const attendance = await getAttendance(params.id)
   const canManage = await isDepartmentModerator(session.department_id)
+  const approvedRecap = await getApprovedAudioRecap(params.id)
 
   // Petrios Meet sessions embed their video room; name shown to the room.
   let videoDisplayName: string | null = null
@@ -75,6 +78,12 @@ export default async function SessionPage(
             displayName={videoDisplayName}
           />
         )}
+
+        {approvedRecap ? (
+          <div className="mb-6">
+            <AudioRecapPlayer sessionId={params.id} />
+          </div>
+        ) : null}
 
         <SessionTabs
           session={session}

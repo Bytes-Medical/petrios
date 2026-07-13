@@ -41,6 +41,7 @@ supabase db push
 | Database + auth | Hosted Supabase project | Supabase self-host stack (`SUPABASE_*` vars point at it) |
 | Email | `RESEND_API_KEY` | **`SMTP_HOST`** (+ `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`) — any relay; takes priority over Resend |
 | AI (optional) | OpenAI (`OPENAI_API_KEY`) | **`OPENAI_BASE_URL`** → Azure OpenAI, a gateway, or a locally hosted OpenAI-compatible model; unset the key to disable AI entirely |
+| Audio recaps (optional) | OpenAI TTS (`OPENAI_TTS_MODEL`/`OPENAI_TTS_VOICE`, shares the key) | Requires a `/audio/speech` endpoint on your `OPENAI_BASE_URL`; endpoints without one (most local models) simply disable recaps |
 | Video (optional) | meet.jit.si | **`NEXT_PUBLIC_JITSI_DOMAIN`** → your own Jitsi server |
 | AI agent kill switch | on | `OPS_ENABLED=false` halts every agent surface |
 

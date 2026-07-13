@@ -14,11 +14,16 @@ without touching the core app.
 2. **One inference choke point**: `opsInference` (`lib/ops/gateway.ts`) with
    a purpose allow-list (`feedback_synthesis`, `email_draft`,
    `session_summary`, `curriculum_map`, `newsletter`, `low_score_digest`,
-   `gap_topics`, `assistant`). Every call logs an audit step: purpose,
-   model, **sha256 prompt hash**, token counts — never prompt text. The
+   `gap_topics`, `recall_questions`, `audio_recap`, `assistant`). Every
+   call logs an audit step: purpose, model, **sha256 prompt hash**, token
+   counts — never prompt text. (On-demand calls that run without an OpsRun
+   — `summarizeSessionFeedback`, recap script generation — write no audit
+   row; the gateway still enforces the purpose list and kill switch.) The
    assistant's tool loop (`lib/ops/agent-loop.ts`) is the one sanctioned
    caller of the OpenAI API outside `lib/ai/llm.ts` (tool calling needs the
-   raw message stream) and follows the same audit rules.
+   raw message stream) and follows the same audit rules. For speech,
+   `lib/ai/tts.ts` is the one sanctioned caller of the TTS endpoint — the
+   audio sibling of the `llm.ts` doctrine.
 3. **Kill switch**: `OPS_ENABLED=false` (`lib/ops/flags.ts`) halts every
    surface — crons no-op, gateway throws, chat and approve/execute actions
    refuse.
@@ -107,3 +112,29 @@ update it when platform behaviour changes). History persists in
 Zero unapproved outbound actions, ever. Verify with:
 `grep -rn "emails.send" lib/ops app/api/cron/ops-* app/actions/ops*` —
 matches must exist only in `lib/ops/executors.ts`.
+
+## Audio recaps (on-demand, moderator-approved)
+
+A 60–90 s spoken recap per session, generated on demand from the manage
+page's Feedback tab (`AudioRecapPanel`) — never automatically.
+
+- **Script**: `lib/ops/recap.ts` via `opsInference` purpose `audio_recap`,
+  sourcing session title/description/tags + the stored feedback synthesis
+  (already name-stripped; still fenced as untrusted data in the prompt).
+  Capped at `AUDIO_RECAP_MAX_SCRIPT_CHARS` (2500). Never any individual's
+  performance or name (system rules).
+- **Audio**: `synthesizeSpeech` (`lib/ai/tts.ts`, env `OPENAI_TTS_MODEL` /
+  `OPENAI_TTS_VOICE`, shares `OPENAI_API_KEY`/`OPENAI_BASE_URL`). Degrades
+  to null when unconfigured or when the endpoint 404s (local models).
+- **Approval gate, structural**: `audio_recaps` (migration 043, deny-all,
+  DAL `lib/db/audio-recaps.ts`) stores the MP3 as BYTEA; editing the script
+  clears the audio, and approval requires audio present — the approved
+  artifact is exactly what the moderator heard. Attendees see a player card
+  on the session page only for approved recaps; the streaming route
+  `/api/sessions/[id]/recap-audio` is org-scoped (drafts: moderators only).
+- **No email**: v1 sends nothing, so the ops approval queue is not
+  involved; the recap approval is its own status column (the
+  recall_question_sets pattern). `OPS_ENABLED=false` removes the panel,
+  the attendee card, and 404s the route.
+- Blob discipline: metadata reads never select the BYTEA column
+  (`META_COLUMNS`); `audio_bytes` mirrors its size.
