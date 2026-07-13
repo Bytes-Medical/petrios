@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from './Button'
 import { Input } from './Input'
 import { claimSlotByCode } from '@/app/actions/teaching-slots'
-import { describeSlot } from '@/lib/slot-schedule'
+import { describeSlot, isLightningSlot } from '@/lib/slot-schedule'
 import { formatTimeHM } from '@/lib/date-picker'
 import { LOCATION_TYPE_LABELS, type TeachingSlot } from '@/lib/types'
 
@@ -80,6 +80,12 @@ export function SlotClaimPanel({
 
       <div>
         <h2 className="font-mono font-bold mb-2">1. Choose a slot</h2>
+        {slots.some(isLightningSlot) ? (
+          <p className="mb-2 font-mono text-xs text-gray-600">
+            ⚡ Lightning slots are 10–20 minute micro-teaching sessions — one
+            topic, low stakes, a great first teaching slot.
+          </p>
+        ) : null}
         <div className="space-y-2">
           {slots.map((slot) => {
             const desc = describeSlot(slot)
@@ -95,9 +101,13 @@ export function SlotClaimPanel({
                     : 'border-black bg-white hover:bg-gray-50'
                 }`}
               >
-                <p className="font-mono text-sm font-bold">{desc.dateStr}</p>
+                <p className="font-mono text-sm font-bold">
+                  {desc.dateStr}
+                  {isLightningSlot(slot) ? ' ⚡' : ''}
+                </p>
                 <p className={`font-mono text-xs ${selected ? 'text-gray-200' : 'text-gray-600'}`}>
-                  {desc.timeRangeStr} · {desc.durationStr} ·{' '}
+                  {desc.timeRangeStr} · {desc.durationStr}
+                  {isLightningSlot(slot) ? ' · lightning' : ''} ·{' '}
                   {LOCATION_TYPE_LABELS[slot.location_type] ?? slot.location_type}
                 </p>
               </button>

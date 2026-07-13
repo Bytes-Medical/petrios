@@ -109,7 +109,12 @@ export interface SlotOfferEmailSlot {
   timeRangeStr: string
   durationStr: string
   locationLabel: string
+  /** Micro-slot (<= 20 min) — marked in the row and invites first-timers. */
+  lightning?: boolean
 }
+
+const LIGHTNING_INTRO_SENTENCE =
+  ' Some of these are lightning slots — 10–20 minute micro-teaching sessions: one topic, low stakes, a great first teaching slot.'
 
 function slotOfferTableRows(slots: SlotOfferEmailSlot[]): string {
   return slots
@@ -117,7 +122,7 @@ function slotOfferTableRows(slots: SlotOfferEmailSlot[]): string {
       (slot) => `
         <tr>
           <td style="padding:8px 8px 8px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">${slot.dateStr}</td>
-          <td style="padding:8px 0;">${slot.timeRangeStr} (${slot.durationStr}) — ${slot.locationLabel}</td>
+          <td style="padding:8px 0;">${slot.timeRangeStr} (${slot.durationStr}${slot.lightning ? ' · lightning' : ''}) — ${slot.locationLabel}</td>
         </tr>`
     )
     .join('')
@@ -161,7 +166,7 @@ export function buildSlotOfferExternalEmailHtml(params: {
     slots: params.slots,
     ctaUrl: params.claimUrl,
     ctaLabel: 'View & claim a slot',
-    intro: `${params.departmentName} is looking for teachers and has opened the following teaching slots. Pick one that suits you — no account needed.`,
+    intro: `${params.departmentName} is looking for teachers and has opened the following teaching slots. Pick one that suits you — no account needed.${params.slots.some((slot) => slot.lightning) ? LIGHTNING_INTRO_SENTENCE : ''}`,
   })
 }
 
@@ -175,7 +180,7 @@ export function buildSlotOfferMemberEmailHtml(params: {
     slots: params.slots,
     ctaUrl: params.dashboardUrl,
     ctaLabel: 'Claim a slot on your dashboard',
-    intro: `${params.departmentName} is looking for teachers and has opened the following teaching slots. Sign in and claim one from the Teaching tab on your dashboard.`,
+    intro: `${params.departmentName} is looking for teachers and has opened the following teaching slots. Sign in and claim one from the Teaching tab on your dashboard.${params.slots.some((slot) => slot.lightning) ? LIGHTNING_INTRO_SENTENCE : ''}`,
   })
 }
 

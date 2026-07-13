@@ -15,7 +15,7 @@ import {
   monthLabel,
   todayKey,
 } from '@/lib/date-picker'
-import { listSlotTimeOptions } from '@/lib/slot-schedule'
+import { listSlotTimeOptions, SLOT_SPLIT_OPTIONS } from '@/lib/slot-schedule'
 import type { LocationType } from '@/lib/types'
 import { cn, fieldStyles } from '@/lib/utils'
 
@@ -36,6 +36,8 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
   const [view, setView] = useState({ year: now.getFullYear(), monthIndex: now.getMonth() })
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [time, setTime] = useState('13:00')
+  const [durationMins, setDurationMins] = useState(60)
+  const [split, setSplit] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
 
   const today = todayKey()
@@ -61,6 +63,7 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
         time,
         durationMins: Number(formData.get('duration')),
         locationType: formData.get('location_type') as LocationType,
+        splitMins: split,
       })
       showToast({
         variant: 'success',
@@ -81,6 +84,8 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
   }
 
   const sortedSelection = Array.from(selected).sort()
+  const slotsPerDay = split ? Math.floor(durationMins / split) : 1
+  const totalSlots = sortedSelection.length * slotsPerDay
 
   return (
     <form
@@ -88,6 +93,11 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
       onSubmit={(e) => {
         e.preventDefault()
         void handleCreate(new FormData(e.currentTarget))
+      }}
+      onChange={(e) => {
+        const form = e.currentTarget
+        const duration = new FormData(form).get('duration')
+        if (duration) setDurationMins(Number(duration))
       }}
     >
       {/* Month grid */}
@@ -189,6 +199,32 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
 
         <DurationSelect name="duration" defaultMinutes={60} required />
 
+        <div className="w-full">
+          <label htmlFor="slot-split" className="block mb-1 text-sm font-mono">
+            Create as
+          </label>
+          <select
+            id="slot-split"
+            className={`${fieldStyles} w-full`}
+            value={split ?? ''}
+            onChange={(e) => setSplit(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">One slot per day</option>
+            {SLOT_SPLIT_OPTIONS.filter((mins) => mins >= 15).map((mins) => (
+              <option key={mins} value={mins}>
+                Lightning micro-slots — {mins} min
+              </option>
+            ))}
+          </select>
+          {split ? (
+            <p className="mt-1 font-mono text-xs text-gray-500">
+              {slotsPerDay > 0
+                ? `Each selected day becomes ${slotsPerDay} × ${split}-min slot${slotsPerDay === 1 ? '' : 's'} — one topic, low stakes, great for first-time teachers.`
+                : 'Duration is shorter than the split — pick a longer duration.'}
+            </p>
+          ) : null}
+        </div>
+
         <Select label="Location Type" name="location_type" defaultValue="MS_TEAMS" required>
           <option value="JITSI">Petrios Meet (Video)</option>
         <option value="MS_TEAMS">MS Teams</option>
@@ -221,10 +257,10 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
           )}
         </div>
 
-        <Button type="submit" disabled={sortedSelection.length === 0 || loading}>
+        <Button type="submit" disabled={totalSlots === 0 || loading}>
           {loading
             ? 'Creating...'
-            : `Create ${sortedSelection.length || ''} slot${sortedSelection.length === 1 ? '' : 's'}`}
+            : `Create ${totalSlots || ''} slot${totalSlots === 1 ? '' : 's'}`}
         </Button>
       </div>
     </form>

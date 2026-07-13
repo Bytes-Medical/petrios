@@ -10,6 +10,7 @@ import { viewDay, viewWeek, viewMonthGrid } from '@schedule-x/calendar'
 import { createEventsServicePlugin } from '@schedule-x/events-service'
 import '@schedule-x/theme-default/dist/index.css'
 import { formatTimeHM } from '@/lib/date-picker'
+import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
 import { sessionMeetingUrl } from '@/lib/jitsi'
 import type { Session, SlotEvent } from '@/lib/types'
 
@@ -84,7 +85,7 @@ const SLOT_EVENT_PREFIX = 'slot-'
 function slotsToEvents(slots: SlotEvent[]) {
   return slots.map((slot) => ({
     id: `${SLOT_EVENT_PREFIX}${slot.id}`,
-    title: 'Available — open slot',
+    title: `Available — ${formatDuration(exactDurationFromDates(slot.date_start, slot.date_end))}`,
     start: toZonedDateTime(slot.date_start),
     end: toZonedDateTime(slot.date_end),
     calendarId: 'available',
@@ -585,7 +586,7 @@ export function SessionCalendar({
                     </div>
                     <div className="min-w-0 flex-1 pt-0.5">
                       <p className="truncate text-lg font-bold leading-tight text-black">
-                        Available — open slot
+                        Available — {formatDuration(exactDurationFromDates(slot.date_start, slot.date_end))}
                       </p>
                       <p className="mt-1 text-xs text-gray-600">Claimable teaching slot</p>
                     </div>

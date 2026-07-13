@@ -15,7 +15,9 @@ import {
   dedupeSlotRecipients,
   describeSlot,
   generateClaimCode,
+  isLightningSlot,
   slotDisplayStatus,
+  splitSlotDraft,
 } from '@/lib/slot-schedule'
 import { generateCode } from '@/lib/codes'
 import { contactDisplayName, profileDisplayName } from '@/lib/contacts'
@@ -49,13 +51,20 @@ export async function createTeachingSlots(
     time: string
     durationMins: number
     locationType: LocationType
+    /** Split each day's range into lightning micro-slots of this length. */
+    splitMins?: number | null
   }
 ) {
   const userId = await requireAuth()
   const orgId = await requireOrg()
   await requireDepartmentModerator(departmentId)
 
-  const drafts = buildSlotDrafts(input.dayKeys, input.time, input.durationMins)
+  // buildSlotDrafts validates the parent range (30 min – 4 h); lightning
+  // micro-slots come from splitting that validated range afterwards.
+  const dayDrafts = buildSlotDrafts(input.dayKeys, input.time, input.durationMins)
+  const drafts = input.splitMins
+    ? dayDrafts.flatMap((draft) => splitSlotDraft(draft, input.splitMins!))
+    : dayDrafts
 
   const slots = await slotsDb.insertSlots({
     orgId,
@@ -121,6 +130,7 @@ function slotToOfferEmailRow(slot: TeachingSlot): SlotOfferEmailSlot {
   return {
     ...describeSlot(slot),
     locationLabel: LOCATION_TYPE_LABELS[slot.location_type] ?? slot.location_type,
+    lightning: isLightningSlot(slot),
   }
 }
 

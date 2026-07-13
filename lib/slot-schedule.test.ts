@@ -5,8 +5,10 @@ import {
   combineDayAndTime,
   dedupeSlotRecipients,
   generateClaimCode,
+  isLightningSlot,
   listSlotTimeOptions,
   slotDisplayStatus,
+  splitSlotDraft,
 } from './slot-schedule'
 
 describe('combineDayAndTime', () => {
@@ -47,6 +49,59 @@ describe('buildSlotDrafts', () => {
 
   it('allows today', () => {
     expect(buildSlotDrafts([today], '23:45', 30, today)).toHaveLength(1)
+  })
+})
+
+describe('splitSlotDraft', () => {
+  const draft = (start: string, end: string) => ({ dateStart: start, dateEnd: end })
+
+  it('splits a 60-min range into 4 contiguous 15-min drafts', () => {
+    const result = splitSlotDraft(draft('2030-01-10T12:00', '2030-01-10T13:00'), 15)
+    expect(result).toHaveLength(4)
+    expect(result[0].dateStart).toBe('2030-01-10T12:00')
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i].dateStart).toBe(result[i - 1].dateEnd)
+    }
+    expect(new Set(result.map((r) => r.dateStart)).size).toBe(4)
+    // dateEnd is a full ISO string (computeDateEnd convention) — compare instants
+    expect(new Date(result[3].dateEnd).getTime()).toBe(
+      new Date('2030-01-10T13:00').getTime()
+    )
+  })
+
+  it('drops a trailing remainder shorter than the split', () => {
+    const result = splitSlotDraft(draft('2030-01-10T12:00', '2030-01-10T13:30'), 20)
+    expect(result).toHaveLength(4)
+    expect(new Date(result[3].dateEnd).getTime()).toBe(
+      new Date('2030-01-10T13:20').getTime()
+    )
+  })
+
+  it('returns a single draft when the range equals the split', () => {
+    const result = splitSlotDraft(draft('2030-01-10T12:00', '2030-01-10T12:20'), 20)
+    expect(result).toHaveLength(1)
+  })
+
+  it('rejects split lengths outside SLOT_SPLIT_OPTIONS', () => {
+    expect(() => splitSlotDraft(draft('2030-01-10T12:00', '2030-01-10T13:00'), 7)).toThrow()
+    expect(() => splitSlotDraft(draft('2030-01-10T12:00', '2030-01-10T13:00'), 30)).toThrow()
+  })
+
+  it('rejects a split longer than the range', () => {
+    expect(() =>
+      splitSlotDraft(draft('2030-01-10T12:00', '2030-01-10T12:10'), 15)
+    ).toThrow('Split is longer than the slot range')
+  })
+})
+
+describe('isLightningSlot', () => {
+  it('is true at or under the lightning maximum', () => {
+    expect(isLightningSlot({ date_start: '2030-01-10T12:00', date_end: '2030-01-10T12:15' })).toBe(true)
+    expect(isLightningSlot({ date_start: '2030-01-10T12:00', date_end: '2030-01-10T12:20' })).toBe(true)
+  })
+
+  it('is false for regular slots', () => {
+    expect(isLightningSlot({ date_start: '2030-01-10T12:00', date_end: '2030-01-10T12:30' })).toBe(false)
   })
 })
 

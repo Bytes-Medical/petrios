@@ -6,6 +6,9 @@
   visible to members, appear on calendars/ICS, and accept attendance.
 - Duration is 30 min–4 h in 30-min steps (`lib/session-duration.ts`);
   create/edit pick a start datetime + duration, never an end datetime.
+  Exception: sessions created from claimed **lightning slots** can be as
+  short as 10 min — `EditSessionForm` preserves off-grid durations via
+  `extraOptionMinutes`, so editing never silently snaps them to 30.
 - `location_type`: `MS_TEAMS` | `IN_PERSON` | `HYBRID` | `JITSI`, labels in
   `lib/types.ts`. Optional `session_type` (STEPP / Clinical Skills /
   Simulation / Academic) drives calendar colours.
@@ -34,6 +37,14 @@
   `/departments/[id]/schedule`; a partial unique index
   `(department_id, date_start) WHERE status IN ('OPEN','CLAIMED')` prevents
   double-booking identical start times.
+- **Lightning slots**: the bulk creator's "Create as" option splits each
+  day's range into back-to-back micro-slots (`splitSlotDraft`,
+  `SLOT_SPLIT_OPTIONS` = 10/15/20 min; split AFTER `buildSlotDrafts` so the
+  parent-range validation is untouched). Slots ≤ `LIGHTNING_SLOT_MAX_MINS`
+  (20) carry a "Lightning" badge and first-time-teacher copy on the claim
+  surfaces, appear as "Available — 15 min" on the calendar, and are marked
+  in offer emails. Split slots have distinct `date_start`s, so the unique
+  index still applies per micro-slot.
 - **Publishing**: a `slot_publications` row snapshots the audience
   (contact groups, all department members, all org members — combinable);
   recipients are deduped member-wins over contact

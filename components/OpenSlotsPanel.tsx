@@ -8,7 +8,7 @@ import { Input } from './Input'
 import { useToast } from './ToastProvider'
 import { claimSlotAsMember } from '@/app/actions/teaching-slots'
 import type { ClaimableSlotView } from '@/app/actions/teaching-slots'
-import { describeSlot } from '@/lib/slot-schedule'
+import { describeSlot, isLightningSlot } from '@/lib/slot-schedule'
 import { LOCATION_TYPE_LABELS_SHORT } from '@/lib/types'
 
 interface OpenSlotsPanelProps {
@@ -54,6 +54,12 @@ export function OpenSlotsPanel({ slots }: OpenSlotsPanelProps) {
       <h3 className="font-mono text-sm font-bold uppercase tracking-wider text-gray-500 mb-3">
         Open teaching slots — claim one
       </h3>
+      {slots.some(isLightningSlot) ? (
+        <p className="mb-3 font-mono text-xs text-gray-600">
+          ⚡ Lightning slots are 10–20 minute micro-teaching sessions — one
+          topic, low stakes, a great first teaching slot.
+        </p>
+      ) : null}
       <div className="space-y-3">
         {slots.map((slot) => {
           const desc = describeSlot(slot)
@@ -72,7 +78,10 @@ export function OpenSlotsPanel({ slots }: OpenSlotsPanelProps) {
                     {slot.department_name ? ` · ${slot.department_name}` : ''}
                   </p>
                 </div>
-                <Badge variant="success">Open</Badge>
+                <div className="flex gap-1.5">
+                  {isLightningSlot(slot) ? <Badge variant="clay">Lightning</Badge> : null}
+                  <Badge variant="success">Open</Badge>
+                </div>
               </div>
 
               {isClaiming ? (

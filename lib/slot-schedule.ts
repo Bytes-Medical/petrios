@@ -63,6 +63,43 @@ export function buildSlotDrafts(
     })
 }
 
+/** Permitted lightning micro-slot lengths, in minutes. */
+export const SLOT_SPLIT_OPTIONS = [10, 15, 20] as const
+
+/** Slots at or under this duration render as "Lightning" — one topic,
+ *  low stakes, aimed at first-time teachers. */
+export const LIGHTNING_SLOT_MAX_MINS = 20
+
+/**
+ * Split one day's slot range into back-to-back micro-slots. Applied AFTER
+ * buildSlotDrafts (whose 30-min-to-4-h validation covers the parent range),
+ * so a 60-min range can become 4 × 15-min lightning slots. A trailing
+ * remainder shorter than splitMins is dropped.
+ */
+export function splitSlotDraft(draft: SlotDraft, splitMins: number): SlotDraft[] {
+  if (!(SLOT_SPLIT_OPTIONS as readonly number[]).includes(splitMins)) {
+    throw new Error(`Split must be one of ${SLOT_SPLIT_OPTIONS.join(', ')} minutes`)
+  }
+  const rangeMins = exactDurationFromDates(draft.dateStart, draft.dateEnd)
+  if (splitMins > rangeMins) {
+    throw new Error('Split is longer than the slot range')
+  }
+
+  const drafts: SlotDraft[] = []
+  let cursor = draft.dateStart
+  for (let used = 0; used + splitMins <= rangeMins; used += splitMins) {
+    const next = computeDateEnd(cursor, splitMins)
+    drafts.push({ dateStart: cursor, dateEnd: next })
+    cursor = next
+  }
+  return drafts
+}
+
+/** True for micro-slots that should carry the "Lightning" badge. */
+export function isLightningSlot(slot: { date_start: string; date_end: string }): boolean {
+  return exactDurationFromDates(slot.date_start, slot.date_end) <= LIGHTNING_SLOT_MAX_MINS
+}
+
 /** Time-of-day options ('HH:mm') matching DateTimePicker's format. */
 export function listSlotTimeOptions(intervalMinutes = 15): string[] {
   const pad = (n: number) => n.toString().padStart(2, '0')

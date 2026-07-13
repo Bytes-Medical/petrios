@@ -20,7 +20,7 @@ Sessions have a status (DRAFT, PUBLISHED, CANCELLED), a date, duration (30 min�
 Teachers can be registered members (invited in-app; they accept or decline from the dashboard Teaching tab) or external people (emailed an RSVP link — no account needed). A session is "unconfirmed" while nobody has ACCEPTED. Accepted teachers get an automatic reminder ~24h before the session.
 
 ## Teaching slots (Calendly-style)
-Moderators can publish OPEN teaching slots (date + time, no topic yet). They publish them to contact groups from the address book, to all department members, or org-wide. First to claim gets the slot (atomic); the claim creates a DRAFT session with the claimer attached as an accepted teacher, and the moderator assigns the topic later.
+Moderators can publish OPEN teaching slots (date + time, no topic yet). They publish them to contact groups from the address book, to all department members, or org-wide. First to claim gets the slot (atomic); the claim creates a DRAFT session with the claimer attached as an accepted teacher, and the moderator assigns the topic later. Moderators can split a day's range into 10–20 minute lightning micro-slots — badged "Lightning" on claim pages — designed as low-stakes first teaching slots; claiming one creates a session of that exact length.
 
 ## Address book
 Moderators keep external contacts (no accounts) in an address book, organised into contact groups (e.g. "Consultants"), used when publishing slots or inviting teachers.
