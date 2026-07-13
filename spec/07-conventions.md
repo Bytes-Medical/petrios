@@ -177,9 +177,12 @@ recipients with one controlled address. `EMAIL_DEV_MODE=true` logs metadata even
 in production-like mode; it does not itself select a transport. Attachments are
 raw bytes/base64 adapted to each provider.
 
-`MAIL_FROM` is preferred, with legacy `RESEND_FROM_EMAIL` fallback. Production
-throws if neither exists. Development uses `Petrios <dev@localhost>` and avoids
-sending that invalid address through Resend.
+`MAIL_FROM` is preferred, with legacy `RESEND_FROM_EMAIL` fallback. A bare
+configured address receives the `Petrios` display name. The known legacy display
+names `Byte Teaching` and `Bytes Teaching` (including hyphenated forms) are
+rewritten to `Petrios`; any other explicit organization display name is
+preserved. Production throws if neither variable exists. Development uses
+`Petrios <dev@localhost>` and avoids sending that invalid address through Resend.
 
 Callers must inspect `{ data, error }`; the adapter generally returns provider
 errors rather than throwing. Some higher-level helpers convert error to throw,
