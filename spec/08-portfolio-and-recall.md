@@ -72,3 +72,26 @@ Absentees who pass (≥2 of 3, `scoreAnswers`) earn attendance:
 `recall_question_sets` (UNIQUE(session), status draft/approved, send
 watermarks) and `recall_answers` (UNIQUE(session, user), kind
 RETENTION/CATCH_UP, score/passed). DAL: `lib/db/recall.ts`.
+
+### Retention analytics (aggregate-only, moderator-only)
+
+The Recall tab shows a second card, `RecallAnalyticsPanel`: cohort recall
+scores bucketed by days since the session (`0–3 / 4–7 / 8–14 / 15–21+`,
+matching the send cadence), split RETENTION vs CATCH_UP, plus headline
+response rate / avg score / pass rate. Answers arrive naturally spread
+across the 21-day window, so the buckets form a retention profile without
+any schema change.
+
+**Privacy rules (hard):**
+- Aggregates only. The DAL feed (`listAnswerStatsForSession`) deliberately
+  excludes `user_id`; the pure computation (`lib/recall-analytics.ts`,
+  unit-tested) suppresses any cohort with n < `RETENTION_MIN_COHORT` (5)
+  before results leave the server. Counts stay visible; scores don't.
+- `RETENTION_MIN_COHORT` is never lowered, globally or per-org.
+- Recall analytics must never be exposed as an ops assistant tool
+  (`lib/ops/tools.ts`) — the assistant cannot discuss retention numbers.
+- Known k-anonymity caveat, accepted: a cohort of exactly 5 with identical
+  scores still implies each member's score. Threshold suppression bounds,
+  but does not eliminate, inference.
+- This measures whether the *teaching* stuck. It is not, and must never
+  become, an individual trainee performance surface.

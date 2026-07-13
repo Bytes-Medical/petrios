@@ -35,6 +35,9 @@ first.
 
 ## Product
 
+- **Department retention rollup** — median per-session retention across
+  sessions with >=5 recall responses, on the department schedule page
+  (per-session analytics shipped; same suppression rules).
 - **Rota-group equity lens** — today's equity view aggregates by grade;
   tagging members with rota groups makes exclusion patterns directly
   actionable (and feeds slot-time suggestions).

@@ -16,6 +16,7 @@ import * as recallDb from '@/lib/db/recall'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as attendanceDb from '@/lib/db/attendance'
 import type { RecallQuestionSet } from '@/lib/db/recall'
+import { computeRetentionAnalytics, type RetentionAnalytics } from '@/lib/recall-analytics'
 
 /**
  * Petrios Recall actions. Moderator surface (review/edit/approve question
@@ -34,6 +35,28 @@ export async function getRecallSetForSession(
   await requireDepartmentModerator(session.department_id)
 
   return recallDb.findSetForSession(sessionId)
+}
+
+/**
+ * Aggregate retention analytics for the Recall tab. Moderator-only, and
+ * aggregates-only by construction: the DAL feed carries no user ids and the
+ * pure computation suppresses any cohort under RETENTION_MIN_COHORT before
+ * the result leaves the server. Individual recall performance is never
+ * exposed — this measures whether the teaching stuck, not the trainees.
+ */
+export async function getRecallAnalytics(sessionId: string): Promise<RetentionAnalytics> {
+  await requireAuth()
+  const orgId = await requireOrg()
+  const session = await sessionsDb.findSession(sessionId, orgId)
+  if (!session) throw new Error('Session not found')
+  await requireDepartmentModerator(session.department_id)
+
+  const [stats, attendeeIds] = await Promise.all([
+    recallDb.listAnswerStatsForSession(sessionId),
+    attendanceDb.listAttendeeUserIdsByStatusAsSystem(sessionId, ['PRESENT', 'LATE']),
+  ])
+
+  return computeRetentionAnalytics(stats, session.date_end, attendeeIds.length)
 }
 
 export async function saveRecallQuestions(

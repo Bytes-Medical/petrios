@@ -14,6 +14,7 @@ import { EditSessionForm } from './EditSessionForm'
 import { AuditPanel } from './AuditPanel'
 import { ReleaseTeacherFeedbackPanel } from './ReleaseTeacherFeedbackPanel'
 import { RecallQuestionsPanel } from './RecallQuestionsPanel'
+import { RecallAnalyticsPanel } from './RecallAnalyticsPanel'
 import type { RecallQuestionSet } from '@/lib/db/recall'
 import { Button } from './Button'
 import { LOCATION_TYPE_LABELS, type Session, type TeacherInvitation } from '@/lib/types'
@@ -197,10 +198,16 @@ export function ManageSessionTabs({
         )}
 
         {activeTab === 'recall' && (
-          <Card>
-            <h2 className="text-xl font-mono font-bold mb-4">Recall Questions</h2>
-            <RecallQuestionsPanel sessionId={session.id} initialSet={recallSet} />
-          </Card>
+          <div className="space-y-6">
+            <Card>
+              <h2 className="text-xl font-mono font-bold mb-4">Recall Questions</h2>
+              <RecallQuestionsPanel sessionId={session.id} initialSet={recallSet} />
+            </Card>
+            <Card>
+              <h2 className="text-xl font-mono font-bold mb-4">Retention Analytics</h2>
+              <RecallAnalyticsPanel sessionId={session.id} />
+            </Card>
+          </div>
         )}
 
         {activeTab === 'audit' && (

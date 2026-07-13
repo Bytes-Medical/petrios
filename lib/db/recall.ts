@@ -1,4 +1,5 @@
 import type { RecallQuestion } from '@/lib/recall'
+import type { RecallAnswerStat } from '@/lib/recall-analytics'
 import { getServiceDb } from './client'
 import { toDbError } from './errors'
 
@@ -173,6 +174,25 @@ export async function insertAnswer(input: {
   })
 
   if (error) throw toDbError('Failed to store recall answer', error)
+}
+
+/**
+ * Aggregate-only feed for retention analytics: deliberately excludes user_id
+ * so no caller can correlate an individual's score. The moderator-gated
+ * action computes aggregates (with small-cohort suppression) from these rows
+ * and only the aggregates cross the server boundary.
+ */
+export async function listAnswerStatsForSession(
+  sessionId: string
+): Promise<RecallAnswerStat[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('recall_answers')
+    .select('kind, score, total, passed, answered_at')
+    .eq('session_id', sessionId)
+
+  if (error) throw toDbError('Failed to list recall answer stats', error)
+  return (data as RecallAnswerStat[] | null) ?? []
 }
 
 export async function listAnsweredUserIds(sessionId: string): Promise<Set<string>> {
