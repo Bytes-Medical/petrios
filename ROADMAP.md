@@ -22,6 +22,10 @@ first.
 - **Teaching record import/merge** — `/verify/record` verifies portable
   records today; importing a verified record into a local passport (with
   provenance shown) completes the rotation story.
+- **Federated benchmarking** — `petrios-benchmark/v1` (spec/10): opt-in,
+  Ed25519-signed monthly aggregates so instances can compare themselves
+  without pooling data. RFC open for protocol feedback; no code until it
+  settles.
 - **Key rotation** for instance signing keys (publish previous keys in
   `.well-known`).
 

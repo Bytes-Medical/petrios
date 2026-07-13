@@ -28,6 +28,7 @@ repository `LICENSE` and `NOTICE`).
 | [07-conventions.md](./07-conventions.md) | Code, UI, email, notification, cron, and testing conventions |
 | [08-portfolio-and-recall.md](./08-portfolio-and-recall.md) | Evidence Engine (ARCP packs, teacher dossiers) + Petrios Recall with catch-up attendance |
 | [09-platform-api-and-self-hosting.md](./09-platform-api-and-self-hosting.md) | Public API + webhooks, federation, provider adapters, deployment |
+| [10-federated-benchmarking.md](./10-federated-benchmarking.md) | RFC (not implemented): opt-in, signed, aggregate-only cross-instance benchmarking |
 
 ## Non-negotiable invariants (summary)
 
