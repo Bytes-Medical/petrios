@@ -29,7 +29,7 @@ Moderators keep external contacts (no accounts) in an address book, organised in
 Evidence-based: append-only evidence from sources with priority TEACHER > TEAMS > FEEDBACK > GROUP_CODE > SELF_CHECKIN is aggregated into attendance records (PRESENT / LATE / ABSENT). Attendance can be locked to freeze it.
 
 ## Feedback
-Anonymous per-session feedback via QR code / link, open from 15 minutes before the session until a configurable window after it ends (default 2h). Departments customise the form fields. Ratings are 1–5.
+Anonymous per-session feedback via QR code / link, open from 15 minutes before the session until a configurable window after it ends (default 2h). Departments customise the form fields. Ratings are 1–5. Moderators can publish "You said, we did" entries from the session manage Feedback tab; they appear publicly on the feedback pages so attendees see the loop being closed.
 
 ## Certificates
 PDF certificates for attendees and teachers, publicly verifiable via a code at /verify.

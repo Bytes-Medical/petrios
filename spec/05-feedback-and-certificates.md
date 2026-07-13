@@ -26,6 +26,20 @@
 - **Feedback free text is untrusted input** everywhere it meets an LLM:
   fenced as data, never instructions.
 
+### "You said, we did" (closing the loop)
+
+Moderators record responses to feedback themes on the session manage
+Feedback tab (`FeedbackActionsPanel`): a "you said" paraphrase + a "we did"
+action, both capped at 280 chars. Entries render publicly
+(`YouSaidWeDidList`) on the session and department feedback pages — the
+most recent 5 for the department, shown while attendees fill in the form,
+because the trust-building moment is "this department acts on feedback".
+Table `feedback_actions` (migration 042, deny-all RLS, DAL
+`lib/db/feedback-actions.ts`): public reads are intentional (the text is
+moderator-authored); `created_by` is stored for audit but never rendered
+publicly; moderators paraphrase themes themselves — raw feedback is never
+quoted automatically.
+
 ## Certificates
 
 - Generated per session for ACCEPTED teachers and PRESENT attendees

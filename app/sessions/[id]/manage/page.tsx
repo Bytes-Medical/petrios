@@ -9,6 +9,7 @@ import { isDepartmentModerator, isPersonalWorkspace } from '@/lib/auth'
 import { getTeacherEmailHistory } from '@/app/actions/emails'
 import { getSessionInvitations } from '@/app/actions/teacher-invitations'
 import { getRecallSetForSession } from '@/app/actions/recall'
+import * as feedbackActionsDb from '@/lib/db/feedback-actions'
 import Link from 'next/link'
 import { ManageSessionTabs } from '@/components/ManageSessionTabs'
 
@@ -45,6 +46,7 @@ export default async function ManageSessionPage(
   const invitations = await getSessionInvitations(params.id)
   const isPersonal = await isPersonalWorkspace(orgId)
   const recallSet = await getRecallSetForSession(params.id)
+  const feedbackActions = await feedbackActionsDb.listActionsForSession(params.id)
 
   return (
     <div className="min-h-screen">
@@ -68,6 +70,7 @@ export default async function ManageSessionPage(
           invitations={invitations}
           isPersonal={isPersonal}
           recallSet={recallSet}
+          feedbackActions={feedbackActions}
         />
       </div>
     </div>

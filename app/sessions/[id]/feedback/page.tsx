@@ -2,8 +2,10 @@ import { redirect } from 'next/navigation'
 import { NavShell } from '@/components/NavShell'
 import { Card } from '@/components/Card'
 import { FeedbackForm } from '@/components/FeedbackForm'
+import { YouSaidWeDidList } from '@/components/YouSaidWeDidList'
 import { normalizeDepartmentFeedbackFields } from '@/lib/feedback-form'
 import * as sessionsDb from '@/lib/db/sessions'
+import * as feedbackActionsDb from '@/lib/db/feedback-actions'
 
 export default async function SessionFeedbackPage(
   props: {
@@ -16,6 +18,10 @@ export default async function SessionFeedbackPage(
   if (!session || session.status !== 'PUBLISHED') {
     redirect('/')
   }
+
+  const feedbackActions = await feedbackActionsDb.listRecentActionsForDepartment(
+    session.department_id
+  )
 
   return (
     <div className="min-h-screen">
@@ -37,6 +43,18 @@ export default async function SessionFeedbackPage(
             )}
           />
         </Card>
+
+        {feedbackActions.length > 0 ? (
+          <div className="mt-6">
+            <Card>
+              <h2 className="mb-1 font-mono text-xl font-bold">You Said, We Did</h2>
+              <p className="mb-4 font-mono text-sm text-gray-600">
+                Recent changes this department made in response to feedback.
+              </p>
+              <YouSaidWeDidList actions={feedbackActions} />
+            </Card>
+          </div>
+        ) : null}
       </div>
     </div>
   )

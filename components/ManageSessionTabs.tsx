@@ -15,7 +15,9 @@ import { AuditPanel } from './AuditPanel'
 import { ReleaseTeacherFeedbackPanel } from './ReleaseTeacherFeedbackPanel'
 import { RecallQuestionsPanel } from './RecallQuestionsPanel'
 import { RecallAnalyticsPanel } from './RecallAnalyticsPanel'
+import { FeedbackActionsPanel } from './FeedbackActionsPanel'
 import type { RecallQuestionSet } from '@/lib/db/recall'
+import type { FeedbackAction } from '@/lib/db/feedback-actions'
 import { Button } from './Button'
 import { LOCATION_TYPE_LABELS, type Session, type TeacherInvitation } from '@/lib/types'
 import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
@@ -31,6 +33,7 @@ interface ManageSessionTabsProps {
   invitations: TeacherInvitation[]
   isPersonal?: boolean
   recallSet?: RecallQuestionSet | null
+  feedbackActions?: FeedbackAction[]
 }
 
 export function ManageSessionTabs({
@@ -43,6 +46,7 @@ export function ManageSessionTabs({
   invitations,
   isPersonal,
   recallSet = null,
+  feedbackActions = [],
 }: ManageSessionTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'meeting' | 'teachers' | 'feedback' | 'recall' | 'audit' | 'certificates'>('overview')
   const meetingUrl = sessionMeetingUrl(session)
@@ -193,6 +197,10 @@ export function ManageSessionTabs({
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Feedback Responses</h2>
               <FeedbackListPanel sessionId={session.id} />
+            </Card>
+            <Card>
+              <h2 className="text-xl font-mono font-bold mb-4">You Said, We Did</h2>
+              <FeedbackActionsPanel sessionId={session.id} initialActions={feedbackActions} />
             </Card>
           </div>
         )}

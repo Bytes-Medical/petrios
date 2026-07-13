@@ -44,6 +44,8 @@ token), `teacher_emails` (send log), `attendance_evidence` (append-only) →
 `slot_publications` + `slot_publication_slots` + `slot_claim_links`,
 `login_link_requests` (deny-all; sign-in rate-limit log, pruned after
 24h — spec/01 "Sign-in methods").
+Also `feedback_actions` (deny-all; moderator-authored "you said, we did"
+entries rendered on public feedback pages — spec/05).
 
 Idempotency watermarks on `sessions`: `report_sent_at`, `reminder_sent_at`.
 
