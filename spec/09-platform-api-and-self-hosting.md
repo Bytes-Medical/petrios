@@ -429,8 +429,8 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `NEXT_PUBLIC_APP_URL` | Required in production by helper | Canonical public origin for links/federation |
 | `NEXT_PUBLIC_BASE_URL` | Legacy fallback | Older URL construction |
 | `NEXTAUTH_URL`, `VERCEL_PROJECT_PRODUCTION_URL`, `VERCEL_URL`, `RENDER_EXTERNAL_URL` | Optional fallback | App-origin discovery |
-| `MAIL_FROM` | Required for production mail | Display/sender address |
-| `RESEND_FROM_EMAIL` | Legacy fallback | Sender address |
+| `MAIL_FROM` | Required for production mail | Display/sender address; bare addresses receive the Petrios display name and old Byte/Bytes Teaching names are normalized |
+| `RESEND_FROM_EMAIL` | Legacy fallback | Sender address with the same display-name normalization |
 | `SMTP_HOST` | Optional; takes priority | Select SMTP transport |
 | `SMTP_PORT` | Default 587 | SMTP port |
 | `SMTP_SECURE` | `true` only for implicit TLS | SMTP transport mode |

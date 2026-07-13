@@ -61,6 +61,31 @@ function toBase64(content: Buffer | Uint8Array | string): string {
 
 const isDev = process.env.NODE_ENV !== 'production'
 const DEV_PLACEHOLDER_FROM = 'dev@localhost'
+const LEGACY_PETRIOS_SENDER_NAME = /^bytes?[\s-]+teaching$/i
+
+/**
+ * Keep sender branding consistent across the Byte Teaching → Petrios rename.
+ * Bare addresses receive the product name, while intentionally customized
+ * organization names are preserved.
+ */
+export function normalizeSenderDisplayName(from: string): string {
+  const trimmed = from.trim()
+  const namedAddress = trimmed.match(/^(.*?)\s*<\s*([^>]+)\s*>$/)
+
+  if (!namedAddress) {
+    return `Petrios <${trimmed}>`
+  }
+
+  const displayName = namedAddress[1]
+    .trim()
+    .replace(/^(['"])(.*)\1$/, '$2')
+
+  if (LEGACY_PETRIOS_SENDER_NAME.test(displayName)) {
+    return `Petrios <${namedAddress[2].trim()}>`
+  }
+
+  return trimmed
+}
 
 /**
  * Default sender. Reads MAIL_FROM, falling back to the legacy RESEND_FROM_EMAIL.
@@ -70,7 +95,7 @@ const DEV_PLACEHOLDER_FROM = 'dev@localhost'
  */
 export function getFromAddress(): string {
   const from = process.env.MAIL_FROM || process.env.RESEND_FROM_EMAIL
-  if (from) return from
+  if (from) return normalizeSenderDisplayName(from)
   if (isDev) return 'Petrios <dev@localhost>'
   throw new Error(
     'MAIL_FROM environment variable is required (e.g. "Petrios <no-reply@your-domain>")'
