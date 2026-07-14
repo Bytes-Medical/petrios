@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from './Select'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Input } from './Input'
@@ -57,18 +58,14 @@ export function SuperAdminDepartmentForm({ organizations }: SuperAdminDepartment
 
       <div className="space-y-1">
         <label className="block mb-1 text-sm font-mono">Organization</label>
-        <select
-          name="org_id"
-          className="w-full px-3 py-2 border border-black font-mono text-sm bg-white"
-          required
-        >
+        <Select name="org_id" required>
           <option value="">Select an organization</option>
           {organizations.map(org => (
             <option key={org.id} value={org.id}>
               {org.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <Input

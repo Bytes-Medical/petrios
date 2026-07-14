@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '../Select'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { enrichSession } from '@/app/actions/ops'
@@ -39,11 +40,12 @@ export function EnrichSessionForm({ sessions, mappedSessionIds }: EnrichSessionF
   return (
     <div>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <select
-          value={sessionId}
-          onChange={(e) => setSessionId(e.target.value)}
-          className="min-w-0 flex-1 border border-black bg-white px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-clay-600"
-        >
+        <div className="min-w-0 flex-1">
+          <Select
+            aria-label="Session"
+            value={sessionId}
+            onChange={(e) => setSessionId(e.target.value)}
+          >
           <option value="">Choose a session…</option>
           {sessions.map((session) => (
             <option key={session.id} value={session.id}>
@@ -55,7 +57,8 @@ export function EnrichSessionForm({ sessions, mappedSessionIds }: EnrichSessionF
               {mapped.has(session.id) ? ' (mapped)' : ''}
             </option>
           ))}
-        </select>
+          </Select>
+        </div>
         <Button onClick={handleEnrich} disabled={!sessionId || busy}>
           {busy ? 'Enriching…' : 'Enrich session'}
         </Button>

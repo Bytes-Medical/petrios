@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { DatePicker } from './DatePicker'
+import { Select } from './Select'
 import { dayKeyFromIso, formatTimeHM } from '@/lib/date-picker'
 import { listSlotTimeOptions } from '@/lib/slot-schedule'
-import { fieldStyles } from '@/lib/utils'
 
 interface DateTimePickerProps {
   label?: string
@@ -55,22 +55,23 @@ export function DateTimePicker({
           onChange={setDate}
           ariaLabel={label ? `${label} — date` : 'Date'}
         />
-        <select
-          className={`${fieldStyles} min-w-0 flex-1`}
-          value={time}
-          onChange={(e) => setTime(e.target.value)}
-          required={required}
-          aria-label={label ? `${label} — time` : 'Time'}
-        >
-          <option value="" disabled>
-            Time
-          </option>
-          {options.map((t) => (
-            <option key={t} value={t}>
-              {t}
+        <div className="min-w-0 flex-1">
+          <Select
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            required={required}
+            aria-label={label ? `${label} — time` : 'Time'}
+          >
+            <option value="" disabled>
+              Time
             </option>
-          ))}
-        </select>
+            {options.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
       {/* Single combined value so existing form handlers read `name` unchanged. */}
       <input type="hidden" name={name} value={combined} />

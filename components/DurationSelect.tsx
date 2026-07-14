@@ -1,4 +1,4 @@
-import { Select } from './Select'
+import { Select, type SelectChangeEvent } from './Select'
 import {
   formatDuration,
   listDurationOptions,
@@ -7,6 +7,7 @@ import {
 interface DurationSelectProps {
   name: string
   label?: string
+  onChange?: (event: SelectChangeEvent) => void
   defaultMinutes?: number
   /** A legacy off-grid duration (e.g. 100 min) to surface as an extra option
    *  so editing an old session never silently shifts its end time. */
@@ -17,6 +18,7 @@ interface DurationSelectProps {
 export function DurationSelect({
   name,
   label = 'Duration',
+  onChange,
   defaultMinutes = 60,
   extraOptionMinutes,
   required,
@@ -37,6 +39,7 @@ export function DurationSelect({
       name={name}
       defaultValue={String(defaultMinutes)}
       required={required}
+      onChange={onChange}
     >
       {options.map((mins) => (
         <option key={mins} value={mins}>

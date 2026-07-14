@@ -15,7 +15,7 @@ read exception in `lib/auth.ts`. See spec 01 for the import boundary.
 
 Migration filenames are `NNN_snake_case.sql`, with a unique monotonically
 increasing numeric prefix. The implemented baseline ends at
-`043_audio_recaps.sql`.
+`044_single_moderator_organization.sql`.
 
 Rules for a schema change:
 
@@ -219,6 +219,9 @@ Important guarantees live at different layers:
 
 - unique constraints prevent duplicate memberships, answer sets, synthesis rows,
   codes, and selected natural identities;
+- migration 044's serialized trigger permits `department_admin` rows in multiple
+  departments of one organization but demotes moderator rows in every other
+  organization to `faculty` whenever a new organization wins;
 - partial unique indexes distinguish internal and external attendance subjects;
 - update predicates implement transitions such as claiming an `OPEN`, future
   slot or claiming a `pending` Ops action;

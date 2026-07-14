@@ -9,7 +9,7 @@ feedback, teaching evidence, communications, reporting, API integration, and an
 optional AI-assisted operations layer.
 
 This document describes the source and migrations through
-`043_audio_recaps.sql`. It is an implementation specification, not a generic
+`044_single_moderator_organization.sql`. It is an implementation specification, not a generic
 Next.js architecture recommendation.
 
 ## Runtime stack

@@ -231,6 +231,14 @@ borders, compact status chips, and responsive server-rendered pages. Continue to
 use the shared primitives (cards, buttons, wordmark, form controls, navigation)
 and existing label maps instead of one-off styling/status strings.
 
+Dropdowns are the custom themed listbox in `components/Select.tsx`, not
+native `<select>` — a native select's open menu is OS-rendered and cannot
+match the theme. It keeps the native wrapper's API (`<option>` children,
+`name`/`value`/`defaultValue`/`onChange(e.target.value)`), carries its value
+through a hidden input for FormData, and implements listbox keyboard
+behaviour (arrows, Home/End, Enter/Escape, single-char type-ahead). Do not
+introduce raw `<select>` elements in new UI.
+
 Accessibility requirements:
 
 - use semantic headings, forms, tables, buttons, and links;

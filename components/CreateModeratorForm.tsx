@@ -69,7 +69,9 @@ export function CreateModeratorForm({ departments }: CreateModeratorFormProps) {
         />
 
         <p className="font-mono text-xs text-gray-500">
-          If the email is already registered, their role will be upgraded. If not, they will receive a magic link to create their account.
+          If the email is already registered, their role will be upgraded. If
+          not, they will receive a magic link to create their account. Granting
+          access here removes moderator access in any other organization.
         </p>
 
         <Button type="submit" disabled={loading || !departmentId || !email}>

@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from './Select'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from './Button'
@@ -150,6 +151,10 @@ export function SuperAdminUsersPanel({
           onChange={(e) => setQuery(e.target.value)}
           className="w-full px-3 py-2 border border-black font-mono text-sm bg-white"
         />
+        <p className="mt-2 font-mono text-xs text-gray-500">
+          A user can moderate departments in one organization only. Granting a
+          role in another organization removes their previous moderator roles.
+        </p>
       </div>
 
       <ul className="space-y-2">
@@ -179,20 +184,22 @@ export function SuperAdminUsersPanel({
                 <div className="flex flex-wrap gap-2">
                   {user.id !== currentUserId && (
                     <>
-                      <select
-                        className="px-3 py-2 border border-black font-mono text-sm bg-white"
-                        value={selectedDepartment[user.id] || ''}
-                        onChange={(e) =>
-                          setSelectedDepartment(prev => ({ ...prev, [user.id]: e.target.value }))
-                        }
-                      >
-                        <option value="">Select dept</option>
-                        {departments.map(dept => (
-                          <option key={dept.id} value={dept.id}>
-                            {dept.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="w-48">
+                        <Select
+                          aria-label="Department"
+                          value={selectedDepartment[user.id] || ''}
+                          onChange={(e) =>
+                            setSelectedDepartment(prev => ({ ...prev, [user.id]: e.target.value }))
+                          }
+                        >
+                          <option value="">Select dept</option>
+                          {departments.map(dept => (
+                            <option key={dept.id} value={dept.id}>
+                              {dept.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
                       <Button
                         type="button"
                         onClick={() => handleGrantModerator(user.id)}

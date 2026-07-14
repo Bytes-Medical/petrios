@@ -2,7 +2,7 @@
 
 This directory is the detailed, implementation-facing specification for
 Petrios. It describes the application represented by the source tree and by
-database migrations through `043_audio_recaps.sql`. `CLAUDE.md` is the short
+database migrations through `044_single_moderator_organization.sql`. `CLAUDE.md` is the short
 architecture briefing; these documents are the durable contract for maintainers,
 reviewers, operators, and coding agents.
 
@@ -89,7 +89,11 @@ must not be used to erase those details.
 9. **Migrations move forward.** Applied numbered migrations are not edited.
    Schema changes use the next unique `NNN_snake_case.sql` file, enable RLS on
    new tables, and deliberately choose policies or deny-all service access.
-10. **Specifications change with behaviour.** New status values, access paths,
+10. **Moderator authority belongs to one organization.** A user may hold
+    `department_admin` memberships in multiple departments of one organization,
+    but granting that role in another organization demotes their prior moderator
+    roles to `faculty`. Ordinary membership is preserved.
+11. **Specifications change with behaviour.** New status values, access paths,
     delivery guarantees, data retention, privacy boundaries, or failure modes
     require a same-change update here.
 

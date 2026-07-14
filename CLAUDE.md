@@ -37,6 +37,11 @@ All data mutations use **Next.js Server Actions** in `app/actions/`. There is no
 
 Super admins are stored in a separate `super_admins` table. Other roles are in `organization_members.role`.
 
+A user may be `department_admin` for multiple departments in one organization,
+but never across organizations. Migration 044 enforces this in Postgres: a grant
+in a new organization demotes prior cross-organization moderator roles to
+`faculty` while preserving ordinary membership.
+
 ### Evidence-Based Attendance
 
 The attendance system is an append-only evidence aggregation pipeline (documented in `spec/03-attendance.md`):

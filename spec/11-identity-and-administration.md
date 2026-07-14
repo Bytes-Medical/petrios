@@ -120,6 +120,24 @@ can act as an organization manager for Ops/member settings even though session
 management remains department-scoped. Super-admin elevation is global and
 separate from membership.
 
+### Single moderator organization invariant
+
+A user may hold `department_admin` membership in multiple departments only when
+all of those departments belong to the same organization. Assigning that role in
+a different organization makes the new organization authoritative and demotes
+every `department_admin` membership in other organizations to `faculty`.
+Ordinary cross-organization membership is preserved; `org_admin` is a separate,
+higher role and is not changed by this rule.
+
+Migration 044 enforces the invariant with a `BEFORE INSERT OR UPDATE` trigger on
+`department_members`. A per-user transaction advisory lock serializes concurrent
+grants. The trigger runs with controlled elevated access so an RLS-backed grant
+cannot leave an inaccessible moderator row in another tenant. Existing data is
+backfilled deterministically: the organization whose moderator membership has
+the newest `created_at` wins, with `org_id` as a tie-breaker. Matching legacy
+`organization_members.role = department_admin` projections are demoted when that
+organization no longer contains a moderator membership.
+
 Target-resolving actions should load the row under the current organization
 before calling a role helper. `isDepartmentModerator` elevates a current-org admin
 before proving that an arbitrary department id belongs to that org, so callers
@@ -337,11 +355,12 @@ A super admin can:
 - delete another user from data tables and GoTrue; and
 - navigate the global administration surface regardless of current org.
 
-`grantDepartmentModerator` deliberately deletes memberships in other
-organizations, then upserts both organization and department role as
-`department_admin`. `createModeratorAccount` upserts the target roles but does
-not first delete other-organization memberships, so the two admin paths have
-different one-org behavior.
+Both `grantDepartmentModerator` and `createModeratorAccount` upsert the target
+organization and department roles as `department_admin`. The database trigger
+applies the same one-organization rule to these paths, RLS-backed member grants,
+personal-workspace provisioning, and any future direct membership write. Unlike
+the older grant behavior, changing moderator organization no longer deletes the
+user's unrelated memberships.
 
 User deletion refuses self, deletes known data rows/cascades, removes any
 super-admin row best-effort, then calls GoTrue admin delete. The multi-step delete

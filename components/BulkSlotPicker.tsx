@@ -17,7 +17,7 @@ import {
 } from '@/lib/date-picker'
 import { listSlotTimeOptions, SLOT_SPLIT_OPTIONS } from '@/lib/slot-schedule'
 import type { LocationType } from '@/lib/types'
-import { cn, fieldStyles } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 interface BulkSlotPickerProps {
   departmentId: string
@@ -93,11 +93,6 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
       onSubmit={(e) => {
         e.preventDefault()
         void handleCreate(new FormData(e.currentTarget))
-      }}
-      onChange={(e) => {
-        const form = e.currentTarget
-        const duration = new FormData(form).get('duration')
-        if (duration) setDurationMins(Number(duration))
       }}
     >
       {/* Month grid */}
@@ -183,9 +178,8 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
           <label htmlFor="slot-time" className="block mb-1 text-sm font-mono">
             Start time
           </label>
-          <select
+          <Select
             id="slot-time"
-            className={`${fieldStyles} w-full`}
             value={time}
             onChange={(e) => setTime(e.target.value)}
           >
@@ -194,19 +188,23 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
                 {t}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
-        <DurationSelect name="duration" defaultMinutes={60} required />
+        <DurationSelect
+          name="duration"
+          defaultMinutes={60}
+          required
+          onChange={(e) => setDurationMins(Number(e.target.value))}
+        />
 
         <div className="w-full">
           <label htmlFor="slot-split" className="block mb-1 text-sm font-mono">
             Create as
           </label>
-          <select
+          <Select
             id="slot-split"
-            className={`${fieldStyles} w-full`}
-            value={split ?? ''}
+            value={split ? String(split) : ''}
             onChange={(e) => setSplit(e.target.value ? Number(e.target.value) : null)}
           >
             <option value="">One slot per day</option>
@@ -215,7 +213,7 @@ export function BulkSlotPicker({ departmentId, busyDayKeys }: BulkSlotPickerProp
                 Lightning micro-slots — {mins} min
               </option>
             ))}
-          </select>
+          </Select>
           {split ? (
             <p className="mt-1 font-mono text-xs text-gray-500">
               {slotsPerDay > 0

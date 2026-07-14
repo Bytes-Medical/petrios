@@ -99,9 +99,6 @@ export async function grantDepartmentModerator(userId: string, departmentId: str
     throw new DbNotFoundError('Department not found')
   }
 
-  // Move the user into this department's org, clearing prior memberships.
-  await onboardingDb.deleteMembershipsInOtherOrgs(userId, department.org_id)
-
   await onboardingDb.upsertOrganizationMember({
     orgId: department.org_id,
     userId,
@@ -226,7 +223,8 @@ export async function createModeratorAccount(input: {
     })
   }
 
-  // Assign department_admin role
+  // Migration 044 enforces one moderator organization and demotes any prior
+  // cross-organization moderator roles while preserving ordinary membership.
   await onboardingDb.upsertOrganizationMember({ orgId: dept.org_id, userId, role: 'department_admin' })
   await onboardingDb.upsertDepartmentMember({
     orgId: dept.org_id,

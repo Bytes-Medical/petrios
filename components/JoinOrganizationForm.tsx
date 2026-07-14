@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from './Select'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from './Button'
@@ -73,10 +74,9 @@ export function JoinOrganizationForm({ organizations, departmentsByOrg }: JoinOr
       )}
 
       <div className="space-y-1">
-        <label className="block mb-1 text-sm font-mono">Organization</label>
-        <select
+        <Select
+          label="Organization"
           name="org_id"
-          className="w-full px-3 py-2 border border-black font-mono text-sm bg-white"
           required
           value={selectedOrgId}
           onChange={(e) => setSelectedOrgId(e.target.value)}
@@ -87,24 +87,18 @@ export function JoinOrganizationForm({ organizations, departmentsByOrg }: JoinOr
               {org.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="space-y-1">
-        <label className="block mb-1 text-sm font-mono">Department</label>
-        <select
-          name="department_id"
-          className="w-full px-3 py-2 border border-black font-mono text-sm bg-white"
-          required
-          disabled={!selectedOrgId}
-        >
+        <Select label="Department" name="department_id" required disabled={!selectedOrgId}>
           <option value="">Select a department</option>
           {(departmentsByOrg[selectedOrgId] || []).map(dept => (
             <option key={dept.id} value={dept.id}>
               {dept.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <Button type="submit" disabled={loading} className="w-full sm:w-auto">
