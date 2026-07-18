@@ -89,6 +89,10 @@ export async function getDepartmentSlots(
   const orgId = await requireOrg()
   await requireDepartmentModerator(departmentId)
 
+  // Self-heal slots orphaned by historical session deletes (CLAIMED with a
+  // NULL session_id) so stale busy-date tags clear on the next visit.
+  await slotsDb.closeOrphanedClaimedSlots({ orgId, departmentId })
+
   const slots = await slotsDb.listSlotsForDepartment(orgId, departmentId)
 
   return slots.map((slot) => ({ ...slot, display_status: slotDisplayStatus(slot) }))

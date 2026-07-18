@@ -310,9 +310,15 @@ row was already created before a later failure, compensation does not delete
 that orphaned side effect. Operators and future changes must not call the flow
 fully atomic.
 
-Deleting the generated session later sets/clears its foreign-key link according
-to the schema but does not reopen the already `CLAIMED` slot. Reopening would be
-a separate, explicitly authorized workflow.
+Deleting the generated session **closes** its claimed slot
+(`closeSlotForSession`, run before the delete while `session_id` still
+points at it) — never reopens it, since silently re-advertising a date the
+claimer still believes they teach would be worse than the moderator
+recreating the slot deliberately. Slots orphaned by historical deletes
+(CLAIMED with a NULL `session_id` from the FK's ON DELETE SET NULL) are
+self-healed to CLOSED by `getDepartmentSlots` on the next schedule visit;
+without that they tag their date busy forever and block the partial unique
+index. Reopening remains a separate, explicitly authorized workflow.
 
 ## Scheduling change checklist
 

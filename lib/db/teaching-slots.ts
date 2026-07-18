@@ -137,6 +137,49 @@ export async function closeSlot(input: {
   return !!data
 }
 
+/**
+ * Deleting a claimed slot's session closes the slot (never reopens it —
+ * silently re-advertising a date the claimer still believes they teach
+ * would be worse than the moderator recreating it deliberately). Called
+ * BEFORE the session row is deleted, while session_id still points at it.
+ */
+export async function closeSlotForSession(input: {
+  orgId: string
+  sessionId: string
+}): Promise<void> {
+  const db = await getServiceDb()
+  const { error } = await db
+    .from('teaching_slots')
+    .update({ status: 'CLOSED' })
+    .eq('org_id', input.orgId)
+    .eq('session_id', input.sessionId)
+    .eq('status', 'CLAIMED')
+
+  if (error) throw toDbError('Failed to close slot for deleted session', error)
+}
+
+/**
+ * Self-healing sweep for slots orphaned before closeSlotForSession existed
+ * (or by any out-of-band session delete): a CLAIMED slot whose session_id
+ * is NULL lost its session to the FK's ON DELETE SET NULL and would
+ * otherwise tag its date busy forever and block the partial unique index.
+ */
+export async function closeOrphanedClaimedSlots(input: {
+  orgId: string
+  departmentId: string
+}): Promise<void> {
+  const db = await getServiceDb()
+  const { error } = await db
+    .from('teaching_slots')
+    .update({ status: 'CLOSED' })
+    .eq('org_id', input.orgId)
+    .eq('department_id', input.departmentId)
+    .eq('status', 'CLAIMED')
+    .is('session_id', null)
+
+  if (error) throw toDbError('Failed to close orphaned slots', error)
+}
+
 export async function deleteOpenSlot(input: {
   orgId: string
   slotId: string

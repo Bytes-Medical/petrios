@@ -8,6 +8,7 @@ import {
 } from '@/lib/session-validation'
 import type { LocationType, Session, SessionStatus } from '@/lib/types'
 import * as sessionsDb from '@/lib/db/sessions'
+import * as slotsDb from '@/lib/db/teaching-slots'
 import { DbNotFoundError } from '@/lib/db'
 import { emitWebhook } from '@/lib/webhooks'
 
@@ -161,10 +162,16 @@ export async function deleteSession(sessionId: string) {
 
   await requireDepartmentModerator(scope.department_id)
 
+  // A session created from a claimed teaching slot must close that slot,
+  // or the slot stays CLAIMED forever (busy-date tag + unique-index block).
+  // Must run BEFORE the delete: the FK nulls session_id on delete.
+  await slotsDb.closeSlotForSession({ orgId, sessionId })
+
   await sessionsDb.deleteSessionById(sessionId, orgId)
 
   revalidatePath('/dashboard')
   revalidatePath(`/departments/${scope.department_id}/sessions`)
+  revalidatePath(`/departments/${scope.department_id}/schedule`)
   return { success: true }
 }
 
