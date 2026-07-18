@@ -50,8 +50,8 @@ const FEATURES: Feature[] = [
   },
   {
     eyebrow: 'Feedback',
-    title: 'Anonymous feedback, safely summarised',
-    body: 'Attendees scan a QR and answer your department’s custom form — anonymous by design. AI summarises themes and suggestions for the teacher, with hard safety rails: names are stripped, and anything raising welfare or conduct concerns is routed to a human and excluded from every AI output.',
+    title: 'Accountless feedback, safely summarised',
+    body: 'Attendees scan a QR and answer your department’s custom form without needing an account. Submissions store the attendee’s name and email. AI summarises privacy-processed themes and suggestions for the teacher, with hard safety rails: known names are stripped, and anything raising welfare or conduct concerns is routed to a human and excluded from every AI output.',
     points: [
       'Custom per-department forms with 1–5 scored questions',
       'Live stats, AI theme summaries, teacher feedback release',
@@ -61,7 +61,7 @@ const FEATURES: Feature[] = [
   {
     eyebrow: 'Evidence Engine',
     title: 'Portfolio-ready proof, one click',
-    body: 'Trainees get a curriculum passport — which RCPCH Progress+ domains their attended teaching covered, with gaps highlighted — plus per-session reflections and a verifiable ARCP portfolio pack. Teachers get an appraisal-ready dossier: sessions taught, hours, reach, and anonymised feedback themes.',
+    body: 'Trainees get a curriculum passport — which RCPCH Progress+ domains their attended teaching covered, with gaps highlighted — plus per-session reflections and a verifiable ARCP portfolio pack. Teachers get an appraisal-ready dossier: sessions taught, hours, reach, and privacy-processed feedback themes without stored identity fields.',
     points: [
       'Portfolio packs are snapshotted and publicly verifiable by code',
       'Signed, portable teaching records survive rotating between trusts',

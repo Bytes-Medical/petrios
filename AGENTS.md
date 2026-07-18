@@ -20,6 +20,7 @@ s/test       # unit tests, Vitest               (or: npm test)
 s/lint       # ESLint                           (or: npm run lint)
 s/typecheck  # tsc --noEmit
 s/build      # production build — stop the dev server first
+s/commits --from origin/main --to HEAD  # Conventional Commit messages
 npm run test:e2e   # Playwright smoke (public surface)
 ```
 

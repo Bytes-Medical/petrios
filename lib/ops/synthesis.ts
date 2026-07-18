@@ -32,7 +32,7 @@ export const SynthesisSchema = z.object({
 
 export type SynthesisResult = z.infer<typeof SynthesisSchema>
 
-export const SYNTHESIS_SYSTEM = `You analyse anonymous feedback about medical teaching sessions for an NHS teaching programme.
+export const SYNTHESIS_SYSTEM = `You analyse teaching feedback after identity-field removal and safety processing for an NHS teaching programme. The source submissions are not anonymous.
 
 Rules you must follow:
 - Comment ONLY on teaching quality (content, delivery, materials, pacing, engagement). NEVER on any trainee's performance, ability, or attendance.

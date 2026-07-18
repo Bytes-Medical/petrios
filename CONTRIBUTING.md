@@ -83,6 +83,67 @@ The name and email must match a real identity you can be reached at.
 Pull requests containing commits without DCO sign-off will be asked
 to re-sign before merge.
 
+## Conventional Commits
+
+Every authored commit and every pull-request title must follow
+[Conventional Commits](https://www.conventionalcommits.org/):
+
+```text
+type(optional-scope): short imperative description
+```
+
+The repository uses `@commitlint/config-conventional`. Accepted types are:
+
+- `build` — build system or external dependency changes;
+- `chore` — maintenance that does not change production behaviour;
+- `ci` — continuous-integration configuration;
+- `docs` — documentation-only changes;
+- `feat` — a new user-visible capability;
+- `fix` — a user-visible defect correction;
+- `perf` — a performance improvement;
+- `refactor` — code restructuring without a behaviour change;
+- `revert` — reverting an earlier commit;
+- `style` — formatting or other non-functional source changes; and
+- `test` — tests or test infrastructure.
+
+Scopes are optional and should be short and lower-case. Use the imperative mood,
+keep the subject concise, and do not end it with a full stop. Examples:
+
+```text
+feat(attendance): add locked-session audit history
+fix(auth): use the configured callback origin
+docs(compliance): document subprocessor review
+ci: enforce conventional commits
+```
+
+For a breaking change, put `!` before the colon and add a `BREAKING CHANGE:`
+footer. The DCO sign-off remains a separate footer and is required even when the
+header is conventional:
+
+```text
+feat(api)!: replace the attendance response envelope
+
+BREAKING CHANGE: API consumers must read attendance from the data property.
+Signed-off-by: Your Name <you@example.com>
+```
+
+Validate the latest commit locally:
+
+```bash
+s/commits --from HEAD~1 --to HEAD
+```
+
+Validate a branch against `main`:
+
+```bash
+s/commits --from origin/main --to HEAD
+```
+
+GitHub CI checks every commit introduced by a pull request, the pull-request
+title (because squash merges use it as the commit subject), and every commit in
+a direct push to `main`. Git-generated merge/revert/version messages retain
+commitlint's standard exemptions.
+
 ## Why the DCO and not a CLA?
 
 The DCO is sufficient to establish provenance of contributions, and
@@ -103,6 +164,7 @@ npm install
 npm run dev        # http://localhost:3000
 npm run build      # also serves as type-check
 npm run lint
+s/commits --from origin/main --to HEAD
 ```
 
 See [`CLAUDE.md`](./CLAUDE.md) for architectural context: server actions
@@ -111,7 +173,7 @@ and evidence-based attendance.
 
 ## Style
 
-- TypeScript, Next.js 14 App Router
+- TypeScript, Next.js 16 App Router
 - Tailwind CSS for styling
 - Server Actions for mutations; the data-access layer at `lib/db/`
   owns all Supabase queries — do not import `@supabase/*` from action

@@ -11,6 +11,12 @@ without Row Level Security. A weekly scheduled run catches newly published
 queries and advisories; Dependabot keeps dependencies and SHA-pinned
 actions updated.
 
+Browser responses also receive the global HSTS, Content Security Policy,
+anti-framing, MIME-sniffing, referrer, permissions, and cross-domain-policy
+baseline in `next.config.js`. The allowed provider origins, current inline-script
+limitation, and Jitsi regression requirements are documented in
+`spec/13-privacy-security-and-compliance.md`.
+
 ## Reporting a vulnerability
 
 Please **do not open a public issue** for security vulnerabilities.

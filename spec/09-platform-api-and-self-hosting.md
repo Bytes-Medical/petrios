@@ -450,15 +450,25 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `DATABASE_URL` | Migration runner only | Direct database credential |
 | `AUTH_DEV_LINKS` | Optional | Permit auth-link logging in configured development posture |
 | `GOOGLE_SITE_VERIFICATION` | Optional | Search Console meta content |
+| `PRIVACY_CONTROLLER_NAME` | Required production disclosure | Public controller legal name |
+| `PRIVACY_CONTROLLER_ADDRESS` | Required production disclosure | Public controller postal/service address |
+| `PRIVACY_CONTACT_EMAIL` | Required production disclosure | Public monitored privacy/DPO inbox |
+| `DATA_HOSTING_REGION` | Required production disclosure | Accurate application/database/backup region summary |
+| `DATA_TRANSFER_SAFEGUARDS` | Required where relevant | Public reviewed transfer-mechanism summary |
 
 `NODE_ENV`, `CI`, and hosting-provided variables also influence diagnostics and
 test/development behavior. Only `NEXT_PUBLIC_*` variables may be intentionally
 bundled into browser code.
 
-Current `.env.example` limitation: its cron comment still mentions a
-`?secret=` query even though the handler supports Bearer header only, and it does
-not enumerate every optional/legacy variable above. Treat this table plus source
-as the current behavior until the example is synchronized.
+Current `.env.example` limitation: it does not enumerate every optional/legacy
+variable above. Treat this table plus source as the current behavior until the
+example is synchronized.
+
+Compliance pages read their server-only public disclosure variables at request
+time and render an explicit missing state instead of inventing facts. Provider
+status is derived from deployment variables without exposing credentials or a
+custom internal AI endpoint. The complete public disclosure and browser-header
+contract is in spec 13.
 
 ## External-boundary change checklist
 

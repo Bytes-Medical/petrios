@@ -25,6 +25,33 @@ Stop the development server before the production build. Run
 tested browser journey changes. Commits must include a DCO sign-off as described
 in `CONTRIBUTING.md`.
 
+### Commit message contract
+
+Authored commits and pull-request titles use Conventional Commits:
+`type(optional-scope): imperative subject`. The repository extends
+`@commitlint/config-conventional` through `commitlint.config.mjs`; accepted types
+are `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`,
+`style`, and `test`. Scope is optional and lower-case. Breaking changes use both
+the `!` header marker and a `BREAKING CHANGE:` footer. A conventional header does
+not replace the required DCO `Signed-off-by` footer.
+
+The commitlint packages are pinned to `20.2.0`, whose declared runtime supports
+Node 20. Commitlint 21 requires Node 22.12 or newer; upgrade the CI Node version,
+package engine/support documentation, both commitlint packages, and lockfile
+together rather than allowing an incompatible floating major.
+
+`s/commits --from <base> --to <head>` is the tool-neutral local command. CI uses
+full Git history and applies these exact ranges:
+
+- pull request: every commit in `base.sha..head.sha` plus the PR title, because
+  GitHub squash merge uses the title as the resulting commit subject; and
+- push to `main`: every commit in `before..sha`, falling back to the last commit
+  only when GitHub's pre-push object is unavailable.
+
+Commitlint's standard ignores remain enabled for Git-generated merge commits,
+reverts, and semantic-version tags. Do not add a broad custom ignore to make an
+authored message pass; correct or reword the commit instead.
+
 ## Repository ownership map
 
 | Area | Responsibility |
@@ -248,6 +275,12 @@ Accessibility requirements:
   explicit; and
 - preserve mobile navigation/browser smoke coverage.
 
+Shared small-text tokens must also retain at least 4.5:1 contrast against their
+normal paper/card surfaces. The current `gray.500` and `clay.600` values and
+their measured ratios are specified in spec 13. Token checks are regression
+guards, not a substitute for a full WCAG audit of authenticated workflows,
+generated PDFs, email, calendar, video, and user-authored content.
+
 Client components should receive minimal serializable data. Secrets, service
 credentials, raw audit rows, and server-only provider configuration never enter
 client props.
@@ -310,6 +343,7 @@ it is not proof of authenticated RLS or end-to-end email/database behavior.
 `ci.yml` on pushes to main and pull requests runs:
 
 - Node 20 `npm ci`;
+- Conventional Commit checks for the complete pushed/PR range and PR title;
 - lint, `tsc --noEmit`, unit tests, and production build;
 - migration filename/prefix uniqueness sanity; and
 - Playwright Chromium public smoke tests.
@@ -321,6 +355,10 @@ The security workflow runs on pushes, PRs, and weekly schedule:
 - CodeQL extended JavaScript/TypeScript analysis;
 - production dependency audit at high severity or above; and
 - changed-migration RLS guard.
+
+Browser-facing responses additionally receive the global HSTS, CSP,
+anti-framing, MIME, referrer, permissions, and cross-domain-policy baseline from
+`next.config.js`. CSP origin and Jitsi regression requirements are in spec 13.
 
 PR findings gate merges. Main/scheduled scanner findings are generally reported
 for triage, while dependency audit remains failing on every trigger and the RLS

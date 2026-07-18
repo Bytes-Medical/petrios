@@ -618,7 +618,8 @@ export async function releaseTeacherFeedback(sessionId: string) {
 }
 
 /**
- * AI summary of a session's anonymous feedback (moderators only).
+ * AI summary of a session's identified feedback with stored identity fields
+ * omitted from the model input (moderators only).
  * Returns { summary: null, error } when unconfigured or empty rather than
  * throwing, so the panel can render a friendly message.
  */

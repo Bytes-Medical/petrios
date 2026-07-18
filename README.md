@@ -23,8 +23,9 @@ departments; trainees need accounts, external teachers don't.
   (teacher marking > Teams > feedback > group code > self check-in) computes
   PRESENT/LATE/ABSENT with configurable windows, locking, CSV export, and a
   full audit trail. See [spec/03-attendance.md](./spec/03-attendance.md).
-- **Anonymous feedback**: per-session QR-code feedback with customizable
-  department forms, live stats, and optional AI summaries.
+- **Accountless, identified feedback**: per-session QR-code feedback with
+  customizable department forms, live stats, and privacy-processed AI
+  summaries. Submitter name and email are stored, so the source is not anonymous.
 - **Teacher invitations & RSVP**: invite registered members (accept/decline
   from the dashboard) or external teachers by email (public RSVP link, no
   account needed), with automatic 24h reminders.
@@ -39,7 +40,7 @@ departments; trainees need accounts, external teachers don't.
   trainees (attendance + Progress+ curriculum coverage + reflections +
   certificate codes, publicly checkable at `/verify/pack/[code]`) and
   **appraisal/revalidation dossiers** for teachers (sessions, hours, reach,
-  anonymised feedback themes).
+  privacy-processed feedback themes without stored identity fields).
 - **Petrios Recall**: AI-drafted, moderator-approved recall questions emailed
   after each session (spaced retrieval at +3 and +14 days) — and a
   catch-up route: absentees who pass can have attendance recorded, honestly
@@ -52,7 +53,7 @@ departments; trainees need accounts, external teachers don't.
   feedback scores; includes an organiser-only chat assistant that knows the
   platform. **Nothing sends without human approval** — every outbound email
   waits in an approval queue, all LLM calls go through one audited gateway
-  (prompt hashes, never text), anonymisation and welfare-signal safety rails
+  (prompt hashes, never text), name-stripping and welfare-signal safety rails
   are built in, and `OPS_ENABLED=false` kills the whole layer.
 
 ## Tech stack
@@ -80,8 +81,10 @@ see [docs/api.md](./docs/api.md). Instances publish a federation identity at
 `/.well-known/petrios`, and members can export **signed, portable
 teaching records** any instance can verify at `/verify/record`.
 
-For NHS deployments: [DTAC self-assessment](./docs/compliance/dtac.md) and a
-[DPIA template](./docs/compliance/dpia-template.md). What's next lives in
+For NHS deployments: [DTAC evidence workbook](./docs/compliance/dtac.md),
+[DPIA template](./docs/compliance/dpia-template.md), and the
+[privacy/security compliance specification](./spec/13-privacy-security-and-compliance.md).
+These are assessment inputs, not certification. What's next lives in
 [ROADMAP.md](./ROADMAP.md).
 
 ## Setup

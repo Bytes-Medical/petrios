@@ -33,5 +33,25 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.5,
     },
+    {
+      url: `${SITE_URL}/privacy`,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${SITE_URL}/privacy/choices`,
+      changeFrequency: 'monthly',
+      priority: 0.4,
+    },
+    {
+      url: `${SITE_URL}/subprocessors`,
+      changeFrequency: 'monthly',
+      priority: 0.4,
+    },
+    {
+      url: `${SITE_URL}/data-processing-agreement`,
+      changeFrequency: 'monthly',
+      priority: 0.4,
+    },
   ]
 }

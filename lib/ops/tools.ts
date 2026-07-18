@@ -191,7 +191,7 @@ export const OPS_TOOLS: OpsTool[] = [
   {
     name: 'synthesis_get_for_session',
     description:
-      'Get the stored anonymised feedback synthesis for a session: themes, sentiment, suggestions, quotes. Returns a review flag instead when the feedback needs human eyes.',
+      'Get the stored privacy-processed feedback synthesis for a session: themes, sentiment, suggestions, quotes. Returns a review flag instead when the feedback needs human eyes.',
     inputSchema: sessionIdInput,
     handler: async (_ctx, input) => {
       const { sessionId } = SessionIdSchema.parse(input)

@@ -11,6 +11,7 @@ npm run dev      # Dev server at localhost:3000
 npm run build    # Production build (also serves as type-check)
 npm run lint     # ESLint CLI (flat config in eslint.config.mjs)
 npm test         # Vitest (pure-logic tests colocated as lib/**/*.test.ts)
+s/commits --from origin/main --to HEAD  # Conventional Commit messages
 ```
 
 Database migrations live in `supabase/migrations/` and are applied via `supabase db push` or manually in the Supabase SQL editor.
@@ -55,12 +56,13 @@ The attendance system is an append-only evidence aggregation pipeline (documente
 
 - **Certificates**: PDF generation via `@react-pdf/renderer` in `lib/certificates/pdf.tsx`. Server action in `app/actions/certificates.ts`. Public verification at `/verify/[certificateId]`.
 - **Email**: Resend REST API (`lib/email.ts`, a `getEmailClient()` adapter over `fetch`). Templates in `lib/email-templates.ts`. Used for teacher invitations, session reminders, and certificates.
-- **Feedback**: Anonymous session feedback with QR code distribution. Stats endpoint at `/api/sessions/[id]/feedback/stats`. AI summaries via `summarizeSessionFeedback` in `app/actions/feedback.ts`. Moderator-authored "You said, we did" entries (`feedback_actions`, migration 042) render publicly on feedback pages.
+- **Feedback**: Public/accountless but identified session feedback with QR code distribution. Name and email are stored. Stats endpoint at `/api/sessions/[id]/feedback/stats`. AI summaries via `summarizeSessionFeedback` in `app/actions/feedback.ts`. Moderator-authored "You said, we did" entries (`feedback_actions`, migration 042) render publicly on feedback pages.
 - **AI (OpenAI)**: `lib/ai/llm.ts` calls the OpenAI Chat Completions REST API via `fetch` (no SDK; default model `gpt-5.5`, override with `OPENAI_MODEL`). Used by feedback summarization (`lib/ai/feedback-summary.ts`) and Petrios Ops. `lib/ai/tts.ts` is the one sanctioned text-to-speech caller (audio recaps; `OPENAI_TTS_MODEL`/`OPENAI_TTS_VOICE`). Degrades gracefully when no key is configured.
 - **Petrios Meet (Jitsi video)**: `JITSI` location type whose room is DERIVED from the session id (`lib/jitsi.ts` — no stored URL) and embedded on the session page via `@jitsi/react-sdk` (`components/JitsiMeetingPanel.tsx`, client-only). Joining fires the normal `checkIn` self check-in. `sessionMeetingUrl()` in `lib/jitsi.ts` is the single join-URL resolver for ICS/reminders/teacher emails/RSVP — use it instead of reading `teams_meeting_url` directly. Backend swaps via `NEXT_PUBLIC_JITSI_DOMAIN` (default meet.jit.si).
 - **Cron jobs**: `app/api/cron/post-session-reports` (certificates + report emails after sessions end), `app/api/cron/session-reminders` (reminder emails ~24h before a session), and `app/api/cron/recall-send` (Petrios Recall emails at end+3d/+14d). All idempotent via watermark columns and authenticated with an `Authorization: Bearer CRON_SECRET` header (`unauthorizedCronResponse`).
 - **Evidence Engine (spec/08)**: trainee curriculum passport + ARCP portfolio packs (`app/actions/portfolio.ts`, `lib/portfolio/*`, `session_reflections` + `portfolio_packs` tables, public verify at `/verify/pack/[code]`) and teacher appraisal dossiers (Teaching tab).
 - **Platform layer (spec/09)**: public API `/api/v1` (org-scoped `pt_` bearer tokens, hashed at rest, scoped; thin routes over `lib/db/api-reads.ts`; OpenAPI at `public/openapi.json`), signed webhooks (`lib/webhooks.ts` — fire-and-forget, HMAC `X-Petrios-Signature`, SSRF-guarded; events: session.published, attendance.computed, certificate.issued, slot.claimed), federation (`lib/federation.ts` Ed25519 signed teaching records, `/.well-known/petrios`, `/verify/record`), self-hosting (SMTP transport, `OPENAI_BASE_URL`, Docker + `/api/health` + `scripts/migrate.mjs`; `docs/self-hosting.md`). Federated benchmarking is specified (spec/10, petrios-benchmark/v1) but not implemented.
+- **Compliance boundary (spec/13)**: public `/privacy`, `/privacy/choices`, `/subprocessors`, and `/data-processing-agreement`; runtime disclosure config in `lib/compliance.ts`; global security headers in `next.config.js`; contrast-safe small-text tokens. Missing controller/region/transfer facts stay visibly missing and repository evidence/scanner scores are never presented as certification.
 - **Petrios Recall (spec/08)**: AI-drafted recall questions (gateway purpose `recall_questions`), moderator-approved on the session manage Recall tab, emailed via `recall-send`; absentees passing 2/3 within 21 days earn catch-up attendance via the lowest-priority `RECALL` evidence source (always visible as the primary source). Public answer page `/recall/[token]` (HMAC token, `lib/recall.ts`). The Recall tab also shows aggregate-only retention analytics (`lib/recall-analytics.ts`, cohorts under 5 suppressed; never an assistant tool).
 - **Address book**: org-scoped `external_contacts` + `contact_groups` (deny-all RLS, service-role DAL `lib/db/external-contacts.ts`, managed in Settings). Contacts auto-captured from external teacher invitations/RSVPs; groups are the audience unit for slot publications.
 - **Teaching slots (Calendly-style)**: moderators bulk-create open slots (`/departments/[id]/schedule`), publish them to contact groups and/or registered members, and invitees claim first-come-first-served (atomic CAS in `lib/db/teaching-slots.ts`). Claiming creates a DRAFT session with the claimer attached as teacher; externals claim via the public `/claim/[code]` page, members via the dashboard Teaching tab. Open slots render as "Available" events on `SessionCalendar` (`slots` prop). Bulk creation can split each day into 10–20-min lightning micro-slots (`splitSlotDraft`/`isLightningSlot` in `lib/slot-schedule.ts`).
@@ -86,6 +88,11 @@ INSTANCE_SIGNING_KEY          # Optional: Ed25519 identity enabling signed teach
 NEXT_PUBLIC_JITSI_DOMAIN      # Jitsi domain for Petrios Meet rooms (optional, default meet.jit.si)
 OPS_ENABLED                   # Petrios Ops kill switch: unset/anything = on, "false" = every ops surface halts
 OPS_ASSISTANT_ENABLED         # Ops chat assistant opt-in: unset = OFF (default), "true" = enabled (still subject to OPS_ENABLED)
+PRIVACY_CONTROLLER_NAME      # Public legal controller name (required production disclosure)
+PRIVACY_CONTROLLER_ADDRESS   # Public controller address (required production disclosure)
+PRIVACY_CONTACT_EMAIL        # Public monitored privacy/DPO inbox
+DATA_HOSTING_REGION          # Public application/database/backup region summary
+DATA_TRANSFER_SAFEGUARDS     # Public reviewed transfer-mechanism summary
 ```
 
 ### Database

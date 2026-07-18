@@ -46,7 +46,7 @@ export function TeachingDossierPanel({ hasTaught }: { hasTaught: boolean }) {
           <h2 className="font-mono text-xl font-bold">Teaching dossier</h2>
           <p className="font-mono text-sm text-gray-600">
             Appraisal-ready evidence of your teaching: sessions, hours,
-            attendees, and anonymised feedback themes.
+            attendees, and privacy-processed feedback themes without stored identity fields.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">

@@ -54,7 +54,7 @@ export const NEWS: NewsEntry[] = [
     tag: 'Community',
     title: 'Petrios is now open source',
     body: [
-      'The full platform is on GitHub under AGPL-3.0: scheduling, evidence-based attendance, built-in video, anonymous feedback, certificates, portfolio evidence, and the approval-gated AI ops layer — all of it readable, auditable, and self-hostable.',
+      'The full platform is on GitHub under AGPL-3.0: scheduling, evidence-based attendance, built-in video, configurable identified feedback, certificates, portfolio evidence, and the approval-gated AI ops layer — all of it readable, auditable, and self-hostable.',
       'Star the repo, read the roadmap, open an issue, or pick up a contribution — the spec/ folder documents how every subsystem works so you can be productive on day one.',
     ],
     link: { label: 'View on GitHub', href: 'https://github.com/Bytes-Medical/petrios' },

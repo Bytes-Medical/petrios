@@ -71,7 +71,7 @@ function DossierDocument({ data }: { data: DossierPdfData }) {
 
         {dossier.themes.length > 0 && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Anonymised feedback themes</Text>
+            <Text style={s.sectionTitle}>Privacy-processed feedback themes</Text>
             {dossier.themes.map((theme, i) => (
               <View key={i} style={{ marginBottom: 5 }} wrap={false}>
                 <Text style={{ fontWeight: 700 }}>{theme.title}</Text>

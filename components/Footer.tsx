@@ -43,6 +43,15 @@ export function Footer() {
             <a href="/privacy" className="underline hover:text-clay-700">
               Privacy
             </a>
+            <a href="/privacy/choices" className="underline hover:text-clay-700">
+              Your privacy choices
+            </a>
+            <a href="/subprocessors" className="underline hover:text-clay-700">
+              Subprocessors
+            </a>
+            <a href="/data-processing-agreement" className="underline hover:text-clay-700">
+              DPA
+            </a>
           </div>
           <p className="mt-2 font-mono text-xs text-gray-500">
             Licensed under{' '}

@@ -51,6 +51,7 @@ data to whoever possesses it.
 | [10 — Federated benchmarking](./10-federated-benchmarking.md) | **RFC, not implemented:** opt-in, signed, aggregate-only cross-instance comparison |
 | [11 — Identity and administration](./11-identity-and-administration.md) | Login methods, signup posture, join workflow, profiles, memberships, roles, and administrator surfaces |
 | [12 — Audit and reporting](./12-audit-and-reporting.md) | Audit scope, metric denominators, equity views, member reports, exports, and privacy caveats |
+| [13 — Privacy, security, accessibility, and compliance](./13-privacy-security-and-compliance.md) | Public disclosures, data map, cookies/GPC, provider transparency, browser headers, contrast, and operator evidence boundary |
 
 ## Non-negotiable invariants
 
@@ -96,6 +97,9 @@ must not be used to erase those details.
 11. **Specifications change with behaviour.** New status values, access paths,
     delivery guarantees, data retention, privacy boundaries, or failure modes
     require a same-change update here.
+12. **Compliance claims remain evidence-bound.** Missing controller, location,
+    transfer, retention, contract, security, or accessibility facts stay visible;
+    scanner scores and repository controls are not represented as certification.
 
 ## Change protocol
 

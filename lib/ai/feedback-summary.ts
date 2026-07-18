@@ -1,11 +1,11 @@
 import { askLlm } from '@/lib/ai/llm'
 import type { StoredFeedbackRow } from '@/lib/db/feedback'
 
-const SYSTEM_PROMPT = `You summarise anonymous attendee feedback on NHS postgraduate teaching sessions for the session organiser and teacher.
+const SYSTEM_PROMPT = `You summarise attendee feedback on NHS postgraduate teaching sessions for the session organiser and teacher. Source submissions are identified, but stored identity fields are excluded from this prompt.
 
 Rules:
 - Only describe feedback that is actually present; never invent, extrapolate, or soften it.
-- Feedback is anonymous — do not attribute comments to names even if names appear.
+- Do not attribute comments to names even if a user wrote a name in free text.
 - Be specific and useful for improving the next session.
 
 Format (plain text, no markdown syntax beyond hyphen bullets):
@@ -37,7 +37,7 @@ function buildPrompt(input: FeedbackSummaryInput): string {
     `Responses: ${input.rows.length}`,
     `Average rating: ${average}/5 (${ratings.length} rated)`,
     '',
-    'Comments (one per line, anonymised):',
+    'Comments (one per line; identity fields omitted):',
     ...(comments.length > 0
       ? comments.map((c) => `- ${c.replace(/\n+/g, ' ')}`)
       : ['(no free-text comments)']),

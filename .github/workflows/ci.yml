@@ -18,7 +18,10 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
+      # Commitlint needs both ends of the PR/push range, not a shallow checkout.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -27,6 +30,33 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Conventional Commits — pull request commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: npm run lint:commits -- --from "$BASE_SHA" --to "$HEAD_SHA"
+
+      # GitHub uses the PR title as the subject of a squash-merge commit.
+      - name: Conventional Commits — pull request title
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | npm run lint:commits
+
+      - name: Conventional Commits — pushed range
+        if: github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            npm run lint:commits -- --from "$BEFORE_SHA" --to "$HEAD_SHA"
+          else
+            # First/rewritten push where GitHub's before SHA is unavailable.
+            npm run lint:commits -- --last
+          fi
 
       - name: Lint
         run: npm run lint

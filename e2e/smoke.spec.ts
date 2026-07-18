@@ -53,3 +53,29 @@ test('unknown non-public routes hit the auth wall', async ({ page }) => {
   // proxy.ts redirects unauthenticated non-public paths to /login.
   await expect(page).toHaveURL(/\/login$/)
 })
+
+test('public compliance pages render without authentication', async ({ page }) => {
+  for (const [path, heading] of [
+    ['/privacy', 'Privacy notice'],
+    ['/privacy/choices', 'Your privacy choices'],
+    ['/subprocessors', 'Subprocessors and external services'],
+    ['/data-processing-agreement', 'Data processing agreement framework'],
+  ] as const) {
+    const response = await page.goto(path)
+    expect(response?.ok(), path).toBeTruthy()
+    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
+  }
+})
+
+test('responses carry the browser security baseline', async ({ request }) => {
+  const response = await request.get('/')
+  const headers = response.headers()
+
+  expect(headers['strict-transport-security']).toContain('max-age=31536000')
+  expect(headers['content-security-policy']).toContain("default-src 'self'")
+  expect(headers['content-security-policy']).toContain("frame-ancestors 'none'")
+  expect(headers['x-content-type-options']).toBe('nosniff')
+  expect(headers['x-frame-options']).toBe('DENY')
+  expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin')
+  expect(headers['permissions-policy']).toBeTruthy()
+})

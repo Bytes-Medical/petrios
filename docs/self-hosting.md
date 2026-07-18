@@ -1,9 +1,10 @@
 # Self-hosting Petrios
 
-Run the whole platform on your own infrastructure — the recommended path for
-NHS trusts and anyone with data-residency requirements. Nothing needs to
-leave your network: database, auth, email, video, and even the AI layer can
-all be pointed at services you control.
+Run the whole platform on infrastructure you control — a useful option for NHS
+trusts and anyone with data-residency requirements. Database, auth, email,
+video, and AI can all be pointed at services in your network, but self-hosting
+does not prove residency by itself: verify every configured provider, log,
+backup, support flow, DNS/CDN, and onward transfer.
 
 ## Architecture
 
@@ -45,6 +46,7 @@ supabase db push
 | Video (optional) | meet.jit.si | **`NEXT_PUBLIC_JITSI_DOMAIN`** → your own Jitsi server |
 | AI agent kill switch | on | `OPS_ENABLED=false` halts every agent surface |
 | Chat assistant | **off** | `OPS_ASSISTANT_ENABLED=true` opts a deployment in (needs its own safety review) |
+| Public compliance facts | Required for production | `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL`, `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` |
 
 All variables are documented in [`.env.example`](../.env.example).
 
@@ -107,6 +109,9 @@ provider.
 
 ## Compliance
 
-For NHS deployments see [`docs/compliance/dtac.md`](./compliance/dtac.md)
-(DTAC self-assessment) and
-[`docs/compliance/dpia-template.md`](./compliance/dpia-template.md).
+For NHS deployments see the [`DTAC evidence workbook`](./compliance/dtac.md),
+[`DPIA template`](./compliance/dpia-template.md), and
+[`privacy/security compliance specification`](../spec/13-privacy-security-and-compliance.md).
+They are assessment inputs, not certification. Before release, fetch the public
+privacy, privacy-choice, subprocessor and DPA pages from the production origin
+and resolve every deployment fact that is shown as not declared.

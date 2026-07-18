@@ -16,6 +16,12 @@ Any UI text, prompt, or prior spec that calls the current end-to-end flow
 its model input, and Petrios Ops performs stronger name stripping, but those
 processing choices do not make the original row or teacher email anonymous.
 
+The public `/privacy` notice and product/marketing language use
+**public/accountless but identified** for this boundary. `/privacy/choices`
+does not alter feedback identity or create an opt-out from a teaching programme's
+lawful processing; rights requests go to the deployment controller. See spec 13
+for the shared terminology and transparency contract.
+
 An anonymized product promise would require, at minimum, a deliberate identity
 retention model, teacher-email redaction, small-cohort rules, raw-audit access
 policy, migration/backfill plan, and tests.

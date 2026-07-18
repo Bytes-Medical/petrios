@@ -1,125 +1,185 @@
 import Link from 'next/link'
-import { Footer } from '@/components/Footer'
+import {
+  CompliancePage,
+  ComplianceSection,
+  MissingDisclosure,
+} from '@/components/CompliancePage'
+import { getComplianceConfig } from '@/lib/compliance'
 
 export const metadata = {
-  title: 'Privacy Policy — Petrios',
+  title: 'Privacy notice — Petrios',
+  description: 'How a Petrios deployment collects, uses, shares, and retains personal data.',
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="mb-6">
-      <h2 className="mb-2 font-mono text-lg font-bold">{title}</h2>
-      <div className="space-y-2 font-mono text-sm leading-relaxed text-gray-700">{children}</div>
-    </section>
-  )
-}
+export const dynamic = 'force-dynamic'
 
 export default function PrivacyPolicyPage() {
+  const config = getComplianceConfig()
+
   return (
-    <div className="flex min-h-screen flex-col">
-      <main className="flex-1 px-4 py-10 sm:px-6">
-        <div className="mx-auto max-w-3xl">
-          <Link href="/" className="font-mono text-sm underline">
-            ← Home
-          </Link>
-          <h1 className="mt-4 font-mono text-2xl font-bold sm:text-3xl">Privacy Policy</h1>
-          <p className="mt-2 font-mono text-xs text-gray-500">Last updated: 25 May 2026</p>
+    <CompliancePage
+      title="Privacy notice"
+      description="This notice explains the platform’s current data handling. The organisation that operates this Petrios deployment must complete the deployment-specific fields and confirm its lawful basis, retention schedule, and local rights process."
+    >
+      <ComplianceSection title="Who is responsible">
+        <p>
+          Petrios is open-source teaching-management software. The organisation using a deployment
+          normally decides why and how personal data is processed and is therefore the controller;
+          its hosting and support providers may act as processors.
+        </p>
+        <dl className="grid gap-2 border border-gray-300 bg-white p-4 sm:grid-cols-[12rem_1fr]">
+          <dt className="font-semibold">Controller</dt>
+          <dd>{config.controllerName || <MissingDisclosure>controller legal name</MissingDisclosure>}</dd>
+          <dt className="font-semibold">Postal address</dt>
+          <dd>{config.controllerAddress || <MissingDisclosure>controller address</MissingDisclosure>}</dd>
+          <dt className="font-semibold">Privacy contact</dt>
+          <dd>
+            {config.privacyEmail ? (
+              <a className="underline hover:text-clay-700" href={`mailto:${config.privacyEmail}`}>
+                {config.privacyEmail}
+              </a>
+            ) : (
+              <MissingDisclosure>privacy or DPO email</MissingDisclosure>
+            )}
+          </dd>
+        </dl>
+        <p>
+          If these details are not declared, contact the organisation that invited you to Petrios
+          before submitting a data-rights request. Repository maintainers do not automatically
+          control data in independently hosted installations.
+        </p>
+      </ComplianceSection>
 
-          <div className="mt-4 border border-black bg-gray-50 p-3 font-mono text-xs text-gray-700">
-            ⚠️ Template — review with a data protection adviser / DPO before publishing. It
-            describes how the platform currently handles data but is not legal advice.
-          </div>
+      <ComplianceSection title="Information processed">
+        <ul className="list-disc space-y-2 pl-5">
+          <li><strong>Identity and account:</strong> name, email, training grade, authentication identifiers, profile, and account status.</li>
+          <li><strong>Membership and authority:</strong> organisation, department, role, invitations, and teaching assignments.</li>
+          <li><strong>Teaching activity:</strong> sessions created, taught, joined, or attended; attendance evidence and derived status; teaching slots and claims.</li>
+          <li><strong>Feedback:</strong> first name, last name, email, ratings, answers, and free-text comments. The public feedback form does not require an account, but its submissions are <strong>identified, not anonymous</strong>.</li>
+          <li><strong>Records and learning:</strong> certificates, Recall answers, personal reflections, curriculum coverage, portfolio snapshots, and teaching dossiers.</li>
+          <li><strong>Communications:</strong> invitation, reminder, notification, newsletter, feedback-release, and delivery status data.</li>
+          <li><strong>Security and technical data:</strong> essential authentication cookies, IP/network data available to infrastructure providers, request and error logs, API credentials, audit events, and abuse-prevention signals.</li>
+        </ul>
+        <p>
+          Petrios is not designed for patient records. Users should not enter patient data,
+          clinical secrets, or unnecessary special-category data in session descriptions,
+          feedback, reflections, or assistant messages.
+        </p>
+      </ComplianceSection>
 
-          <div className="mt-8">
-            <Section title="Who we are">
-              <p>
-                Petrios is a teaching-management platform for NHS educators and trainees. It
-                lets organisers schedule teaching sessions, record attendance, collect feedback,
-                and issue certificates.
-              </p>
-            </Section>
+      <ComplianceSection title="Why information is used">
+        <p>
+          Data is used to authenticate users; administer organisations and departments; schedule
+          and deliver teaching; derive attendance from recorded evidence; manage teachers and
+          teaching slots; collect and release feedback; issue and verify certificates; build
+          subject-requested portfolio records; send operational communications; audit access and
+          changes; maintain security; and provide optional AI-assisted teaching operations.
+        </p>
+      </ComplianceSection>
 
-            <Section title="Information we collect">
-              <ul className="list-disc space-y-1 pl-5">
-                <li><strong>Account details</strong> — email address, and (where provided) name and grade.</li>
-                <li><strong>Membership</strong> — the organisation and department(s) you belong to and your role.</li>
-                <li><strong>Teaching activity</strong> — sessions you create or attend, and attendance evidence (QR/group-code check-ins, teacher confirmations).</li>
-                <li><strong>Feedback</strong> — session feedback, which is collected anonymously.</li>
-                <li><strong>Certificates</strong> — records of certificates issued to teachers and attendees.</li>
-                <li><strong>Technical data</strong> — a session cookie used to keep you signed in.</li>
-              </ul>
-            </Section>
+      <ComplianceSection title="Lawful basis">
+        <p>
+          The deploying controller must identify and record a lawful basis for each purpose. It
+          may rely on public task, contract, legal obligation, legitimate interests, or consent
+          depending on its role and context. Petrios does not choose that basis on the controller’s
+          behalf. Consent should not be described as the basis where people cannot freely refuse
+          or withdraw it.
+        </p>
+      </ComplianceSection>
 
-            <Section title="How we use your information">
-              <p>
-                To provide the service: authenticate you, organise teaching, track attendance,
-                generate certificates, share feedback reports, and send you sign-in links and
-                session-related emails. We do not sell your data or use it for advertising.
-              </p>
-            </Section>
+      <ComplianceSection title="Feedback and AI processing">
+        <p>
+          Raw feedback remains identifiable to authorised moderators, and teacher feedback-release
+          emails currently include the submitter’s name. Some AI paths omit stored identity fields
+          and the Ops synthesis path removes known names and quarantines welfare or conduct signals;
+          that processing does not make the source record anonymous. Free text can itself identify
+          a person, so users should avoid unnecessary identifying details.
+        </p>
+        <p>
+          Optional AI features are currently <strong>{config.aiEnabled ? `enabled through ${config.aiProvider}` : 'disabled'}</strong>.
+          When enabled, a configured AI provider may receive session metadata, assistant messages,
+          and purpose-limited feedback content. Petrios stores model-run hashes and operational
+          metadata rather than prompt text in its Ops audit log, but the provider may retain request
+          content under its own terms. OpenAI states that API data is not used to train its models
+          by default, while standard abuse-monitoring logs may be retained for up to 30 days; see
+          its{' '}
+          <a
+            className="underline hover:text-clay-700"
+            href="https://developers.openai.com/api/docs/guides/your-data"
+          >
+            API data controls documentation
+          </a>.
+        </p>
+      </ComplianceSection>
 
-            <Section title="Legal basis (UK GDPR)">
-              <p>
-                We process personal data to perform our service to you and your organisation
-                (contract), and on the basis of legitimate interests in running an education
-                platform. Where required, processing relies on your consent, which you may withdraw.
-              </p>
-            </Section>
+      <ComplianceSection title="Cookies and tracking">
+        <p>
+          Petrios uses first-party storage needed to sign a user in and maintain the authenticated
+          session. The application does not ship advertising, cross-site behavioural tracking, or
+          analytics cookies. A consent banner is therefore not shown. If an operator adds
+          non-essential analytics, embeds, or tracking, it must update this notice and obtain any
+          consent required before those technologies run.
+        </p>
+        <p>
+          See <Link className="underline hover:text-clay-700" href="/privacy/choices">Your privacy choices</Link> for the platform’s sale/share and Global Privacy Control posture.
+        </p>
+      </ComplianceSection>
 
-            <Section title="Sharing &amp; processors">
-              <p>We share data only with processors that help us run the service:</p>
-              <ul className="list-disc space-y-1 pl-5">
-                <li><strong>Supabase</strong> — database, authentication, and file storage.</li>
-                <li><strong>Resend</strong> — sending sign-in and notification emails.</li>
-              </ul>
-              <p>We may disclose data where required by law.</p>
-            </Section>
+      <ComplianceSection title="Recipients and subprocessors">
+        <p>
+          Authorised users see data according to their role. Infrastructure, email, meeting, and
+          optional AI providers process only the data needed for their service. The current
+          deployment-facing register is published on the{' '}
+          <Link className="underline hover:text-clay-700" href="/subprocessors">subprocessors and external services page</Link>.
+          Data may also be disclosed where legally required or necessary to protect people and the service.
+        </p>
+      </ComplianceSection>
 
-            <Section title="Retention">
-              <p>
-                We keep personal data for as long as your account and your organisation&rsquo;s
-                records are active, and as needed to meet legal or training-record obligations.
-                Contact us to request deletion.
-              </p>
-            </Section>
+      <ComplianceSection title="Hosting and international transfers">
+        <p>
+          Application host: <strong>{config.hostingProvider}</strong>. Data-hosting location:{' '}
+          {config.hostingRegion || <MissingDisclosure>database and application region(s)</MissingDisclosure>}.
+        </p>
+        <p>
+          Transfer safeguard: {config.transferSafeguards || <MissingDisclosure>adequacy decision, UK IDTA/Addendum, or other applicable safeguard</MissingDisclosure>}.
+          The controller must evaluate every configured provider and onward transfer; “self-hosted”
+          does not by itself prove that all data remains in one country or estate.
+        </p>
+      </ComplianceSection>
 
-            <Section title="Your rights">
-              <p>
-                Under UK GDPR you can request access to, correction of, or deletion of your personal
-                data, object to or restrict processing, and request portability. To exercise these
-                rights, contact us using the details below.
-              </p>
-            </Section>
+      <ComplianceSection title="Retention and deletion">
+        <p>
+          Petrios does not currently enforce one universal automatic retention schedule. The
+          controller must set and document periods for accounts, membership, attendance evidence,
+          feedback, communications, audit data, certificates, portfolio records, and provider logs,
+          then implement deletion or anonymisation operations appropriate to those periods.
+          Attendance evidence is append-oriented in normal application flows, and public verification
+          records may need separate revocation and retention decisions.
+        </p>
+      </ComplianceSection>
 
-            <Section title="Security">
-              <p>
-                Access is controlled by role-based permissions and row-level security. Connections
-                are encrypted in transit. No system is perfectly secure; please use a strong, unique
-                email account.
-              </p>
-            </Section>
+      <ComplianceSection title="Your rights and complaints">
+        <p>
+          Depending on the applicable law, people may have rights to information, access,
+          correction, deletion, restriction, objection, portability, and review of certain automated
+          decisions. Submit a request to the controller named above; it may need to verify identity
+          and may apply lawful exemptions. UK users may also complain to the Information
+          Commissioner’s Office or seek a judicial remedy.
+        </p>
+      </ComplianceSection>
 
-            <Section title="Changes">
-              <p>
-                We may update this policy; material changes will be reflected by the &ldquo;last
-                updated&rdquo; date above.
-              </p>
-            </Section>
-
-            <Section title="Contact">
-              <p>
-                Questions or data requests: contact your organisation&rsquo;s administrator or the
-                Petrios team at{' '}
-                <a href="mailto:privacy@petrios.example" className="underline">
-                  privacy@petrios.example
-                </a>
-                . (Update this address before publishing.)
-              </p>
-            </Section>
-          </div>
-        </div>
-      </main>
-      <Footer />
-    </div>
+      <ComplianceSection title="Security and changes">
+        <p>
+          Petrios uses role checks, organisation scoping, Supabase Row Level Security, server-only
+          privileged access, signed capability links, security headers, and automated code,
+          dependency, migration, and secret scanning. No service can promise absolute security.
+          Report vulnerabilities privately using the process in the project’s SECURITY.md.
+        </p>
+        <p>
+          Material notice changes will update the date above. The controller should tell affected
+          people directly when a change materially affects their processing or choices.
+        </p>
+      </ComplianceSection>
+    </CompliancePage>
   )
 }

@@ -179,7 +179,7 @@ appropriate HTTP responses.
 
 The public surface includes:
 
-- marketing, project, privacy, news, and authentication pages;
+- marketing, project, privacy/choice, DPA/subprocessor, news, and authentication pages;
 - signup, verification, department join, and join-status pages;
 - session and department feedback entry points;
 - registered-teacher invite response and external-teacher RSVP;

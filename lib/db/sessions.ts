@@ -102,7 +102,7 @@ export async function findSessionById(id: string): Promise<Session | null> {
 
 /**
  * Public read of a session with the embedded department's feedback form
- * fields. Used from the anonymous feedback page so attendees can submit
+ * fields. Used from the public, accountless feedback page so attendees can submit
  * feedback without being signed in.
  */
 export interface SessionWithDepartmentFeedback extends Session {

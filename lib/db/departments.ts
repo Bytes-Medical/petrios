@@ -70,7 +70,7 @@ export async function getDepartmentOrThrow(
 
 /**
  * Public read of a department (name + feedback form template) without an
- * org filter. Used by the anonymous feedback page; no authorization needed
+ * org filter. Used by the public, accountless feedback page; no authorization needed
  * because the surface is public-by-design.
  */
 export async function findDepartmentPublic(

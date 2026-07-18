@@ -46,7 +46,19 @@ export async function proxy(request: NextRequest) {
   const user = claimsError || !claimsData?.claims ? null : claimsData.claims
 
   // Public routes
-  const publicRoutes = ['/', '/login', '/trainee-login', '/signup', '/verify', '/join', '/join/callback', '/privacy']
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/trainee-login',
+    '/signup',
+    '/verify',
+    '/join',
+    '/join/callback',
+    '/privacy',
+    '/privacy/choices',
+    '/subprocessors',
+    '/data-processing-agreement',
+  ]
   const isPublicRoute = publicRoutes.some(route =>
     request.nextUrl.pathname === route ||
     request.nextUrl.pathname.startsWith('/login') ||

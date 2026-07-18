@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "lint:commits": "commitlint --verbose",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "node scripts/migrate.mjs",
@@ -54,6 +55,8 @@
     }
   },
   "devDependencies": {
+    "@commitlint/cli": "20.2.0",
+    "@commitlint/config-conventional": "20.2.0",
     "@playwright/test": "^1.61.1",
     "@types/node": "^20.11.5",
     "@types/nodemailer": "^8.0.1",

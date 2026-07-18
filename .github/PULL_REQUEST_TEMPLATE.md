@@ -10,4 +10,5 @@
       `spec/README.md`)
 - [ ] New tables enable RLS; new migrations follow `NNN_snake_case.sql`
 - [ ] Commits are signed off (DCO — see `CONTRIBUTING.md`)
+- [ ] Commit messages and this PR title follow Conventional Commits
 - [ ] No secrets, keys, or personal data in code, fixtures, or logs

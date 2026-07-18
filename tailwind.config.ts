@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss'
+import { ACCESSIBLE_TEXT_COLORS } from './lib/accessibility-colors'
 
 const config: Config = {
   content: [
@@ -20,7 +21,8 @@ const config: Config = {
           200: '#DEDAD1',
           300: '#CBC6BA',
           400: '#A8A292',
-          500: '#7D7768',
+          // 4.84:1 against paper and 5.34:1 against white (WCAG AA text).
+          500: ACCESSIBLE_TEXT_COLORS.gray500,
           600: '#5D5749',
           700: '#46413A',
           800: '#2E2A25',
@@ -34,7 +36,8 @@ const config: Config = {
           300: '#E5AE97',
           400: '#DF9377',
           500: '#D97757',
-          600: '#C25D3D',
+          // 4.62:1 against paper; white text on this token is 5.09:1.
+          600: ACCESSIBLE_TEXT_COLORS.clay600,
           700: '#A04A30',
           800: '#7E3A26',
           900: '#5F2C1E',
