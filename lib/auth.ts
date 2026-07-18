@@ -79,10 +79,15 @@ export async function isPersonalWorkspace(orgId?: string): Promise<boolean> {
   return !!data?.is_personal
 }
 
-export async function isOrgAdmin(orgId?: string) {
+// Role checks below are cache()-deduped per request (cache keys on args) and
+// issue their queries CONCURRENTLY. A page plus its actions may check the
+// same role many times per request; latency beats query count, so we accept
+// running a query whose sibling would have short-circuited it.
+
+const isOrgAdminCached = cache(async (orgId: string | undefined) => {
   const supabase = await createSupabaseClient()
   const userId = await getCurrentUserId()
-  const resolvedOrgId = orgId || await getCurrentOrgId()
+  const resolvedOrgId = orgId || (await getCurrentOrgId())
 
   if (!userId || !resolvedOrgId) return false
 
@@ -99,39 +104,40 @@ export async function isOrgAdmin(orgId?: string) {
   }
 
   return !!data
+})
+
+export async function isOrgAdmin(orgId?: string) {
+  return isOrgAdminCached(orgId)
 }
 
-export async function isOrgManager(orgId?: string) {
-  if (await isSuperAdmin()) return true
-
+const isOrgManagerCached = cache(async (orgId: string | undefined) => {
   const supabase = await createSupabaseClient()
   const userId = await getCurrentUserId()
-  const resolvedOrgId = orgId || await getCurrentOrgId()
+  const resolvedOrgId = orgId || (await getCurrentOrgId())
 
-  if (!userId || !resolvedOrgId) return false
+  if (!userId || !resolvedOrgId) return isSuperAdmin()
 
-  const { data: orgAdmin } = await supabase
-    .from('organization_members')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('org_id', resolvedOrgId)
-    .eq('role', 'org_admin')
-    .maybeSingle()
+  const [superAdmin, orgAdmin, departmentAdmin] = await Promise.all([
+    isSuperAdmin(),
+    isOrgAdminCached(resolvedOrgId),
+    supabase
+      .from('department_members')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('org_id', resolvedOrgId)
+      .eq('role', 'department_admin')
+      .maybeSingle()
+      .then(({ data }) => !!data),
+  ])
 
-  if (orgAdmin) return true
+  return superAdmin || orgAdmin || departmentAdmin
+})
 
-  const { data: departmentAdmin } = await supabase
-    .from('department_members')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('org_id', resolvedOrgId)
-    .eq('role', 'department_admin')
-    .maybeSingle()
-
-  return !!departmentAdmin
+export async function isOrgManager(orgId?: string) {
+  return isOrgManagerCached(orgId)
 }
 
-export async function isSuperAdmin() {
+const isSuperAdminCached = cache(async () => {
   const supabase = await createSupabaseClient()
   const { data, error } = await supabase
     .from('super_admins')
@@ -144,6 +150,10 @@ export async function isSuperAdmin() {
   }
 
   return !!data
+})
+
+export async function isSuperAdmin() {
+  return isSuperAdminCached()
 }
 
 export async function requireSuperAdmin() {
@@ -154,27 +164,29 @@ export async function requireSuperAdmin() {
   return true
 }
 
-export async function isDepartmentModerator(departmentId: string) {
-  if (await isSuperAdmin()) return true
-  if (await isOrgAdmin()) return true
+const isDepartmentModeratorCached = cache(async (departmentId: string) => {
+  const userId = await getCurrentUserId()
+  if (!userId) return isSuperAdmin()
 
   const supabase = await createSupabaseClient()
-  const userId = await getCurrentUserId()
-  if (!userId) return false
+  const [superAdmin, orgAdmin, deptModerator] = await Promise.all([
+    isSuperAdmin(),
+    isOrgAdmin(),
+    supabase
+      .from('department_members')
+      .select('id')
+      .eq('department_id', departmentId)
+      .eq('user_id', userId)
+      .in('role', ['department_admin', 'org_admin'])
+      .maybeSingle()
+      .then(({ data, error }) => !error && !!data),
+  ])
 
-  const { data, error } = await supabase
-    .from('department_members')
-    .select('id')
-    .eq('department_id', departmentId)
-    .eq('user_id', userId)
-    .in('role', ['department_admin', 'org_admin'])
-    .maybeSingle()
+  return superAdmin || orgAdmin || deptModerator
+})
 
-  if (error) {
-    return false
-  }
-
-  return !!data
+export async function isDepartmentModerator(departmentId: string) {
+  return isDepartmentModeratorCached(departmentId)
 }
 
 export async function requireDepartmentModerator(departmentId: string) {
