@@ -8,8 +8,8 @@ import {
   requireDepartmentModerator,
 } from '@/lib/auth'
 import { normalizeDepartmentFeedbackFields } from '@/lib/feedback-form'
-import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import * as departmentsDb from '@/lib/db/departments'
+import * as onboardingDb from '@/lib/db/onboarding'
 import { DbNotFoundError } from '@/lib/db'
 import type { TraineeGrade, UserRole } from '@/lib/types'
 
@@ -72,21 +72,17 @@ export async function getDepartmentMemberUsers(departmentId: string) {
   const userIds = await departmentsDb.listDepartmentMemberUserIds(departmentId)
   if (userIds.length === 0) return []
 
-  // Fetching user emails is an auth-plane concern (GoTrue admin API),
-  // not a data-plane one, so it stays on a direct Supabase client until
-  // the auth provider itself is swapped out.
-  const supabase = await createSupabaseServiceClient()
-  const users = await Promise.all(
-    userIds.map(async (userId) => {
-      const { data, error } = await supabase.auth.admin.getUserById(userId)
-      if (error) {
-        return { id: userId, email: null }
-      }
-      return { id: data.user.id, email: data.user.email || null }
-    })
-  )
+  // Emails come from the profiles mirror (synced from auth users) in ONE
+  // query, replacing an N-per-member GoTrue admin API fan-out. Coverage
+  // verified: every department_members user has a profiles row; any user
+  // somehow missing one appears with a null email rather than vanishing.
+  const profiles = await onboardingDb.listProfilesForUsers(userIds)
+  const emailByUserId = new Map(profiles.map((p) => [p.user_id, p.email]))
 
-  return users
+  return userIds.map((userId) => ({
+    id: userId,
+    email: emailByUserId.get(userId) ?? null,
+  }))
 }
 
 export async function getMyModeratedDepartments(orgId?: string) {
