@@ -33,10 +33,17 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // Refresh session if expired
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Signed-in check via LOCAL JWT verification (getClaims: WebCrypto ES256
+  // against the project's cached JWKS — no network call), instead of a
+  // ~150ms auth.getUser() round trip on every request. Safe because this
+  // middleware only decides redirect-to-login vs pass-through: every page
+  // re-checks getCurrentUser() (network-verified) and every action runs its
+  // require* ladder, with RLS beneath. Known tradeoff: a revoked-but-
+  // unexpired token passes HERE for up to its TTL but still gets zero data.
+  // getClaims() also refreshes near-expiry sessions via the cookie handlers
+  // above, preserving this middleware's session-refresh role.
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims()
+  const user = claimsError || !claimsData?.claims ? null : claimsData.claims
 
   // Public routes
   const publicRoutes = ['/', '/login', '/trainee-login', '/signup', '/verify', '/join', '/join/callback', '/privacy']
