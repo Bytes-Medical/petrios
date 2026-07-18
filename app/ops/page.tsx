@@ -1,3 +1,4 @@
+import { opsAssistantEnabled } from '@/lib/ops/flags'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getCurrentUser, isOrgManager } from '@/lib/auth'
@@ -32,12 +33,14 @@ export default async function OpsPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/ops/assistant"
-              className="border border-black bg-black px-4 py-3 text-center font-mono text-sm text-white hover:bg-gray-800"
-            >
-              Open Assistant
-            </Link>
+            {opsAssistantEnabled() ? (
+              <Link
+                href="/ops/assistant"
+                className="border border-black bg-black px-4 py-3 text-center font-mono text-sm text-white hover:bg-gray-800"
+              >
+                Open Assistant
+              </Link>
+            ) : null}
             <Link
               href="/ops/newsletters"
               className="border border-black bg-white px-4 py-3 text-center font-mono text-sm text-black hover:bg-gray-50"

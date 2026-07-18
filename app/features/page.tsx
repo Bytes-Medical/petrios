@@ -73,7 +73,6 @@ const FEATURES: Feature[] = [
     title: 'An AI assistant that never acts alone',
     body: 'The ops layer drafts what programme admin eats your week: speaker chases for unconfirmed sessions, post-session thank-yous with feedback insights, and a weekly learning-points newsletter. Every outbound email waits in an approval queue until a human says send — that invariant is enforced in code, not policy.',
     points: [
-      'Organiser-only chat assistant that knows your sessions, feedback, and the platform',
       'Curriculum gap watch across Progress+ domains',
       'Full audit trail of every AI run — prompt hashes, never prompt text; one kill switch',
     ],

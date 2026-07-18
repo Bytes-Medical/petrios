@@ -285,6 +285,14 @@ when drafted.
 
 ## Organizer assistant
 
+**Disabled by default.** `opsAssistantEnabled()` (`lib/ops/flags.ts`)
+requires an explicit `OPS_ASSISTANT_ENABLED=true` opt-in per deployment,
+on top of `OPS_ENABLED` — free-form chat with tool access carries its own
+risk surface and needs its own safety review before exposure. While off:
+every `app/actions/ops-chat.ts` action throws, `/ops/assistant` returns
+404, and the "Open Assistant" button is not rendered. The scheduled
+drafting pipelines (chases, syntheses, newsletter) are unaffected.
+
 `/ops/assistant` persists threads/messages for the owning organizer. Each user
 turn starts a run and invokes the tool loop with `ASSISTANT_SYSTEM_RULES` plus
 `PLATFORM_KNOWLEDGE`; update that knowledge when platform behavior changes.

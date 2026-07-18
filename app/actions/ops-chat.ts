@@ -1,7 +1,7 @@
 'use server'
 
 import { requireOpsManager } from '@/lib/ops/auth'
-import { opsEnabled } from '@/lib/ops/flags'
+import { opsAssistantEnabled } from '@/lib/ops/flags'
 import { startRun } from '@/lib/ops/run'
 import { runAgentLoop, type ChatTurn } from '@/lib/ops/agent-loop'
 import { OPS_TOOLS } from '@/lib/ops/tools'
@@ -17,7 +17,16 @@ import type { OpsChatMessage, OpsChatThread } from '@/lib/types'
 
 const HISTORY_LIMIT = 20
 
+/** The assistant ships disabled; every action refuses unless a deployment
+ *  has explicitly opted in via OPS_ASSISTANT_ENABLED=true. */
+function requireAssistantEnabled() {
+  if (!opsAssistantEnabled()) {
+    throw new Error('The assistant is not enabled on this deployment.')
+  }
+}
+
 export async function listChatThreads(): Promise<OpsChatThread[]> {
+  requireAssistantEnabled()
   const { userId, orgId } = await requireOpsManager()
   return opsDb.listChatThreads(userId, orgId)
 }
@@ -25,6 +34,7 @@ export async function listChatThreads(): Promise<OpsChatThread[]> {
 export async function getChatThread(
   threadId: string
 ): Promise<{ thread: OpsChatThread; messages: OpsChatMessage[] }> {
+  requireAssistantEnabled()
   const { userId } = await requireOpsManager()
   const thread = await opsDb.findChatThread(threadId, userId)
   if (!thread) throw new Error('Thread not found')
@@ -42,9 +52,10 @@ export async function sendChatMessage(
   threadId: string | null,
   text: string
 ): Promise<SendChatMessageResult> {
+  requireAssistantEnabled()
   const { userId, orgId } = await requireOpsManager()
-  if (!opsEnabled()) {
-    throw new Error('Petrios Ops is disabled (OPS_ENABLED=false) — the assistant is paused.')
+  if (!opsAssistantEnabled()) {
+    throw new Error('The assistant is not enabled on this deployment.')
   }
 
   const trimmed = text.trim()

@@ -44,6 +44,7 @@ supabase db push
 | Audio recaps (optional) | OpenAI TTS (`OPENAI_TTS_MODEL`/`OPENAI_TTS_VOICE`, shares the key) | Requires a `/audio/speech` endpoint on your `OPENAI_BASE_URL`; endpoints without one (most local models) simply disable recaps |
 | Video (optional) | meet.jit.si | **`NEXT_PUBLIC_JITSI_DOMAIN`** → your own Jitsi server |
 | AI agent kill switch | on | `OPS_ENABLED=false` halts every agent surface |
+| Chat assistant | **off** | `OPS_ASSISTANT_ENABLED=true` opts a deployment in (needs its own safety review) |
 
 All variables are documented in [`.env.example`](../.env.example).
 

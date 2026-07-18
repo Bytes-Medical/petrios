@@ -1,14 +1,15 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { getCurrentUser, isOrgManager } from '@/lib/auth'
 import { listChatThreads } from '@/app/actions/ops-chat'
-import { opsEnabled } from '@/lib/ops/flags'
+import { opsAssistantEnabled } from '@/lib/ops/flags'
 import { NavShell } from '@/components/NavShell'
 import { OpsChatPanel } from '@/components/ops/OpsChatPanel'
 
 export const dynamic = 'force-dynamic'
 
 export default async function OpsAssistantPage() {
+  if (!opsAssistantEnabled()) notFound()
   const user = await getCurrentUser()
   if (!user) redirect('/login')
   if (!(await isOrgManager())) redirect('/dashboard')
@@ -30,13 +31,7 @@ export default async function OpsAssistantPage() {
           </p>
         </div>
 
-        {!opsEnabled() ? (
-          <p className="border border-amber-600 bg-amber-50 px-4 py-3 font-mono text-sm text-amber-800">
-            Petrios Ops is disabled (OPS_ENABLED=false) — the assistant is paused.
-          </p>
-        ) : (
-          <OpsChatPanel threads={threads} />
-        )}
+        <OpsChatPanel threads={threads} />
       </div>
     </div>
   )
