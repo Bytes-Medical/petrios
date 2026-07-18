@@ -152,6 +152,15 @@ in [11 — Identity and administration](./11-identity-and-administration.md).
 It treats the marketing/auth/onboarding pages, public verification and capability
 pages, feedback/RSVP/Recall pages, and well-known metadata as public.
 
+The signed-in check is a **local JWT verification** (`auth.getClaims()`:
+WebCrypto against the project's cached JWKS — the project uses asymmetric
+ES256 keys), not a network `getUser()` call. The proxy only chooses
+redirect-vs-pass; authorization lives in pages (network-verified
+`getCurrentUser()`), actions (`require*` ladders), and RLS. Accepted
+tradeoff: a revoked-but-unexpired token passes the proxy for up to its TTL
+but renders nothing. Self-hosters on legacy symmetric (HS256) JWT secrets
+should know `getClaims()` silently falls back to a network check there.
+
 The proxy deliberately allows **every `/api/*` path through without a browser
 auth decision**. Therefore route handlers must enforce one of these models:
 

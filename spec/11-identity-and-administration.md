@@ -295,7 +295,11 @@ policy gaps before describing signup as cryptographically air-tight.
 
 Organization managers can list organization members plus profiles and department
 names. Missing application profiles are best-effort filled for display from the
-GoTrue admin API. A member is marked nonremovable in this view if their org role
+GoTrue admin API.
+Department-scoped member emails for the session teacher picker
+(`getDepartmentMemberUsers`) come from the `profiles` mirror in a single
+query — not a per-member GoTrue admin fan-out; a member missing a profile
+row appears with a null email rather than vanishing. A member is marked nonremovable in this view if their org role
 is `org_admin` or they hold any department-admin role.
 
 `removeOrgMember` enforces the same rules server-side:

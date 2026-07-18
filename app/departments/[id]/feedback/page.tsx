@@ -7,6 +7,10 @@ import * as sessionsDb from '@/lib/db/sessions'
 import * as feedbackActionsDb from '@/lib/db/feedback-actions'
 import { YouSaidWeDidList } from '@/components/YouSaidWeDidList'
 
+// Deliberately force-dynamic despite being public: the page computes the
+// "active session" from a minute-granularity time window, so revalidate
+// caching would delay a session's feedback window opening. Not on the
+// authed click path — see spec/07 latency conventions.
 export const dynamic = 'force-dynamic'
 
 export default async function DepartmentFeedbackPage(

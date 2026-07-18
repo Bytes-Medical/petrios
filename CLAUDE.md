@@ -28,8 +28,9 @@ All data mutations use **Next.js Server Actions** in `app/actions/`. There is no
 ### Auth & Middleware
 
 - Supabase Auth. Sign-in methods: passwordless magic link (default; rate-limited via `lib/rate-limit.ts` + `login_link_requests`), Microsoft Entra ID SSO (`azure` provider, works with NHSmail), and email/password for admins. Session managed via cookies. See `spec/01-architecture.md` → "Sign-in methods".
-- `proxy.ts` (Next 16 proxy convention, formerly middleware) — redirects unauthenticated users to `/login`. Public routes: `/`, `/login`, `/signup`, `/verify/*`, feedback pages, teacher RSVP pages.
+- `proxy.ts` (Next 16 proxy convention, formerly middleware) — redirects unauthenticated users to `/login` using LOCAL JWT verification (`auth.getClaims()`, no network call; authorization stays in pages/actions/RLS — see spec/01). Public routes: `/`, `/login`, `/signup`, `/verify/*`, feedback pages, teacher RSVP pages.
 - `lib/auth.ts` — helper functions: `getCurrentUser()`, `getCurrentOrgId()`, `requireAuth()`, `requireOrg()`, `isOrgAdmin()`, `isSuperAdmin()`, `isDepartmentModerator()`.
+- Latency conventions (spec/07): pages fetch parallel-by-default (staged `Promise.all`), role checks are cached+concurrent, hot routes ship `loading.tsx` skeletons, mutations use `hooks/useActionWithRefresh` (pending spans action + refresh), heavy client libs load via dynamic wrappers (`SessionCalendarLazy`).
 
 ### Role Hierarchy
 

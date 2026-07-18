@@ -252,6 +252,28 @@ Client components should receive minimal serializable data. Secrets, service
 credentials, raw audit rows, and server-only provider configuration never enter
 client props.
 
+### Latency conventions
+
+Every mutation click is at least two server round trips (action, then
+`router.refresh()`), so the rules below keep both legs short and honest:
+
+- **Pages fetch parallel-by-default**: stage awaits by true data
+  dependency (fetch the session first, then everything keyed on it in one
+  `Promise.all`). Only reads are parallelized — never check-then-write
+  mutation orders.
+- **Role checks are cached and concurrent** (`lib/auth.ts`): per-request
+  `cache()` dedup, sibling role queries issued together and OR-combined.
+- **Hot authed routes ship a `loading.tsx`** built from
+  `components/Skeleton.tsx` (use `SkeletonNav`, never `NavShell` — loading
+  files must not fetch).
+- **Mutations use `hooks/useActionWithRefresh`** so the pending state
+  (Button's `pending` prop) spans the action AND the refresh re-render;
+  the nested `startTransition` around `router.refresh()` is required
+  (React 19 async-transition rule), don't remove it.
+- **Heavy client-only libraries load via a dynamic client wrapper**
+  (`SessionCalendarLazy`, `JitsiMeetingPanel` pattern), never statically
+  from a page.
+
 ## Test strategy
 
 ### Unit tests
