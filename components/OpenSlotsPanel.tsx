@@ -1,11 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Input } from './Input'
 import { useToast } from './ToastProvider'
+import { useActionWithRefresh } from '@/hooks/useActionWithRefresh'
 import { claimSlotAsMember } from '@/app/actions/teaching-slots'
 import type { ClaimableSlotView } from '@/app/actions/teaching-slots'
 import { describeSlot, isLightningSlot } from '@/lib/slot-schedule'
@@ -17,34 +17,33 @@ interface OpenSlotsPanelProps {
 
 /** Open teaching slots this member was invited to claim (first come, first served). */
 export function OpenSlotsPanel({ slots }: OpenSlotsPanelProps) {
-  const router = useRouter()
   const { showToast } = useToast()
   const [claimingId, setClaimingId] = useState<string | null>(null)
   const [topic, setTopic] = useState('')
-  const [loading, setLoading] = useState(false)
+  const { isPending: loading, run } = useActionWithRefresh()
 
-  async function handleClaim(slotId: string) {
-    setLoading(true)
-    try {
-      await claimSlotAsMember(slotId, topic || undefined)
-      showToast({
-        variant: 'success',
-        title: "You're booked to teach",
-        description: 'The organiser has been notified and will confirm the topic.',
-      })
-      setClaimingId(null)
-      setTopic('')
-      router.refresh()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to claim the slot'
-      showToast({ variant: 'error', title: message })
-      if (message.includes('just claimed')) {
+  function handleClaim(slotId: string) {
+    run(async () => {
+      try {
+        await claimSlotAsMember(slotId, topic || undefined)
+        showToast({
+          variant: 'success',
+          title: "You're booked to teach",
+          description: 'The organiser has been notified and will confirm the topic.',
+        })
         setClaimingId(null)
-        router.refresh()
+        setTopic('')
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to claim the slot'
+        showToast({ variant: 'error', title: message })
+        if (message.includes('just claimed')) {
+          // Someone beat them to it — let the refresh run so the slot vanishes.
+          setClaimingId(null)
+          return
+        }
+        throw err
       }
-    } finally {
-      setLoading(false)
-    }
+    }, slotId)
   }
 
   if (slots.length === 0) return null

@@ -1,11 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { useToast } from './ToastProvider'
 import { updateSessionStatus } from '@/app/actions/sessions'
+import { useActionWithRefresh } from '@/hooks/useActionWithRefresh'
 import { getSessionPublishBlockReason } from '@/lib/session-validation'
 import type { SessionStatus } from '@/lib/types'
 
@@ -22,12 +21,11 @@ export function PublishSessionPanel({
   dateEnd,
   isPersonal,
 }: PublishSessionPanelProps) {
-  const router = useRouter()
   const { showToast } = useToast()
-  const [loading, setLoading] = useState(false)
+  const { isPending: loading, run } = useActionWithRefresh()
   const publishBlockedReason = getSessionPublishBlockReason(dateEnd)
 
-  async function handleStatusChange(newStatus: SessionStatus) {
+  function handleStatusChange(newStatus: SessionStatus) {
     if (newStatus === 'PUBLISHED' && publishBlockedReason) {
       showToast({
         variant: 'error',
@@ -37,25 +35,23 @@ export function PublishSessionPanel({
       return
     }
 
-    setLoading(true)
-
-    try {
-      await updateSessionStatus(sessionId, newStatus)
-      showToast({
-        variant: 'success',
-        title: 'Session updated',
-        description: `Session status is now ${newStatus}.`,
-      })
-      router.refresh()
-    } catch (err) {
-      showToast({
-        variant: 'error',
-        title: 'Failed to update session',
-        description: err instanceof Error ? err.message : 'Failed to update status',
-      })
-    } finally {
-      setLoading(false)
-    }
+    run(async () => {
+      try {
+        await updateSessionStatus(sessionId, newStatus)
+        showToast({
+          variant: 'success',
+          title: 'Session updated',
+          description: `Session status is now ${newStatus}.`,
+        })
+      } catch (err) {
+        showToast({
+          variant: 'error',
+          title: 'Failed to update session',
+          description: err instanceof Error ? err.message : 'Failed to update status',
+        })
+        throw err
+      }
+    })
   }
 
   return (
@@ -91,7 +87,8 @@ export function PublishSessionPanel({
         <Button
           type="button"
           onClick={() => handleStatusChange('PUBLISHED')}
-          disabled={loading || currentStatus === 'PUBLISHED' || !!publishBlockedReason}
+          pending={loading}
+          disabled={currentStatus === 'PUBLISHED' || !!publishBlockedReason}
         >
           {loading ? 'Updating...' : 'Publish Session'}
         </Button>
@@ -99,7 +96,8 @@ export function PublishSessionPanel({
           type="button"
           variant="secondary"
           onClick={() => handleStatusChange('DRAFT')}
-          disabled={loading || currentStatus === 'DRAFT'}
+          pending={loading}
+          disabled={currentStatus === 'DRAFT'}
         >
           {loading ? 'Updating...' : 'Unpublish (Draft)'}
         </Button>
@@ -107,7 +105,8 @@ export function PublishSessionPanel({
           type="button"
           variant="danger"
           onClick={() => handleStatusChange('CANCELLED')}
-          disabled={loading || currentStatus === 'CANCELLED'}
+          pending={loading}
+          disabled={currentStatus === 'CANCELLED'}
         >
           {loading ? 'Updating...' : 'Cancel Session'}
         </Button>

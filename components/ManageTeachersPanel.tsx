@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Badge } from './Badge'
 import { Button } from './Button'
 import { Input } from './Input'
@@ -12,6 +11,7 @@ import { sendTeacherEmail } from '@/app/actions/emails'
 import { inviteExternalTeacher, deleteTeacherInvitation } from '@/app/actions/teacher-invitations'
 import type { EmailType, TeacherInvitation } from '@/lib/types'
 import type { OrgMemberProfile } from '@/lib/db/sessions'
+import { useActionWithRefresh } from '@/hooks/useActionWithRefresh'
 
 interface ManageTeachersPanelProps {
   sessionId: string
@@ -28,9 +28,10 @@ export function ManageTeachersPanel({
   emailHistory,
   invitations,
 }: ManageTeachersPanelProps) {
-  const router = useRouter()
   const { showToast } = useToast()
-  const [loading, setLoading] = useState<string | null>(null)
+  // pendingKey keeps the same string keys the JSX already checks; the
+  // transition keeps buttons pending until the refreshed data renders.
+  const { pendingKey: loading, run } = useActionWithRefresh()
 
   // Autocomplete state for internal teacher assignment
   const [searchQuery, setSearchQuery] = useState('')
@@ -59,113 +60,94 @@ export function ManageTeachersPanel({
     }, 300)
   }
 
-  async function handleAssignInternal(member: OrgMemberProfile) {
+  function handleAssignInternal(member: OrgMemberProfile) {
     setSearchOpen(false)
     setSearchQuery('')
     setSearchResults([])
-    setLoading('assign')
-    // toast handles feedback
-
-    try {
-      await addSessionTeacher(sessionId, member.user_id)
+    run(async () => {
       try {
-        await sendTeacherEmail(sessionId, member.user_id, 'INVITATION')
-      } catch {
-        // Non-fatal — teacher is assigned even if email fails
+        await addSessionTeacher(sessionId, member.user_id)
+        try {
+          await sendTeacherEmail(sessionId, member.user_id, 'INVITATION')
+        } catch {
+          // Non-fatal — teacher is assigned even if email fails
+        }
+        showToast({ variant: 'success', title: `${member.full_name || member.email} assigned as teacher` })
+      } catch (err) {
+        showToast({ variant: 'error', title: 'Failed to assign teacher', description: err instanceof Error ? err.message : undefined })
+        throw err
       }
-      showToast({ variant: 'success', title: `${member.full_name || member.email} assigned as teacher` })
-      router.refresh()
-    } catch (err) {
-      showToast({ variant: 'error', title: 'Failed to assign teacher', description: err instanceof Error ? err.message : undefined })
-    } finally {
-      setLoading(null)
-    }
+    }, 'assign')
   }
 
-  async function handleInvite(selection: ContactSelection) {
-    setLoading('invite')
-    // toast handles feedback
-
-    try {
-      const result = await inviteExternalTeacher(sessionId, selection.email, {
-        firstName: selection.firstName,
-        lastName: selection.lastName,
-      })
-      if (result.emailSent === false) {
-        showToast({ variant: 'info', title: 'Invitation created', description: `Email could not be sent: ${result.emailError}` })
-      } else {
-        showToast({ variant: 'success', title: 'Invitation sent' })
+  function handleInvite(selection: ContactSelection) {
+    run(async () => {
+      try {
+        const result = await inviteExternalTeacher(sessionId, selection.email, {
+          firstName: selection.firstName,
+          lastName: selection.lastName,
+        })
+        if (result.emailSent === false) {
+          showToast({ variant: 'info', title: 'Invitation created', description: `Email could not be sent: ${result.emailError}` })
+        } else {
+          showToast({ variant: 'success', title: 'Invitation sent' })
+        }
+      } catch (err) {
+        showToast({ variant: 'error', title: 'Failed to send invitation', description: err instanceof Error ? err.message : undefined })
+        throw err
       }
-      router.refresh()
-    } catch (err) {
-      showToast({ variant: 'error', title: 'Failed to send invitation', description: err instanceof Error ? err.message : undefined })
-    } finally {
-      setLoading(null)
-    }
+    }, 'invite')
   }
 
-  async function handleRemoveTeacher(userId: string) {
-    setLoading(`remove-${userId}`)
-    // toast handles feedback
-
-    try {
-      await removeSessionTeacher(sessionId, userId)
-      router.refresh()
-    } catch (err) {
-      showToast({ variant: 'error', title: 'Failed to remove teacher', description: err instanceof Error ? err.message : undefined })
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  async function handleSendEmail(userId: string, emailType: EmailType) {
-    const key = `${emailType.toLowerCase()}-${userId}`
-    setLoading(key)
-    // toast handles feedback
-
-    try {
-      await sendTeacherEmail(sessionId, userId, emailType)
-      showToast({ variant: 'success', title: `${emailType === 'INVITATION' ? 'Invitation' : 'Reminder'} sent` })
-      router.refresh()
-    } catch (err) {
-      showToast({ variant: 'error', title: `Failed to send ${emailType.toLowerCase()}`, description: err instanceof Error ? err.message : undefined })
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  async function handleResendInvitation(invitation: TeacherInvitation) {
-    setLoading(`resend-${invitation.id}`)
-    // toast handles feedback
-
-    try {
-      await inviteExternalTeacher(sessionId, invitation.email)
-      showToast({ variant: 'success', title: 'Invitation resent' })
-      router.refresh()
-    } catch (err) {
-      // If existing pending, that's fine — the email was already sent
-      if (err instanceof Error && err.message.includes('already been sent')) {
-        showToast({ variant: 'error', title: err.message })
-      } else {
-        showToast({ variant: 'error', title: 'Failed to resend invitation', description: err instanceof Error ? err.message : undefined })
+  function handleRemoveTeacher(userId: string) {
+    run(async () => {
+      try {
+        await removeSessionTeacher(sessionId, userId)
+      } catch (err) {
+        showToast({ variant: 'error', title: 'Failed to remove teacher', description: err instanceof Error ? err.message : undefined })
+        throw err
       }
-    } finally {
-      setLoading(null)
-    }
+    }, `remove-${userId}`)
   }
 
-  async function handleDeleteInvitation(invitationId: string) {
-    setLoading(`delete-${invitationId}`)
-    // toast handles feedback
+  function handleSendEmail(userId: string, emailType: EmailType) {
+    run(async () => {
+      try {
+        await sendTeacherEmail(sessionId, userId, emailType)
+        showToast({ variant: 'success', title: `${emailType === 'INVITATION' ? 'Invitation' : 'Reminder'} sent` })
+      } catch (err) {
+        showToast({ variant: 'error', title: `Failed to send ${emailType.toLowerCase()}`, description: err instanceof Error ? err.message : undefined })
+        throw err
+      }
+    }, `${emailType.toLowerCase()}-${userId}`)
+  }
 
-    try {
-      await deleteTeacherInvitation(sessionId, invitationId)
-      router.refresh()
-    } catch (err) {
-      showToast({ variant: 'error', title: 'Failed to delete invitation', description: err instanceof Error ? err.message : undefined })
-    } finally {
-      setLoading(null)
-    }
+  function handleResendInvitation(invitation: TeacherInvitation) {
+    run(async () => {
+      try {
+        await inviteExternalTeacher(sessionId, invitation.email)
+        showToast({ variant: 'success', title: 'Invitation resent' })
+      } catch (err) {
+        // If existing pending, that's fine — the email was already sent
+        if (err instanceof Error && err.message.includes('already been sent')) {
+          showToast({ variant: 'error', title: err.message })
+        } else {
+          showToast({ variant: 'error', title: 'Failed to resend invitation', description: err instanceof Error ? err.message : undefined })
+        }
+        throw err
+      }
+    }, `resend-${invitation.id}`)
+  }
+
+  function handleDeleteInvitation(invitationId: string) {
+    run(async () => {
+      try {
+        await deleteTeacherInvitation(sessionId, invitationId)
+      } catch (err) {
+        showToast({ variant: 'error', title: 'Failed to delete invitation', description: err instanceof Error ? err.message : undefined })
+        throw err
+      }
+    }, `delete-${invitationId}`)
   }
 
   function getLastEmail(userId: string, emailType: string) {

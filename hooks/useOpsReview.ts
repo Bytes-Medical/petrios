@@ -1,35 +1,34 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { approveOpsAction, rejectOpsAction } from '@/app/actions/ops'
+import { useActionWithRefresh } from './useActionWithRefresh'
 
 /**
  * Shared approve/reject handler for the ops approval surfaces (nav bell and
  * the /ops queue): tracks which action is busy, surfaces the server error,
- * and refreshes the route on success.
+ * and refreshes the route on success. Built on useActionWithRefresh so the
+ * busy state covers the refresh re-render too, not just the action.
  */
 export function useOpsReview() {
-  const router = useRouter()
-  const [busyId, setBusyId] = useState<string | null>(null)
+  const { pendingKey, run } = useActionWithRefresh()
   const [error, setError] = useState<string | null>(null)
 
-  async function review(id: string, decision: 'approve' | 'reject') {
-    setBusyId(id)
+  function review(id: string, decision: 'approve' | 'reject') {
     setError(null)
-    try {
-      if (decision === 'approve') {
-        await approveOpsAction(id)
-      } else {
-        await rejectOpsAction(id)
+    run(async () => {
+      try {
+        if (decision === 'approve') {
+          await approveOpsAction(id)
+        } else {
+          await rejectOpsAction(id)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Something went wrong')
+        throw err
       }
-      router.refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
-    } finally {
-      setBusyId(null)
-    }
+    }, id)
   }
 
-  return { busyId, error, review }
+  return { busyId: pendingKey, error, review }
 }

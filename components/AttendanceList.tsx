@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { markAttendance } from '@/app/actions/attendance'
+import { useActionWithRefresh } from '@/hooks/useActionWithRefresh'
 import type { Attendance, AttendanceStatus } from '@/lib/types'
 
 interface AttendanceListProps {
@@ -12,19 +11,17 @@ interface AttendanceListProps {
 }
 
 export function AttendanceList({ sessionId, attendance, teachers }: AttendanceListProps) {
-  const router = useRouter()
-  const [updating, setUpdating] = useState<string | null>(null)
+  const { pendingKey: updating, run } = useActionWithRefresh()
 
-  async function handleMarkAttendance(userId: string, status: AttendanceStatus) {
-    setUpdating(userId)
-    try {
-      await markAttendance(sessionId, userId, status)
-      router.refresh()
-    } catch (error) {
-      console.error('Failed to mark attendance:', error)
-    } finally {
-      setUpdating(null)
-    }
+  function handleMarkAttendance(userId: string, status: AttendanceStatus) {
+    run(async () => {
+      try {
+        await markAttendance(sessionId, userId, status)
+      } catch (error) {
+        console.error('Failed to mark attendance:', error)
+        throw error
+      }
+    }, userId)
   }
 
   if (attendance.length === 0) {

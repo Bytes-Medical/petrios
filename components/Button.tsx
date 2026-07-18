@@ -32,15 +32,37 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+    VariantProps<typeof buttonVariants> {
+  /** In-flight state: disables the button, sets aria-busy, prepends a
+   *  spinner. Keep it true until the UI reflects the completed work (see
+   *  hooks/useActionWithRefresh). */
+  pending?: boolean
+}
+
+const spinnerSize = { sm: 'h-3 w-3', default: 'h-3.5 w-3.5', lg: 'h-4 w-4' } as const
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => (
+  ({ className, variant, size, pending, disabled, children, ...props }, ref) => (
     <button
       ref={ref}
       className={cn(buttonVariants({ variant, size }), className)}
+      disabled={disabled || pending}
+      aria-busy={pending || undefined}
       {...props}
-    />
+    >
+      {pending ? (
+        <svg
+          className={cn('animate-spin', spinnerSize[size ?? 'default'])}
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+          <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+        </svg>
+      ) : null}
+      {children}
+    </button>
   )
 )
 Button.displayName = 'Button'
