@@ -3,6 +3,7 @@ import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
 import * as departmentsDb from '@/lib/db/departments'
 import * as organizationsDb from '@/lib/db/organizations'
+import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     await requireDepartmentModerator(departmentId)
 
     const [dept, orgName] = await Promise.all([
-      departmentsDb.findDepartmentNameAndLead(departmentId),
+      departmentsDb.findDepartmentCertificateSettings(departmentId),
       organizationsDb.findOrganizationName(orgId),
     ])
 
@@ -33,7 +34,10 @@ export async function GET(request: NextRequest) {
       certificateCode: 'PREVIEW',
       issuedDate: new Date().toLocaleDateString(),
       verifyUrl: `${baseUrl}/verify/PREVIEW`,
-      leadName: dept?.lead_name || undefined,
+      coordinatorNames: resolveTeachingCoordinatorNames(
+        dept?.certificate_coordinator_names,
+        dept?.lead_name
+      ),
     })
 
     return new NextResponse(pdfBuffer as unknown as BodyInit, {

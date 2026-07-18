@@ -37,9 +37,9 @@ export default function DataProcessingAgreementPage() {
           <dt className="font-semibold">Subject matter</dt><dd>Hosting and operation of a teaching-management platform.</dd>
           <dt className="font-semibold">Duration</dt><dd>The service term plus an agreed secure return/deletion period and any legally required retention.</dd>
           <dt className="font-semibold">Nature</dt><dd>Collection, storage, organisation, retrieval, display, communication, analysis, backup, export, restriction, and deletion.</dd>
-          <dt className="font-semibold">Purposes</dt><dd>Authentication, teaching administration, attendance evidence, feedback, certificates, portfolio/Recall, communications, reporting, security, and optional AI assistance.</dd>
+          <dt className="font-semibold">Purposes</dt><dd>Authentication, teaching administration and private session documents, attendance evidence/finalization, feedback, certificates, portfolio/Recall, communications, reporting, security, and optional AI assistance.</dd>
           <dt className="font-semibold">People</dt><dd>Trainees, faculty, organisers, external teachers, administrators, and support/security contacts.</dd>
-          <dt className="font-semibold">Data</dt><dd>Identity/contact, employment/training, membership/role, session/attendance, identified feedback, certificates, reflections, communications, audit, and technical data described in the privacy notice.</dd>
+          <dt className="font-semibold">Data</dt><dd>Identity/contact, employment/training, membership/role, session documents/attendance, identified feedback, certificates, reflections, communications/delivery metadata, audit, and technical data described in the privacy notice.</dd>
           <dt className="font-semibold">Special data</dt><dd>Not required by design. Free text may nevertheless contain health, welfare, conduct, or other sensitive information and must be treated accordingly.</dd>
         </dl>
       </ComplianceSection>

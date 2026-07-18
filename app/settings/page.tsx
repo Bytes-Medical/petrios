@@ -3,12 +3,12 @@ import { redirect } from 'next/navigation'
 import { getCurrentOrgId, getCurrentUser, isOrgAdmin, isOrgManager } from '@/lib/auth'
 import { NavShell } from '@/components/NavShell'
 import { Card } from '@/components/Card'
-import { SignatureUploadPanel } from '@/components/SignatureUploadPanel'
+import { CertificateSettingsPanel } from '@/components/CertificateSettingsPanel'
 import { FeedbackTemplatePanel } from '@/components/FeedbackTemplatePanel'
 import { DepartmentInviteLinksPanel } from '@/components/DepartmentInviteLinksPanel'
 import { OrgMembersPanel } from '@/components/OrgMembersPanel'
 import {
-  getDepartmentLeadSettings,
+  getDepartmentCertificateSettings,
   getDepartmentsForOrg,
   getMyModeratedDepartments,
   getDepartmentMembersWithProfiles,
@@ -94,7 +94,7 @@ export default async function SettingsPage() {
   const departmentSettings = await Promise.all(
     editableDepartments.map(async (department) => ({
       department,
-      settings: await getDepartmentLeadSettings(department.id),
+      settings: await getDepartmentCertificateSettings(department.id),
       members: await getDepartmentMembersWithProfiles(department.id),
     }))
   )
@@ -198,7 +198,7 @@ export default async function SettingsPage() {
                   <div className="mb-5">
                     <h2 className="text-xl font-mono font-bold">{department.name}</h2>
                     <p className="mt-2 font-mono text-sm text-gray-600">
-                      Edit the public feedback form and the certificate signature used for this
+                      Edit the public feedback form and the certificate coordinators used for this
                       department.
                     </p>
                   </div>
@@ -222,9 +222,9 @@ export default async function SettingsPage() {
                     </div>
 
                     <div className="border-t border-black pt-6">
-                      <SignatureUploadPanel
+                      <CertificateSettingsPanel
                         departmentId={department.id}
-                        initialLeadName={settings.leadName}
+                        initialCoordinatorNames={settings.coordinatorNames}
                       />
                     </div>
                   </div>

@@ -2,7 +2,7 @@
 
 This directory is the detailed, implementation-facing specification for
 Petrios. It describes the application represented by the source tree and by
-database migrations through `044_single_moderator_organization.sql`. `CLAUDE.md` is the short
+database migrations through `052_certificate_branding_and_coordinators.sql`. `CLAUDE.md` is the short
 architecture briefing; these documents are the durable contract for maintainers,
 reviewers, operators, and coding agents.
 
@@ -41,12 +41,12 @@ data to whoever possesses it.
 |---|---|
 | [01 — Architecture](./01-architecture.md) | Runtime stack, trust boundaries, layering, tenancy, authorization, routing, and configuration |
 | [02 — Data model](./02-data-model.md) | Migration discipline, table families, relationships, RLS strategies, and data-access ownership |
-| [03 — Attendance](./03-attendance.md) | Append-oriented evidence, validation windows, deterministic derivation, locking, and check-in channels |
-| [04 — Sessions and scheduling](./04-sessions-and-scheduling.md) | Session lifecycle, teacher assignment, invitations, calendar feeds, slots, claims, and reminders |
-| [05 — Feedback and certificates](./05-feedback-and-certificates.md) | Feedback identity/privacy, configurable forms, statistics, releases, and every certificate issue path |
+| [03 — Attendance](./03-attendance.md) | Append-only evidence, secure check-in, deterministic derivation, roster finalization/revision, correction, and notifications |
+| [04 — Sessions and scheduling](./04-sessions-and-scheduling.md) | Session lifecycle, teacher assignment, private documents, invitations, calendar feeds, slots, claims, and reminders |
+| [05 — Feedback and certificates](./05-feedback-and-certificates.md) | Identified feedback, privacy-processed analytics/report release, delivery claims, canonical certificate eligibility/revocation, and branded coordinator snapshots |
 | [06 — Petrios Ops](./06-petrios-ops.md) | AI operations layer, inference audit, approval gate, assistant tools, jobs, and audio recap approval |
 | [07 — Engineering conventions](./07-conventions.md) | Code boundaries, validation, errors, email, jobs, testing, CI, and change procedure |
-| [08 — Portfolio and Recall](./08-portfolio-and-recall.md) | Passport, durable portfolio snapshots, teacher dossier, recall questions, analytics, and catch-up attendance |
+| [08 — Portfolio and Recall](./08-portfolio-and-recall.md) | Passport, durable portfolio snapshots, teacher dossier, recall questions, analytics, and catch-up learning completion |
 | [09 — API, federation, and self-hosting](./09-platform-api-and-self-hosting.md) | Bearer API, webhooks, portable signed records, provider adapters, deployment, health, and environment variables |
 | [10 — Federated benchmarking](./10-federated-benchmarking.md) | **RFC, not implemented:** opt-in, signed, aggregate-only cross-instance comparison |
 | [11 — Identity and administration](./11-identity-and-administration.md) | Login methods, signup posture, join workflow, profiles, memberships, roles, and administrator surfaces |
@@ -63,14 +63,14 @@ must not be used to erase those details.
    tables directly. `lib/auth.ts` is the deliberate authorization-seam
    exception and performs membership reads. Auth-plane `supabase.auth.*` calls
    are separately allow-listed by ESLint. Any new exception is a review decision.
-2. **Attendance is evidence-derived.** Normal application flows append
-   `attendance_evidence`; they do not edit evidence in place or hand-edit the
-   derived `attendance` result. The database currently permits an org admin to
-   delete evidence, so the stronger claim “evidence can never be deleted” is not
-   true. See spec 03 before changing that policy.
-3. **An attendance lock freezes derivation.** New evidence may still be written,
-   but interactive and background recomputation must not overwrite a locked
-   result until an authorized unlock.
+2. **Attendance evidence is append-only and results are derived.** Application
+   and RLS paths do not update/delete evidence or hand-edit a finalized result.
+   Corrections append a reasoned moderator observation; parent lifecycle deletes
+   may still cascade as declared in schema.
+3. **Finalized attendance is revisioned recognition input.** Evidence cannot be
+   added while finalized. A moderator must reopen with a reason, which revokes
+   canonical certificates, then re-finalize a complete roster as a new revision.
+   Feedback, Recall, and teaching assignment are not policy-v2 attendance.
 4. **Petrios Ops cannot send unapproved email.** Every Ops-originated outbound
    email must be represented by an approved `ops_pending_actions` row and sent
    through `lib/ops/executors.ts`. Core deterministic mail such as authentication,
@@ -121,9 +121,9 @@ Before modifying a subsystem:
 
 ## Documentation accuracy rules
 
-- Describe observed enforcement, not UI intention. For example, a field labelled
-  “anonymous” is not anonymous if the server stores and emails the submitter's
-  name.
+- Describe observed enforcement, not UI intention. For example, source feedback
+  is not anonymous when the server stores submitter identity, even though the
+  teacher-release path omits it.
 - Name the time reference and boundary (`date_start`, `date_end`, inclusive or
   exclusive) for every window.
 - State which actor may call a flow, which tenant is used, and how the subject is

@@ -50,7 +50,7 @@ export default function SubprocessorsPage() {
               </tr>
             </thead>
             <tbody>
-              <ServiceRow service="Supabase" purpose="Postgres database and authentication" data="Account, organisation, teaching, feedback, certificate, portfolio, communication, and audit data" status="Core service; operator chooses project and region" />
+              <ServiceRow service="Supabase" purpose="Postgres database, authentication, and private session-document storage" data="Account, organisation, teaching/document, attendance, feedback, certificate, portfolio, delivery, communication, and audit data" status="Core service; operator chooses project and region" />
               <ServiceRow service={config.hostingProvider} purpose="Runs the Petrios web application" data="Requests, IP/network metadata, session cookies, and server logs; application data in transit" status="Configured application host" />
               <ServiceRow service={config.emailProvider} purpose="Sends authentication and operational email" data="Recipient, sender, subject/body, delivery metadata, and attachments where applicable" status={config.emailProvider.startsWith('No ') ? 'Not declared' : 'Configured'} />
               <ServiceRow service={config.aiProvider} purpose="Optional LLM and text-to-speech processing" data="Purpose-limited session metadata, assistant messages, processed feedback, and approved recap text" status={config.aiEnabled ? 'Enabled' : 'Disabled'} />

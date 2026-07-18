@@ -1,310 +1,437 @@
-# 05 — Feedback, improvement actions, and certificates
+# 05 — Feedback, analytics, teacher reports, and certificates
 
-## Privacy statement
+## Privacy vocabulary and invariants
 
-Petrios feedback entry is public and accountless, but the current implementation
-is **not anonymous at collection or release**.
+Petrios feedback submission is public/accountless and identified. Those words
+describe different properties:
 
-The submitter must provide first name, last name, and email. Those values are
-stored in `session_feedback.attendee_*`; email is also used to resolve an
-existing profile/user id. Moderators can inspect raw identity and answer data.
-The teacher feedback email currently prints the submitter's name next to each
-free-text comment.
+- **public/accountless**: no authenticated browser session is required;
+- **identified at storage**: first name, last name, and email are required and
+  stored with answers;
+- **identity-field omitted**: a processing path deliberately excludes the
+  stored identity columns;
+- **privacy processed**: a path also applies controls such as name stripping,
+  welfare screening, aggregation, or small-cohort suppression; and
+- **anonymous**: the person cannot reasonably be identified, which the source
+  feedback row does not guarantee.
 
-Any UI text, prompt, or prior spec that calls the current end-to-end flow
-“anonymous” is inaccurate. The on-demand AI summary omits stored identity from
-its model input, and Petrios Ops performs stronger name stripping, but those
-processing choices do not make the original row or teacher email anonymous.
+The invariants are:
 
-The public `/privacy` notice and product/marketing language use
-**public/accountless but identified** for this boundary. `/privacy/choices`
-does not alter feedback identity or create an opt-out from a teaching programme's
-lawful processing; rights requests go to the deployment controller. See spec 13
-for the shared terminology and transparency contract.
+1. Product copy must not describe source feedback as anonymous.
+2. Feedback submission never creates attendance evidence or a certificate.
+3. Teacher release never includes respondent names, email addresses, or raw
+   comments and never changes attendance or certificates.
+4. Fewer than five responses suppresses detailed teacher-report analytics.
+5. Free text is untrusted at prompt, HTML, export, and public-output boundaries.
+6. A `VALID` certificate can be created only from the current finalized
+   attendance revision through the canonical eligibility boundary.
+7. Provider-reported email errors are durable failures, not successful sends.
+8. Coordinator attribution on an issued certificate is a snapshot and must not
+   change when later department settings are edited.
 
-An anonymized product promise would require, at minimum, a deliberate identity
-retention model, teacher-email redaction, small-cohort rules, raw-audit access
-policy, migration/backfill plan, and tests.
+See spec 13 for controller disclosure, lawful-basis, rights, retention, and AI
+provider responsibilities. Privacy processing reduces disclosure risk but does
+not retroactively anonymize the stored source.
 
-## Feedback form definition
+## Configurable feedback form
 
 Each department stores `feedback_form_fields` as a JSON array. Supported field
 types are:
 
-- `rating`: optional/required value from integer strings 1–5 plus an optional
-  comment prompt;
-- `text`: optional/required single text value; and
-- `textarea`: optional/required longer text value.
+- `rating`: integer string `1`–`5`, with an optional comment prompt;
+- `text`: single-line text; and
+- `textarea`: longer free text.
 
-Each normalized field has a stable unique id, label, required flag, type, and
-type-appropriate prompt metadata. Invalid/missing arrays fall back to six default
-fields: five required teaching-quality ratings and one optional additional
-comment. Missing/duplicate ids are generated and de-duplicated during
-normalization. Unknown field types fall back to `rating`; blank-label fields are
-dropped. If normalization yields no fields, defaults are restored.
+Normalized fields have a stable unique id, type, label, required flag, and
+type-appropriate prompt metadata. Invalid or absent templates fall back to six
+defaults: five required teaching-quality ratings and one optional comment.
+Normalization:
 
-Only department moderators can read/edit the template management action.
-Updates normalize and cap the form at 24 fields. The cap is enforced in that
-action, not by a database constraint.
+- drops blank-label fields;
+- generates and de-duplicates missing/duplicate ids;
+- maps unknown types to `rating`;
+- restores defaults if nothing usable remains; and
+- caps moderator updates at 24 fields in the server action.
 
-## Public entry points and timing
+Only a department moderator can read or update the management template. The
+24-field cap is an application rule, not a database constraint.
 
-Two routes render the same form:
+## Public entry points and submission window
 
-- `/sessions/:id/feedback` targets a named session; and
-- `/departments/:id/feedback` chooses the first published department session
-  active from 15 minutes before start through its feedback deadline.
+`/sessions/:id/feedback` targets one session.
+`/departments/:id/feedback` selects an active published session in the
+department. Both submit through `submitFeedback`.
 
-The department page uses `feedback_valid_mins_after_end || 120`, so a configured
-zero is treated as 120 in that selector. The session-specific page can be opened
-directly.
+The server, not only the page, enforces:
 
-The server `submitFeedback` action validates only that the session exists and is
-`PUBLISHED`. It does **not** enforce the displayed start/end feedback window.
-Consequently, a direct request can submit to any published session at any time.
-There is also no uniqueness constraint or idempotency key preventing repeated
-submissions by the same email/user.
+```text
+opens  = session start - (checkin_open_mins_before ?? 15 minutes)
+closes = session end   + (feedback_valid_mins_after_end ?? 120 minutes)
+```
 
-The attendance-evidence computation still rejects out-of-window `FEEDBACK`
-observations on recompute. A durable feedback row can therefore exist without
-valid attendance evidence.
+Both endpoints are inclusive. The session must exist and be `PUBLISHED`.
+Direct action invocation cannot submit before opening or after closing.
 
-## Submission validation and snapshot
+The department-selector page must use the same nullish semantics; a configured
+zero is meaningful and must not be changed to 120 with a truthy fallback.
 
-Submission requires nonblank trimmed first name, last name, and lower-cased
-email. Email syntax is primarily constrained by the form control; the action
-only requires a nonblank string.
+## Submission validation and storage
 
-The server reloads the current department template and builds a snapshot:
+The action requires trimmed first name, last name, and lower-cased email and
+performs a basic server-side email syntax check. It reloads the current
+department form and creates a durable answer snapshot:
 
-1. answer inputs are mapped by field id;
-2. every required value is checked;
-3. rating values must be one of `1` through `5`;
-4. every template field is stored with id, type, label, value, comment label,
-   and comment as applicable; and
-5. labels are snapshotted so historical answers remain interpretable after a
-   template edit.
+1. answer inputs map by stable field id;
+2. every required field is checked;
+3. ratings must be `1` through `5`;
+4. id, type, label, value, and comment prompt/value are snapshotted; and
+5. historical labels therefore survive later template changes.
 
-The submission's derived rating is the arithmetic mean of supplied rating
-values, rounded to the nearest integer. Derived comment is the double-newline
-join of labelled free-text values and rating comments. The JSON answer snapshot
-preserves the individual values used for later detailed statistics.
+The stored scalar `rating` is the rounded mean of supplied rating answers. The
+stored `comment` is a labelled, double-newline join of free-text fields and
+rating comments. The JSON answer snapshot remains the detailed source.
 
-If a profile has the same normalized email, `user_id` is attached; otherwise
-the row remains external. `is_anonymous` defaults false.
+If an existing profile has the same normalized email, its `user_id` is attached
+for feedback association. This is a lookup, not proof that the account owner
+submitted the public form, and must never be promoted into attendance identity.
 
-## Submission side effects and failure order
+`submission_key` is SHA-256 of the normalized submitted email. A partial unique
+index on `(session_id, submission_key)` permits one response per email per
+session and turns replay into a clear conflict message. This is an idempotency
+and duplicate-control rule, not email ownership verification. Shared addresses
+therefore share the one-response allowance, and a malicious person who knows an
+address could consume it; verified-email feedback would require a capability or
+login redesign.
 
-The durable feedback row is inserted first. Then two independent best-effort
-effects run:
+The feedback insert is the complete submission transaction. There is no
+best-effort attendance insert, certificate render, or email side effect after
+it.
 
-1. insert `FEEDBACK` attendance evidence for the resolved user or external email;
-2. if the organization name can be resolved, create an `ATTENDEE` certificate,
-   render its PDF, and email it as an attachment to the submitted email.
+## Moderator statistics
 
-Evidence or certificate/PDF failure is logged and does not reject or delete the
-feedback. The mail adapter returns `{ error }` for provider failure, but this
-path does not inspect that result; only a thrown exception is logged. A feedback
-submission can therefore report success with no delivered certificate and no
-explicit provider-failure log. Certificate issuance occurs immediately, even if:
+Feedback statistics require department-moderator authorization. For every
+submission:
 
-- the session has not ended;
-- the feedback observation is outside the evidence window;
-- attendance is locked or evidence insertion failed;
-- a certificate already exists for the same recipient/session/role; or
-- a department's `require_feedback_for_certificate` setting would be relevant to
-  a different batch path.
+- calculate the unrounded mean of snapshotted rating answers;
+- fall back to the legacy scalar rating if no rating answers exist;
+- give every submission equal weight in the overall mean;
+- round/clamp its distribution bucket to 1–5;
+- extract rating comments and text/textarea values as labelled responses; and
+- group question summaries by the snapshotted field id.
 
-The database has no general uniqueness on certificate recipient/session/role, so
-repeat submissions can issue multiple durable certificates. This path is not an
-attendance-eligibility guarantee; it is a feedback-triggered recognition path.
+`averageRating` is the mean of submission-level means rounded to one decimal,
+or zero with no score. Question averages are rounded to one decimal and carry
+response/comment counts. Legacy rows appear under “Overall session rating”.
 
-## Statistics
+The management Feedback surface can display aggregate scores and comment text
+to authorized moderators. `getSessionFeedbackAudit` is the explicitly
+identified raw path and includes stored name, email, answers, derived values,
+and timestamp. It is not attendance evidence and is not presented in the
+Attendance or Activity Log tabs.
 
-Feedback statistics are moderator-only because `getSessionFeedbackStats` calls
-the moderator-gated raw list operation.
+## On-demand AI feedback summary
 
-For each submission:
+Petrios does have an optional OpenAI-compatible feedback summarization
+capability. The moderator-only `summarizeSessionFeedback` action:
 
-- use the unrounded mean of its rating answers;
-- if there are no rating answers, fall back to the legacy stored `rating`;
-- add that score to the submission-score list;
-- round the submission score to the nearest integer, clamp 1–5, and increment
-  the distribution bucket;
-- extract rating comments and text/textarea values as labelled responses.
+1. confirms session and department authority;
+2. refuses gracefully when no provider or no feedback is configured;
+3. checks raw comments for welfare, safety, conduct, bullying, or safeguarding
+   signals and routes such content to human review without sending it to AI;
+4. omits stored first name, last name, and email fields;
+5. strips known name-like tokens from comments before inference;
+6. places comments in an explicit `<feedback-data>` untrusted-data fence and
+   instructs the model never to follow embedded instructions;
+7. requests a factual plain-text aggregate with rough theme counts and
+   actionable suggestions; and
+8. strips known names from returned text again.
 
-Overall `averageRating` is the arithmetic mean of submission scores, rounded to
-one decimal; it is zero when no score exists. Question summaries group by stored
-field id, average individual rating values to one decimal, and report response
-and comment counts. Legacy feedback without answer snapshots appears under an
-“Overall session rating” fallback.
+The call goes through the general `lib/ai/llm.ts` adapter and is not an Ops
+outbound action. The result is displayed on demand and is not stored or emailed
+automatically. Deterministic stripping cannot guarantee anonymization of every
+self-identifying phrase; moderator review remains required before copying the
+text elsewhere.
 
-This is a mean of submission-level means: a response answering one rating and a
-response answering five ratings have equal weight in the overall average.
+Petrios Ops synthesis is a separate stored workflow with the approval and audit
+rules in spec 06. Neither AI path evaluates individual trainee performance.
 
-## Raw audit and on-demand AI summary
+## Teacher feedback report lifecycle
 
-Department moderators can fetch a feedback audit containing stored first/last
-name, email, rating, derived comment, normalized answers, and timestamp.
+`releaseTeacherFeedback` is a deliberate department-moderator approval action.
+It does not run automatically after session end.
 
-The “summarize feedback” control is a separate on-demand feature:
+### Recipients
 
-- it requires a department moderator;
-- it calls `lib/ai/feedback-summary.ts` through the general `askLlm` adapter, not
-  the Petrios Ops gateway;
-- it sends session title, counts, ratings, and free-text comments but not the
-  stored attendee identity fields;
-- it returns plain text and does not store the result;
-- when no provider or feedback exists, it returns a displayable error rather
-  than mutating state.
+- external `teacher_invitations` must be `ACCEPTED`;
+- registered `session_teachers` must be `ACCEPTED` and have a profile email; and
+- candidates are de-duplicated by normalized email.
 
-Current prompt-safety limitation: comments are labelled as anonymized data, but
-they are concatenated into the prompt without the explicit untrusted-data fence
-and injection rules used by Ops synthesis. The model instruction says not to
-attribute names, but this path does not deterministically strip names appearing
-inside comment text. It must not be treated as having the stronger Ops safety
-contract.
+Assignment status is teaching responsibility only; release does not assert that
+the teacher physically attended.
 
-## Petrios Ops synthesis
+### Report snapshot and privacy threshold
 
-The scheduled Ops synthesis is a different stored artifact. It performs welfare
-screening on raw text, strips known and heuristic names before inference, validates
-structured output, removes unsafe returned quotes, and may require human review.
-It is used for thank-you/newsletter/recap workflows under the Ops specification.
-It does not replace raw moderator access or automatically change the teacher
-release email.
+The approval click creates (or reuses for retry) a
+`teacher_feedback_reports` snapshot with monotonically increasing per-session
+version, response count, aggregate JSON, suppression flag, creator/approver,
+timestamps, and lifecycle status `APPROVED`, `RELEASED`, or `FAILED`.
 
-## Teacher feedback release
+For fewer than five responses:
 
-`releaseTeacherFeedback` is a moderator action with broad side effects.
+- response count may be disclosed;
+- average and rating distribution are stored as null in the release snapshot;
+- question summaries are stored as an empty array; and
+- the email says detailed analytics were withheld.
 
-### Teacher selection
+For five or more, the email contains total count, mean, and distribution. In
+all cohorts it explicitly states that no respondent identity or raw comments
+are included. Dynamic teacher/session/department fields are HTML-escaped.
 
-- External teachers are restricted to `teacher_invitations.status = ACCEPTED`.
-- Registered teachers are selected from every `session_teachers` row without a
-  status filter. Pending and declined registered assignments are currently
-  included if their profile has an email.
+This deterministic report does not include the optional AI summary. Adding AI
+text to a teacher release would require an explicit reviewed artifact, welfare
+handling, and same-change approval semantics; a successful model call alone is
+not release authorization.
 
-### Per-teacher work
+### Idempotency, claims, and retry
 
-For each selected teacher, the action independently:
+If the latest report has the same immutable response count:
 
-1. inserts a new `TEACHER` certificate (no duplicate check);
-2. renders a PDF certificate;
-3. builds an email with total responses, average, distribution, and comments;
-4. includes stored attendee first/last name next to each comment; and
-5. sends the PDF attachment.
+- `FAILED` or `APPROVED` is reused for retry;
+- `RELEASED` is reused so already-sent recipients are not emailed twice; and
+- a newly accepted teacher without a delivery row can receive that same report.
 
-Thrown errors are caught per teacher. Adapter-reported `{ error }` results are
-not inspected and are still counted as sent. Re-running the action can create
-duplicate certificates and repeat email. There is no release watermark or batch
-transaction.
+A changed response count creates the next version. Concurrent version creation
+is reconciled against the unique `(session_id, version)` row.
 
-After email attempts, it best-effort inserts `TEACHER` evidence at session start
-for registered selected teachers. It then emails nonteacher attendees with
-materialized status exactly `PRESENT` (not `LATE`), reusing or creating a
-certificate. Those attendee emails do not attach the PDF even though the generic
-email says the certificate is available in the dashboard. Finally the action
-writes the session report watermark, which can pre-empt the later cron selector.
+Each recipient/report pair has one `session_deliveries` row. Before contacting
+the provider, a worker atomically claims `PENDING`/`FAILED` as `SENDING`.
+Concurrent workers cannot claim the same row. A `SENDING` claim older than 15
+minutes can be recovered after a crashed worker. `SENT` is skipped on retry.
 
-### HTML safety limitation
+Provider data id and `{ error }`, attempt count, last error/time, and sent time
+are stored. A report becomes `RELEASED` only when the current action observes no
+failed or in-progress recipient. Activity events record approval, release, or
+failure.
 
-The core teacher feedback template interpolates teacher, session, department,
-attendee name, and comment strings directly into HTML. It does not apply a shared
-HTML escape function. Stored free text can therefore alter rendered email markup.
-This is a known injection/sanitization gap; do not state that all Petrios email
-templates escape dynamic data. Ops newsletter templates have their own escaping.
+This is effectively-once at the application claim boundary, not a mathematical
+exactly-once email guarantee: a provider may accept an email and the database
+write may then fail, causing a later retry. Provider-supported idempotency would
+be needed to close that final distributed-systems gap.
+
+Teacher feedback release never:
+
+- creates teacher or attendee certificates;
+- appends attendance evidence;
+- emails attendees;
+- writes the session certificate-report watermark; or
+- exposes raw respondent identity/comment data to the teacher.
 
 ## “You said, we did”
 
-`feedback_actions` closes the visible improvement loop without copying raw
-feedback automatically.
+`feedback_actions` is the human-authored public improvement loop.
 
-- A department moderator creates, edits, or deletes a session-linked pair of
-  `theme` and `action`.
-- Both fields are trimmed, required, and capped at 280 characters by the server.
+- A department moderator creates, edits, or deletes a session-linked `theme`
+  and `action` pair.
+- Both fields are trimmed, required, and limited to 280 characters by the
+  action.
 - The table uses deny-all RLS and an authorized service DAL.
-- Public feedback pages display up to the latest five department actions.
-- Authoring an action is a human editorial decision; AI synthesis does not
-  publish one automatically.
+- Public feedback pages show up to the latest five department actions.
+- No AI result is published automatically.
 
-The public output must be written as nonidentifying programme improvement, since
-the source feedback may contain personal or welfare information.
+The author must write nonidentifying programme-level text; source feedback may
+contain personal, welfare, or special-category information.
 
-## Certificate record
+## Certificate record and statuses
 
-A certificate stores:
+A certificate stores organization, department, session, optional registered
+user, role (`ATTENDEE`/`TEACHER`), unique human-readable code, recipient
+name/email snapshot, ordered teaching-coordinator name snapshot, issuer
+snapshot, issue time, attendance revision, issuance source, and lifecycle
+fields.
 
-- organization, department, and session;
-- optional `user_id` (nullable for external recipients);
-- role `ATTENDEE` or `TEACHER`;
-- unique 8-character human-readable `certificate_code`;
-- issued timestamp;
-- optional snapshotted `recipient_name`;
-- optional `issued_by` and snapshotted `issued_by_name`; and
-- a legacy `pdf_storage_path`, while current PDFs are normally rendered on
-  demand.
+Statuses are:
 
-The certificate code is unique, but the combination of recipient/session/role is
-not. There is no revocation, expiry, invalidation status, or replacement chain.
-Public “valid” means a certificate row with that code exists.
+| Status | Meaning |
+|---|---|
+| `VALID` | Passed the current canonical eligibility gate and has not been revoked |
+| `REVOKED` | Retained for audit but no longer valid; reason, actor, and time are stored |
+| `LEGACY` | Predates the canonical gate; retained and labelled as legacy, not silently asserted as v2-valid |
+
+Migration 046 marks pre-existing rows `LEGACY`. Partial unique indexes permit at
+most one `VALID` certificate per `(session, user, role)` or normalized external
+email/role. Revoked and legacy history does not prevent a new canonical row.
+The current canonical workflow requires a registered `user_id`; external valid
+certificates would need a separately defined identity/eligibility protocol.
+
+## Teaching-coordinator configuration and snapshot
+
+Department moderators and organization admins configure certificate defaults in
+Settings for each department they manage. The form accepts zero to four ordered
+teaching-coordinator names. The server boundary:
+
+- requires an array of text values;
+- trims leading/trailing whitespace and collapses repeated inner whitespace;
+- removes blank values and case-insensitive duplicates while preserving the
+  first spelling and order;
+- rejects more than four input rows; and
+- rejects a normalized name longer than 80 characters.
+
+`departments.certificate_coordinator_names` is the current default. The database
+also caps its cardinality at four. Updating the list writes the first name to
+the historical `departments.lead_name` column for compatibility with older
+clients; new code treats the ordered array as canonical.
+
+At new issuance, both the moderator path and the post-session job copy the
+resolved department list to `certificates.coordinator_names`. Manual generation
+also snapshots the issuing moderator separately in `issued_by_name`; the cron
+has no human issuer. If the configured array is empty but a legacy lead exists,
+the server uses that one legacy value. Editing Settings later affects previews
+and future certificate rows only.
+
+Migration 052 initializes empty department arrays from nonblank `lead_name` and
+then backfills every pre-existing certificate once from its department. That
+transition freezes the attribution visible at migration time; it cannot recover
+which historical lead applied at each old issue date.
+
+## Canonical certificate eligibility
+
+Every application issue path calls `requireCertificateEligibility`, and a
+database `BEFORE INSERT/UPDATE` trigger independently repeats the gate. A
+`VALID` certificate requires:
+
+1. a `PUBLISHED` session whose end is not in the future;
+2. `attendance_phase = FINALIZED`;
+3. a registered user with finalized `PRESENT` or `LATE` attendance;
+4. the attendance row revision equal to the session revision; and
+5. for role `TEACHER`, an `ACCEPTED` registered teacher assignment.
+
+Feedback status and `require_feedback_for_certificate` do not participate.
+Being assigned as a teacher does not replace physical-attendance evidence.
+
+The trigger overwrites the certificate's attendance revision with the current
+session revision, normalizes recipient email, and rejects future issue paths
+that try to bypass the service. Certificate insert also appends a
+`CERTIFICATE_ISSUED` activity event.
 
 ## Certificate issue paths
 
-| Path | Actors/trigger | Eligibility actually enforced | Duplicate behavior | Delivery |
-|---|---|---|---|---|
-| Feedback submission | Public submitter | Published session + valid required form fields | Always attempts a new row | Email with PDF attachment |
-| Manual `generateCertificate` | Any authenticated current-org caller able to read session context; no explicit moderator check | No attendance/teacher check | Always new | Returns PDF buffer to caller |
-| Session batch generation | Authenticated caller; no explicit moderator check | Session ended, not cancelled; all registered teacher rows; attendees `PRESENT`/`LATE`; optional feedback requirement for attendees | Calls manual path, always new | Returns buffers; no email |
-| Teacher feedback release | Department moderator | External accepted teachers; all registered teacher rows; trainee status exactly `PRESENT` | Teachers always new; attendee reuses/finds existing | Teacher PDF attachment; trainee email without attachment |
-| Post-session cron | Cron secret, 24h after published session | Internal `PRESENT`/`LATE` materialized users | Checks any user/session cert first | Email without attachment; emits event only for newly created cert |
+| Path | Authority/trigger | Recipients | Idempotency and delivery |
+|---|---|---|---|
+| Manual `generateCertificate` | Authenticated department moderator | One supplied registered user and role passing canonical eligibility | Reuses current `VALID` certificate for that role; renders PDF result |
+| Session batch | Department moderator, ended published session, finalized attendance | Every `PRESENT`/`LATE` attendee plus accepted registered teachers who also have `PRESENT`/`LATE` | Role-specific reuse; returns issued/existing/failure counts; no email |
+| Post-session job | Cron bearer secret; finalized sessions selected by report watermark | Internal `PRESENT`/`LATE` attendees | Role-specific valid reuse/insert; durable claimed email delivery; watermark only after all recipients complete |
 
-Important manual-path limitation: `generateCertificate(sessionId, userId, role)`
-records the supplied target user id, but derives the rendered recipient name from
-the **current caller's** auth user/email, not the target profile, and does not
-pass a `recipient_name` snapshot into the insert. It also snapshots the caller as
-issuer. This can produce a certificate whose target, PDF name, and public
-recipient display are inconsistent.
+There is no feedback-submission issue path and no teacher-feedback-release issue
+path.
 
-`findCertificateByUserAndSession` uses a single-row lookup despite the absence of
-a uniqueness constraint. Existing duplicate rows can make lookup-based download
-or reuse fail rather than select deterministically.
+Manual generation snapshots the target profile's name/email, the department's
+resolved teaching coordinators, and the moderator as issuer. It does not use the
+moderator's identity as the recipient. System issuance snapshots the same
+coordinator defaults without inventing a human issuer. Batch errors are returned
+to the moderator rather than being logged and presented as unqualified success.
 
-## Rendering, download, and verification
+The post-session job emits `attendance.computed` only for the already finalized
+record and `certificate.issued` only for a new certificate. A recipient delivery
+is related to the certificate id, so a replacement certificate after correction
+has a distinct retry ledger. The session report watermark is not written after
+any missing profile, eligibility, claim, provider, or ledger failure.
 
-Certificate PDFs are black-and-white React PDF cards with organization,
-department, session, date, recipient, role, code, issuer/signatory details, and a
-QR verification URL. Rendering reads current session/department names plus
-snapshotted recipient/issuer where the calling path stored them; older/manual
-records may fall back to current auth identity.
+## Reopening, revocation, and replacement
 
-Download paths require authentication and enforce either current-user ownership
-or an org-scoped certificate id, depending on the route/action. External
-recipients generally receive their PDF through email and cannot use a self-owned
-authenticated download path without a linked user.
+When finalized attendance is reopened, a database lifecycle trigger atomically:
 
-`/verify/:certificateId` is public. It resolves the unique code and displays
-recipient snapshot when present, role, session/date, department, organization,
-signatories, and issued date. No login or secret beyond the code is required.
-The bearer API `read:certificates` route additionally requires the certificate's
-organization to match the token organization.
+- changes every `VALID` certificate for the session to `REVOKED`;
+- records revocation time, actor, and reason;
+- clears `report_sent_at`; and
+- writes certificate-reconciliation activity.
 
-Certificate verification proves database presence on this instance; it is not a
-digital signature and does not prove that attendance or teacher eligibility was
-correctly evaluated at issue time.
+The public code remains resolvable so a verifier sees “Revoked Certificate” and
+the reason rather than “not found”. Authenticated PDF download returns HTTP 410
+for revoked rows. A later finalization and eligibility pass can issue a new code.
 
-## Required change checks
+Finalization also reconciles against the resulting revision and revokes any
+canonical row without matching eligible attendance. These database effects are
+in the attendance lifecycle transaction.
 
-- State whether feedback is identified, pseudonymous, or anonymous at storage,
-  moderator view, AI input, teacher release, and public output separately.
-- Enforce feedback windows on the server if they are a product rule.
-- Add idempotency/uniqueness before promising one response or certificate.
-- Keep form labels in answer snapshots so history survives template changes.
-- Treat free text as untrusted in prompts and HTML; escape output at the template
-  boundary.
-- Filter teacher status explicitly in every issue/release path.
-- Define one canonical certificate eligibility service before adding new issue
-  paths.
-- Decide revocation and correction semantics before calling public verification
-  authoritative.
-- Test side-effect ordering and partial failure, not only the happy-path PDF.
+## PDF, branding, download, and public verification
+
+PDFs are rendered on demand as one-page A4 landscape documents. The visual
+contract deliberately follows the application UI rather than accepting custom
+tenant colours:
+
+- IBM Plex Mono is loaded from the bundled application fonts;
+- Petrios warm paper (`#F0EEE6`), surface (`#FAF9F5`), ink (`#1F1D1A`), and
+  contrast-safe clay (`#A95134`) are the renderer tokens;
+- the masthead contains the clay-block `P` and explicit `PETRIOS` wordmark;
+- organization and department attribution remain visible;
+- attendee and teacher certificates use role-specific recognition wording;
+- the lower credential area shows the snapshotted coordinator list and a
+  distinct human issuer when present; and
+- certificate code, issue date, and a QR verification URL remain visible.
+
+The coordinator display stacks up to four names vertically in configured order,
+without slash or comma separators, and remains isolated from the issuer and QR
+regions. A missing coordinator setting is labelled “Not specified”; a
+system-issued certificate without a distinct human issuer is labelled “Petrios
+certificate service”. A coordinator who also issued the row is not repeated by
+name as issuer; the issuer region points back to the coordinator list. Long
+organization, department, session, and recipient values are bounded or
+font-scaled by the renderer.
+
+The Settings preview is moderator-authorized and renders current department
+defaults with sample recipient/session content. It is not an issued certificate
+and uses code `PREVIEW`. Dynamic recipient/session values in certificate email
+are HTML-escaped. The legacy `pdf_storage_path` is retained but current PDFs are
+normally not persisted.
+
+Authenticated download requires current-user ownership and organization scope.
+`VALID` and explicitly labelled `LEGACY` rows can render; `REVOKED` cannot.
+
+`/verify/:certificateId` is public because the code is a bearer verification
+identifier. It uses the certificate's coordinator snapshot (falling back to the
+legacy department lead only for an unmigrated/defensive read), shows each
+coordinator plus a distinct issuer, and reports:
+
+- green “Valid Certificate” for `VALID`;
+- amber “Legacy Certificate Record” with the pre-gate warning for `LEGACY`; and
+- red “Revoked Certificate” with retained reason for `REVOKED`.
+
+Public verification proves the status of a database record on this instance. It
+is not a digital signature. Federated signed teaching records are a separate
+spec 09 capability.
+
+## Failure and privacy limitations
+
+- Accountless feedback does not verify control of the supplied email.
+- Known-name stripping and welfare keyword screening cannot identify every
+  sensitive or self-identifying phrase.
+- The raw moderator audit remains identified and needs least-privilege access,
+  retention, and incident handling.
+- Report claims prevent concurrent application sends, but provider acceptance
+  followed by ledger failure can still produce an at-least-once retry.
+- Certificate codes are public bearer identifiers and must not contain hidden
+  sensitive data.
+- No general retention worker currently deletes feedback, report snapshots,
+  delivery ledgers, revoked certificates, or provider copies.
+
+## Verification contract
+
+Changes require tests or integration coverage for:
+
+- server feedback-window endpoints and zero/null behavior;
+- required fields, rating values, email normalization, answer snapshot labels,
+  and duplicate submission conflict;
+- confirmation that submission creates no evidence/certificate/email;
+- statistics for modern and legacy answers;
+- AI identity omission, untrusted-data fencing, welfare refusal, and returned
+  name stripping;
+- threshold behavior at four and five responses and HTML escaping;
+- accepted-teacher filtering, normalized recipient de-duplication, report
+  version reuse, delivery claim/reclaim, provider error, partial retry, and
+  already-sent skip;
+- application and database certificate eligibility, role-specific uniqueness,
+  batch partial failure, cron watermark, reopen revocation, HTTP 410 download,
+  public valid/legacy/revoked states, coordinator normalization/snapshotting,
+  issuer de-duplication, and branded PDF generation; and
+- stale-language searches for claims that feedback is anonymous or that
+  feedback/Recall/teaching assignment proves attendance.

@@ -15,7 +15,7 @@ read exception in `lib/auth.ts`. See spec 01 for the import boundary.
 
 Migration filenames are `NNN_snake_case.sql`, with a unique monotonically
 increasing numeric prefix. The implemented baseline ends at
-`044_single_moderator_organization.sql`.
+`052_certificate_branding_and_coordinators.sql`.
 
 Rules for a schema change:
 
@@ -50,7 +50,7 @@ guardrail, not a semantic review of every policy.
 | `profiles` | Application profile synchronized from `auth.users`; email and display-name source | Authenticated self-read/update plus authorized directory use; synchronization trigger |
 | `organizations` | Root tenant and personal/non-personal organization metadata | Organization members; managers mutate |
 | `organization_members` | User-to-organization role assignment | Member visibility constrained by org; admins mutate |
-| `departments` | Programme partition, join code, configurable attendance/feedback settings | Organization members according to role and publication rules |
+| `departments` | Programme partition, join code, configurable attendance/feedback settings, and ordered certificate coordinator defaults | Organization members according to role and publication rules |
 | `department_members` | User membership, role, and grade in a department | Department/org scoped; administrators mutate |
 | `super_admins` | Global platform administrator allow-list | Authorization seam/service use; never inferred from org role |
 
@@ -77,7 +77,7 @@ Capability resolution and state transitions remain in actions/DAL functions.
 
 | Table | Purpose | Key relationships and constraints |
 |---|---|---|
-| `sessions` | Scheduled teaching event | Belongs to organization and department; has creator, status, type, time, location, reminder/report watermarks, attendance settings and lock |
+| `sessions` | Scheduled teaching event | Belongs to organization and department; has creator, status, type, time, location, reminder/report watermarks, attendance policy/phase/revision, and secure group-code verifier |
 | `session_teachers` | Registered-account teacher assignment/RSVP | Session + user identity; status is `PENDING`, `ACCEPTED`, or `DECLINED` |
 | `teacher_invitations` | External-email teacher invitation and public RSVP | Session, normalized email, invite code, RSVP state, identity/contact fields |
 | `teacher_emails` | Historical/manual teacher email metadata | Session-linked communication record |
@@ -88,6 +88,7 @@ Capability resolution and state transitions remain in actions/DAL functions.
 | `slot_publications` | Publication event and audience selection | Immutable-ish publication metadata and creator |
 | `slot_publication_slots` | Snapshot of slots included in a publication | Join between publication and offered slots |
 | `slot_claim_links` | Per-recipient claim capability and claim result | Member or external identity; external links carry a code |
+| `session_documents` | Private session file metadata, validation state, checksum, archive state, and scoped hard-delete path | Deny-all; object bytes live in the private `session-documents` bucket |
 
 Open-slot uniqueness prevents two active rows with the same department/start
 identity, but it does not prohibit all time overlaps. See spec 04 for the exact
@@ -97,16 +98,23 @@ claim compare-and-set and audience snapshot.
 
 | Table | Purpose | Mutability |
 |---|---|---|
-| `attendance_evidence` | Source observation for a user or external email at a session | Append-oriented in application flows; UPDATE denied; org-admin DELETE policy currently exists |
-| `attendance` | Materialized deterministic result (`PRESENT`, `LATE`, `ABSENT`) | Upserted by derivation; frozen while session/result is locked |
+| `attendance_evidence` | Source observation for exactly one user or external email at a session | Append-only application/RLS posture; policy-v2 writes use a transactional service RPC |
+| `attendance` | Materialized deterministic result (`PRESENT`, `LATE`, `ABSENT`, `EXCUSED`) | Provisional derivation until locked/stamped with a final revision |
+| `session_participants` | Expected/optional/excused session roster snapshot | Deny-all; evidence adds optional subjects and finalization snapshots expected members/teachers |
+| `session_activity_events` | Governed session operation projection | Deny-all, append-only application convention; not a complete security audit |
+| `attendance_code_attempts` | Per-user and HMAC-pseudonymized-IP group-code throttle events | Deny-all technical/security log |
+| `session_attendance_secrets` | Salted scrypt verifier for the active group code | Deny-all server secret; never selected with ordinary session rows |
 | `session_reflections` | User's written learning reflection | Self-owned upsert per session/user |
 | `portfolio_packs` | Immutable serialized ARCP/portfolio snapshot and verification code | Insert/read through service DAL; no update/revoke path |
 | `recall_question_sets` | Three-question Recall artifact and send watermarks | Draft/edit/approve lifecycle |
 | `recall_answers` | One answer set per session/user | Insert-once result with kind, score, answers, and timestamps |
 
+`attendance_evidence` has a unique per-session `source_event_key` when present.
 `attendance` has separate partial uniqueness for internal subjects
 (`session_id`, `user_id`) and external subjects (`session_id`, normalized external
-email). A row is a cache of the derivation, not primary evidence.
+email). A row is a cache of the derivation, not primary evidence. Policy-v2
+finalization row-locks the session, snapshots the roster, materializes absences,
+and increments/stamps the revision in one RPC transaction.
 
 ## Feedback and recognition tables
 
@@ -114,18 +122,26 @@ email). A row is a cache of the derivation, not primary evidence.
 |---|---|---|
 | `session_feedback` | Submitted identity snapshot, configurable answer snapshot, derived rating/comment | Public/accountless submission path; moderator raw access |
 | `feedback_actions` | “You said, we did” public response | Moderator-authored, department scoped |
-| `certificates` | Issued certificate metadata and public verification code | Multiple issue paths; external recipient supported; no general recipient/session/role uniqueness |
+| `teacher_feedback_reports` | Moderator-approved, versioned aggregate release snapshot | Deny-all; privacy-suppression and release/failure state |
+| `session_deliveries` | Per-recipient/report-or-certificate delivery ledger and recoverable send claim | Deny-all; unique natural delivery identity, 15-minute stale-claim recovery |
+| `certificates` | Issued certificate metadata, public code, attendance revision, coordinator-name snapshot, and validity/revocation state | Database eligibility trigger; partial uniqueness for one current `VALID` subject/session/role row |
 
 Feedback stores the submitter's first name, last name, and email; “public form”
-does not mean anonymous storage. Certificates are durable issuance records, while
-PDF bytes are rendered on demand. See spec 05 for the privacy and duplication
-implications.
+does not mean anonymous storage. A per-session submission key limits one response
+per normalized email. Certificates are durable issuance records with
+`VALID`/`REVOKED`/`LEGACY` state and an ordered `coordinator_names` snapshot,
+while PDF bytes are rendered on demand. Department defaults permit at most four
+`certificate_coordinator_names`; migration 052 initializes that list from the
+historical `lead_name` and backfills existing certificate snapshots once. The
+old single-value column remains as a compatibility mirror of the first current
+coordinator, not the canonical renderer input. See spec 05 for report privacy,
+eligibility, branding, replacement, and delivery semantics.
 
 ## Notification, API, and integration tables
 
 | Table | Purpose | RLS posture |
 |---|---|---|
-| `notifications` | In-app notification for one user | User selects/marks own rows; service inserts |
+| `notifications` | In-app notification for one user, optionally idempotent by user/dedupe key | User selects/marks own rows; service inserts |
 | `api_tokens` | Hashed organization API credential, scopes, revocation, usage timestamp | Deny-all; service DAL after org-admin or bearer auth |
 | `webhook_endpoints` | Organization callback URL, plaintext signing secret, event subscription | Deny-all; service DAL after org-admin auth |
 | `webhook_deliveries` | One-attempt payload and response audit | Deny-all; service write/read |
@@ -187,9 +203,11 @@ the server action/DAL predicate is part of the boundary.
 
 ### Deny-all service tables
 
-Ops, API credentials, webhooks, portable snapshots, and some public-capability
-records enable RLS without granting browser policies. Only server code with a
-justified service-role client may access them. Such a DAL must:
+Ops, API credentials, webhooks, portable snapshots, session documents/activity/
+rosters, attendance-code attempts, teacher feedback reports, delivery ledgers,
+and some public-capability records enable RLS without granting browser policies.
+Only server code with a justified service-role client may access them. Such a
+DAL must:
 
 - derive tenant scope before the call;
 - filter by that scope on every read/update/delete;
@@ -222,12 +240,16 @@ Important guarantees live at different layers:
 - migration 044's serialized trigger permits `department_admin` rows in multiple
   departments of one organization but demotes moderator rows in every other
   organization to `faculty` whenever a new organization wins;
-- partial unique indexes distinguish internal and external attendance subjects;
+- partial unique indexes distinguish internal/external attendance subjects and
+  current valid certificate roles;
+- attendance source-event keys, feedback submission keys, notification dedupe
+  keys, report versions, and delivery natural keys suppress replay;
+- session row locks serialize evidence and attendance finalization;
+- database triggers reject duplicate finalization, invalidate certificates when
+  attendance is reopened, and reject ineligible `VALID` certificate inserts;
 - update predicates implement transitions such as claiming an `OPEN`, future
-  slot or claiming a `pending` Ops action;
+  slot, claiming a `pending` Ops action, or claiming a delivery lease;
 - watermarks keep reminder/report/Recall jobs from repeating completed work;
-- some issue paths intentionally have no uniqueness, notably repeated manual or
-  release certificate generation;
 - email and webhook effects are usually not in the same transaction as the
   durable state that triggered them.
 

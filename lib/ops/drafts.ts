@@ -95,7 +95,7 @@ export async function draftThankYouEmail(
     system: DRAFT_SYSTEM,
     prompt: `Draft a thank-you email to ${input.recipientName} for teaching "${input.sessionTitle}" on ${input.dateLabel}.
 
-Feedback summary (already anonymised — do not add names):
+Feedback summary (privacy-processed after identity-field omission/name stripping; source was identified — do not add names or claim anonymity):
 Average rating: ${rating}
 Themes:
 ${themes || '(none)'}

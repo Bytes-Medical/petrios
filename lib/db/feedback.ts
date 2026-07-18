@@ -63,6 +63,9 @@ export interface FeedbackSessionContext {
   department_id: string
   title: string
   date_start: string
+  date_end: string
+  checkin_open_mins_before: number | null
+  feedback_valid_mins_after_end: number | null
   status: string
 }
 
@@ -72,7 +75,7 @@ export async function findSessionForFeedbackSubmission(
   const db = await getServiceDb()
   const { data, error } = await db
     .from('sessions')
-    .select('id, org_id, status, department_id, title, date_start')
+    .select('id, org_id, status, department_id, title, date_start, date_end, checkin_open_mins_before, feedback_valid_mins_after_end')
     .eq('id', sessionId)
     .maybeSingle()
 
@@ -127,6 +130,7 @@ export interface InsertSessionFeedbackInput {
   lastName: string
   email: string
   isAnonymous?: boolean
+  submissionKey?: string
 }
 
 export async function insertSessionFeedback(
@@ -146,6 +150,7 @@ export async function insertSessionFeedback(
       attendee_first_name: input.firstName,
       attendee_last_name: input.lastName,
       attendee_email: input.email,
+      submission_key: input.submissionKey ?? null,
     })
     .select('id')
     .single()
@@ -240,6 +245,7 @@ export async function listRegisteredSessionTeachers(
     .from('session_teachers')
     .select('id, user_id')
     .eq('session_id', sessionId)
+    .eq('status', 'ACCEPTED')
 
   if (error) throw toDbError('Failed to list registered session teachers', error)
   return (data as { id: string; user_id: string }[] | null) ?? []

@@ -35,15 +35,15 @@ export default async function DepartmentFeedbackPage(
   }
 
   // Find active published session for this department
-  // Active = 15 mins before date_start to feedback_valid_mins_after_end after date_end
+  // Match the server action's configurable, inclusive feedback window.
   const sessions = await sessionsDb.listPublishedSessionsForDepartmentPublic(params.id)
   const now = new Date()
 
   const activeSession = sessions.find((session) => {
     const start = new Date(session.date_start)
     const end = new Date(session.date_end)
-    const windowBefore = 15 // minutes before start
-    const windowAfter = session.feedback_valid_mins_after_end || 120 // minutes after end
+    const windowBefore = session.checkin_open_mins_before ?? 15
+    const windowAfter = session.feedback_valid_mins_after_end ?? 120
 
     const windowStart = new Date(start.getTime() - windowBefore * 60 * 1000)
     const windowEnd = new Date(end.getTime() + windowAfter * 60 * 1000)
@@ -103,7 +103,7 @@ export default async function DepartmentFeedbackPage(
         <Card>
           <h2 className="text-lg font-mono font-bold mb-4">Session Feedback</h2>
           <p className="font-mono text-sm text-gray-600 mb-6">
-            Please complete this form to record your attendance and provide feedback.
+            Please complete this identified feedback form. Attendance is recorded and finalized separately.
           </p>
           <FeedbackForm
             sessionId={activeSession.id}

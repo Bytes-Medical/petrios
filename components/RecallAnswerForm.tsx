@@ -46,8 +46,8 @@ export function RecallAnswerForm({ token, questions }: RecallAnswerFormProps) {
 
         {result.caughtUp && (
           <p className="border border-green-700 bg-green-50 px-4 py-3 font-mono text-sm text-green-800">
-            Caught up — your attendance for this session has been recorded
-            (evidence source: recall).
+            Catch-up completed. This records learning completion, not physical
+            attendance at the original session.
           </p>
         )}
         {result.attendanceLocked && (
@@ -58,8 +58,8 @@ export function RecallAnswerForm({ token, questions }: RecallAnswerFormProps) {
         )}
         {result.kind === 'CATCH_UP' && !result.passed && (
           <p className="border border-gray-300 bg-gray-50 px-4 py-3 font-mono text-sm text-gray-700">
-            Below the pass mark, so attendance wasn&apos;t recorded — but the
-            explanations below cover what the session taught.
+            Below the catch-up pass mark. The explanations below cover what the
+            session taught; the result does not alter attendance.
           </p>
         )}
 

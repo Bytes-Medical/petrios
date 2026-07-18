@@ -119,10 +119,8 @@ export async function addSessionTeacher(sessionId: string, userId: string) {
     throw new Error('User is not a member of this department')
   }
 
-  // Assignments start PENDING; TEACHER attendance evidence is recorded when
-  // the teacher accepts (app/actions/teaching-assignments.ts), not here —
-  // marking a teacher PRESENT at invite time would be wrong once they can
-  // decline.
+  // Assignments start PENDING. Accepting later confirms teaching responsibility
+  // only; it never creates physical-attendance evidence.
   const teacher = await sessionsDb.insertSessionTeacher({
     orgId,
     sessionId,

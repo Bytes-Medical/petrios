@@ -2,18 +2,21 @@
 
 ## Scope
 
-Petrios has two related audit surfaces:
+Petrios has three related governance/reporting surfaces:
 
 1. `/audit` is an organization/department governance dashboard with aggregate
    cards, a recent-session table, certificate search, identified member
    attendance, grade-cohort equity, and PDF/CSV exports; and
-2. a managed session's **Attendance Audit** tab exposes the identified feedback
-   submissions for that session and can export them as CSV.
+2. a managed session's **Attendance** tab exposes lifecycle, roster, materialized
+   results, evidence provenance, corrections, and finalization; and
+3. the session **Activity Log** shows governed session events. Identified raw
+   feedback remains a separate moderator-only Feedback/API path.
 
 These are operational views over live application tables. They are not signed
-records, immutable statutory reports, or a complete event/audit log. Attendance
-evidence history is the provenance layer for attendance; the audit dashboard
-mostly reads the derived `attendance` table.
+statutory reports. Attendance evidence is append-only provenance, while
+`session_activity_events` is an append-only operational event projection. The
+activity table is not a complete record of every read, edit, authentication
+event, provider action, or historical action before migration 045.
 
 Several current calculations have narrower or broader scope than their labels
 suggest. This document defines those calculations exactly and records the gaps so
@@ -45,7 +48,7 @@ from a client-supplied organization id.
 The dashboard displays the names of all included departments. It has no
 department selector: org-wide administrators always receive the combined view.
 
-### Managed-session feedback audit
+### Managed-session raw feedback endpoint
 
 `GET /api/sessions/:id/feedback/audit` calls the same server action used by the
 managed-session UI. The action requires a current organization, resolves the
@@ -93,11 +96,13 @@ round(100 × count(existing attendance rows with PRESENT or LATE)
           / count(all existing attendance rows))
 ```
 
-The denominator includes existing `ABSENT` rows and any other stored status. It
-does **not** materialize an expected roster, and a member with no attendance row
-does not enter the denominator. Consequently this is the positive proportion of
-recorded attendance rows, not the percentage of all eligible programme members
-who attended all sessions.
+The denominator includes existing `ABSENT` and `EXCUSED` rows. A finalized
+policy-v2 session materializes an expected roster, so its denominator includes
+the current department-member/accepted-teacher snapshot described in spec 03.
+Open/review sessions, future rows, and policy-v1 historical sessions may still
+have only evidence-bearing subjects. Because this headline mixes all those
+states and does not filter to finalized v2 revisions, it remains the positive
+proportion of stored rows, not a clean programme-level expected-attendance rate.
 
 Attendance rows from future published sessions are included if they already
 exist. The result is rounded to a whole percentage point. If no attendance rows
@@ -118,9 +123,10 @@ no ratings, the card receives zero and displays an em dash.
 ### Certificates
 
 `certificatesIssued` counts certificate rows whose `department_id` is authorized.
-It does not filter by session status, issue date, or the published session id
-set. Duplicate issuance rows count separately. This makes the count a durable
-row total, not a unique recipient/session total.
+It does not filter by certificate `VALID`/`REVOKED`/`LEGACY` status, session
+status, issue date, or the published-session id set. Replacement and historical
+rows count separately. This is a durable issuance-row total, not a current-valid
+or unique-recipient total.
 
 ## Recent sessions and date filtering
 
@@ -140,9 +146,10 @@ For each listed session:
 - `certificatesIssued` counts certificate rows for that session; and
 - the lock icon reflects `sessions.attendance_locked`.
 
-The list does not display an expected roster, absent people with no row,
-evidence timestamps, or source provenance. Clicking a title opens the normal
-session page, whose own authorization rules still apply.
+For finalized policy-v2 sessions the rows include snapshotted expected absences;
+for other sessions they may not. The list itself does not display roster
+expectation, revision, evidence timestamps, or source provenance. Clicking a
+title opens the normal session page, whose own authorization rules still apply.
 
 ### Browser date filter
 
@@ -180,10 +187,11 @@ The PDF contains:
 - a session table with start date, present count, total rows, percentage, and
   stored-rating average.
 
-The “Total Expected” label is currently stronger than the data: the denominator
-is recorded attendance rows, not an independently defined expected roster. The
-PDF omits certificates, feedback response counts, evidence provenance, member
-details, and equity data.
+The “Total Expected” label remains stronger than this mixed dataset. Finalized
+policy-v2 rows have a defined snapshot roster, but historical/open/review rows
+may not. The PDF neither filters to final revisions nor identifies the roster
+snapshot time. It omits certificates, feedback response counts, evidence
+provenance, member details, and equity data.
 
 PDF generation occurs in a server action, returns the entire document as base64,
 and the browser constructs a download Blob. Generation is not persisted or
@@ -192,8 +200,11 @@ tamper-evident hash.
 
 ## Certificate register
 
-The Certificates tab loads every certificate row in authorized departments,
-ordered newest issuance first, with no page-size limit. It displays/searches by:
+The Certificates tab loads every `VALID`, `REVOKED`, and `LEGACY` certificate row
+in authorized departments, ordered newest issuance first, with no page-size
+limit. The current audit projection does not expose lifecycle status or
+revocation reason, so the public verification link is required to see that
+state. It displays/searches by:
 
 - recipient name when `recipient_name` is stored;
 - recipient email only in the limited resolution case below;
@@ -204,15 +215,15 @@ ordered newest issuance first, with no page-size limit. It displays/searches by:
 
 For a certificate that has `user_id` **and lacks** `recipient_name`, the server
 uses the GoTrue admin API to resolve the account email. If `recipient_name` is
-already present, no email lookup occurs and `recipientEmail` is null. External
-certificate rows have no `user_id`, and the certificate table does not preserve
-their email, so the audit register normally cannot show it.
+already present, no email lookup occurs and `recipientEmail` is null. Although
+new certificate rows can preserve `recipient_email`, the audit query does not
+select it; external rows therefore still do not show an email in this table.
 
 Search is client-side, case-insensitive substring matching over loaded values.
 The code links to the public `/verify/:code` page. Authorized audit users can
-therefore see and copy bearer-like public verification codes. Duplicate
-certificates remain separate rows and affect both table totals and headline
-counts.
+therefore see and copy bearer-like public verification codes. Legacy, revoked,
+and replacement certificates remain separate rows and affect both table totals
+and headline counts.
 
 ## Member summary and individual attendance
 
@@ -321,27 +332,49 @@ The CSV contains grade, members, sessions attended, sessions possible,
 attendance percentage, and small-cohort boolean. It inherits the combined-scope
 denominator flaw from member rows.
 
-## Identified session-feedback audit
+## Session attendance and Activity Log
 
-The managed-session Attendance Audit lists every feedback submission newest
-first. Each row contains stored first name, last name, email, stored overall
-rating, normalized question answers/comments, and submission time. It does not
-list non-feedback attendance evidence, so the UI sentence “each entry represents
-a confirmed attendee” is only true for the feedback channel and must not be read
-as the complete attendance register.
+The managed-session Attendance tab is the attendance governance surface. It
+shows policy version, phase, revision, roster count, present/late/absent/excused
+counts, materialized results, evidence source/time, and correction reason. It
+supports moderator finalization/reopening and the formula-neutralized attendance
+CSV specified in spec 03. Feedback rows never appear as policy-v2 evidence.
 
-The browser CSV includes the same identity fields, overall rating, a flattened
-`label: value: comment` response string, and a locale-formatted timestamp. CSV
-cells are quoted and embedded quotes doubled. There is no server-side export
-record or retention policy specific to the downloaded file; the recipient is
-responsible for handling the personal data appropriately.
+The Activity Log reads at most the 100 newest `session_activity_events`, newest
+first. The current component displays event type, locale-formatted time, raw
+actor user id or `system`, and raw subject user id/external email when present.
+It does not currently display the JSON `details`, resolve names, paginate, or
+export. Typical new events cover attendance evidence/finalization/reopening,
+certificate issuance/reconciliation, teacher feedback report lifecycle, and
+session document upload/archive.
+
+The event table is deny-all RLS and read through the service DAL only after the
+session-management page establishes moderator authority. It is append-only by
+application convention but is not a general security audit: it omits reads,
+authentication, many legacy mutations, report downloads, provider dashboard
+events, and any action that has not explicitly adopted the event writer.
+
+## Identified session-feedback endpoint
+
+The moderator-only raw feedback action and
+`GET /api/sessions/:id/feedback/audit` return every feedback submission newest
+first, including first/last name, email, stored rating, normalized answers and
+comments, and submission time. This data is separate from Attendance and
+Activity Log and must never be described as a confirmed-attendee register.
+
+The older `AuditPanel` browser component can flatten these rows into CSV, but it
+is no longer mounted as a managed-session “Attendance Audit” tab. If remounted or
+reused, its CSV quotes/doubles embedded quotes but has no server-side export
+record, download retention, or complete spreadsheet-formula neutralization.
+The recipient is responsible for the resulting identified personal-data file.
 
 ## Privacy, interpretation, and governance requirements
 
 - Audit access is access to identifiable education records. Authorization must
   remain server-enforced even when a button is hidden.
-- Do not call a metric “expected attendance” unless an expected roster and its
-  inclusion/exclusion rules are explicitly modelled.
+- Do not call a mixed/global metric “expected attendance” merely because
+  finalized policy-v2 sessions now have a roster. The report must filter to and
+  disclose the relevant snapshot/revision rules.
 - Do not compare headline and filtered rating values without accounting for
   their response-weighted versus session-weighted formulas.
 - Do not use the grade equity table for individual performance evaluation or as

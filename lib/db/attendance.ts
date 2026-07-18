@@ -11,12 +11,14 @@ export type EvidenceSource =
   | 'TEACHER'
   | 'TEAMS'
   | 'RECALL'
+  | 'MODERATOR_CONFIRMATION'
 
 export interface EvidenceMetadata {
   code_version?: number
   feedback_id?: string
   actor_user_id?: string
-  status_override?: 'PRESENT' | 'LATE' | 'ABSENT'
+  status_override?: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'
+  assigned_as_teacher?: boolean
   ip_hash?: string
   user_agent?: string
   [key: string]: unknown
@@ -33,6 +35,31 @@ export interface AttendanceEvidence {
   observed_at: string
   metadata: EvidenceMetadata | null
   created_by: string | null
+  source_event_key?: string | null
+  correction_reason?: string | null
+}
+
+export interface SessionParticipant {
+  id: string
+  org_id: string
+  department_id: string
+  session_id: string
+  user_id: string | null
+  external_email: string | null
+  display_name: string | null
+  participant_role: 'ATTENDEE' | 'TEACHER'
+  expectation: 'EXPECTED' | 'OPTIONAL' | 'EXCUSED'
+  created_at: string
+}
+
+export interface SessionActivityEvent {
+  id: number
+  event_type: string
+  actor_user_id: string | null
+  subject_user_id: string | null
+  subject_external_email: string | null
+  details: Record<string, unknown>
+  created_at: string
 }
 
 // -----------------------------------------------------------------------------
@@ -93,6 +120,105 @@ export async function insertAttendanceEvidence(input: {
 
   if (error) throw toDbError('Failed to add attendance evidence', error)
   return data as AttendanceEvidence
+}
+
+/**
+ * Service-role transactional evidence path. The caller must authorize the
+ * actor/source before calling; the RPC locks the session, validates the
+ * source/window, inserts idempotently, recomputes, and records activity in one
+ * database transaction.
+ */
+export async function recordAttendanceEvidenceV2(input: {
+  orgId: string
+  sessionId: string
+  departmentId: string
+  userId: string | null
+  externalEmail: string | null
+  source: EvidenceSource
+  observedAt: string
+  metadata: EvidenceMetadata
+  createdBy: string | null
+  sourceEventKey?: string | null
+  correctionReason?: string | null
+}): Promise<Attendance> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .rpc('record_attendance_evidence_v2', {
+      p_org_id: input.orgId,
+      p_session_id: input.sessionId,
+      p_department_id: input.departmentId,
+      p_user_id: input.userId,
+      p_external_email: input.externalEmail,
+      p_source: input.source,
+      p_observed_at: input.observedAt,
+      p_metadata: input.metadata,
+      p_created_by: input.createdBy,
+      p_source_event_key: input.sourceEventKey ?? null,
+      p_correction_reason: input.correctionReason ?? null,
+    })
+    .single()
+
+  if (error) throw toDbError('Failed to record attendance evidence', error)
+  return data as Attendance
+}
+
+export async function finalizeSessionAttendanceV2(input: {
+  orgId: string
+  sessionId: string
+  actorUserId: string
+}): Promise<number> {
+  const db = await getServiceDb()
+  const { data, error } = await db.rpc('finalize_session_attendance_v2', {
+    p_org_id: input.orgId,
+    p_session_id: input.sessionId,
+    p_actor_user_id: input.actorUserId,
+  })
+  if (error) throw toDbError('Failed to finalize attendance', error)
+  return Number(data)
+}
+
+export async function reopenSessionAttendanceV2(input: {
+  orgId: string
+  sessionId: string
+  actorUserId: string
+  reason: string
+}): Promise<void> {
+  const db = await getServiceDb()
+  const { error } = await db.rpc('reopen_session_attendance_v2', {
+    p_org_id: input.orgId,
+    p_session_id: input.sessionId,
+    p_actor_user_id: input.actorUserId,
+    p_reason: input.reason,
+  })
+  if (error) throw toDbError('Failed to reopen attendance', error)
+}
+
+export async function listSessionParticipantsAsSystem(
+  sessionId: string
+): Promise<SessionParticipant[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('session_participants')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('display_name', { ascending: true })
+  if (error) throw toDbError('Failed to list session participants', error)
+  return (data as SessionParticipant[] | null) ?? []
+}
+
+export async function listSessionActivityAsSystem(
+  sessionId: string,
+  limit = 100
+): Promise<SessionActivityEvent[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('session_activity_events')
+    .select('id, event_type, actor_user_id, subject_user_id, subject_external_email, details, created_at')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw toDbError('Failed to list session activity', error)
+  return (data as SessionActivityEvent[] | null) ?? []
 }
 
 export async function listEvidenceForAttendee(input: {
@@ -331,41 +457,40 @@ export async function setAttendanceRowsLock(input: {
 // -----------------------------------------------------------------------------
 
 export async function updateSessionGroupCode(input: {
+  orgId: string
+  departmentId: string
   sessionId: string
+  actorUserId: string
   version: number
   expiresAt: string
+  codeHash: string
 }): Promise<{ group_code_expires_at: string | null }> {
-  const db = await getDb()
-  const { data, error } = await db
-    .from('sessions')
-    .update({
-      group_code_version: input.version,
-      group_code_expires_at: input.expiresAt,
-    })
-    .eq('id', input.sessionId)
-    .select('group_code_expires_at')
-    .single()
-
-  if (error) throw toDbError('Failed to update group code', error)
-  return data as { group_code_expires_at: string | null }
-}
-
-/**
- * Call the Postgres function `generate_group_code`. The function lives in a
- * migration and returns a short human-friendly code derived from the session
- * id + version. Returns null on RPC failure so callers can fall back to
- * client-side generation.
- */
-export async function callGenerateGroupCode(
-  sessionId: string,
-  version: number
-): Promise<string | null> {
-  const db = await getDb()
-  const { data, error } = await db.rpc('generate_group_code', {
-    p_session_id: sessionId,
-    p_version: version,
+  const db = await getServiceDb()
+  const { data, error } = await db.rpc('rotate_session_group_code_v2', {
+    p_org_id: input.orgId,
+    p_department_id: input.departmentId,
+    p_session_id: input.sessionId,
+    p_actor_user_id: input.actorUserId,
+    p_version: input.version,
+    p_expires_at: input.expiresAt,
+    p_verifier: input.codeHash,
   })
 
-  if (error) return null
-  return (data as string | null) ?? null
+  if (error) throw toDbError('Failed to update group code', error)
+  return { group_code_expires_at: (data as string | null) ?? null }
+}
+
+export async function findSessionGroupCodeVerifierAsSystem(input: {
+  orgId: string
+  sessionId: string
+}): Promise<string | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('session_attendance_secrets')
+    .select('group_code_verifier')
+    .eq('org_id', input.orgId)
+    .eq('session_id', input.sessionId)
+    .maybeSingle()
+  if (error) throw toDbError('Failed to read group-code verifier', error)
+  return data?.group_code_verifier ?? null
 }

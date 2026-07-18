@@ -10,14 +10,23 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
 
     const session = await sessionsDb.findSession(params.id, orgId)
     if (!session || !session.group_code_version || session.group_code_version === 0) {
-      return NextResponse.json({ code: null })
+      return NextResponse.json({ active: false, version: 0, expiresAt: null })
     }
 
-    const code = await attendanceDb.callGenerateGroupCode(
-      session.id,
-      session.group_code_version
-    )
-    return NextResponse.json({ code: code || 'XXXXXX' })
+    const verifier = await attendanceDb.findSessionGroupCodeVerifierAsSystem({
+      orgId,
+      sessionId: session.id,
+    })
+
+    return NextResponse.json({
+      active: Boolean(
+        verifier &&
+        session.group_code_enabled &&
+        (!session.group_code_expires_at || new Date(session.group_code_expires_at) >= new Date())
+      ),
+      version: session.group_code_version,
+      expiresAt: session.group_code_expires_at,
+    })
   } catch (error) {
     return NextResponse.json(
       {

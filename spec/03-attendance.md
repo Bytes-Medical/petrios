@@ -1,321 +1,372 @@
-# 03 — Evidence-based attendance
+# 03 — Attendance evidence, review, and finalization
 
-## Purpose and invariants
+## Purpose
 
-Attendance is not a mutable checkbox. Petrios records observations in
-`attendance_evidence` and derives a current result into `attendance`. This keeps
-the source and reason visible, lets a stronger observation supersede a weaker
-one deterministically, and supports honest catch-up recognition without
-presenting it as physical presence.
+Petrios treats physical attendance as a governed record, not a side effect of
+feedback, teaching assignment, or later learning activity. An observation is
+appended to `attendance_evidence`; a deterministic result is materialized in
+`attendance`; a moderator reviews and finalizes a complete roster before that
+result can authorize a certificate.
 
-The governing invariants are:
+New sessions use attendance policy version 2. Sessions that existed when
+migration 045 was applied retain policy version 1 so historical evidence is not
+silently reinterpreted. The version is stored on `sessions` and is part of the
+derivation contract.
 
-1. Normal application flows add evidence; they never update an evidence row.
-2. `attendance` is a materialized derivation and must be reproducible from the
-   evidence and the session's window settings.
-3. The pure implementation in `lib/attendance/compute.ts` is shared by
-   interactive recomputation and the post-session job.
-4. A session attendance lock prevents subsequent recomputation from changing
-   results until an authorized unlock.
-5. Every evidence item identifies exactly one internal user or one external
-   email subject.
-6. The primary source is selected by trust priority first, then time. It is not
-   necessarily the subject's chronologically first observation.
+## Non-negotiable invariants
 
-### Precise append-only claim
-
-The application exposes inserts, reads, and derivation; there is no evidence
-update flow and the RLS UPDATE policy is false. Migration 015 does, however,
-grant organization administrators a DELETE policy. Cascading deletion of parent
-records can also remove evidence. The implemented guarantee is therefore
-**append-oriented during normal operation**, not cryptographic or absolute
-immutability. Removing the delete policy would require a forward migration and
-an operational correction/retention policy.
+1. `attendance_evidence` is append-only in normal and privileged application
+   operation. There is no UPDATE policy, migration 049 removes the former org
+   admin DELETE policy, and a correction is a new reasoned evidence row.
+   Parent-record deletion can still cascade according to declared foreign keys;
+   this is lifecycle deletion, not an evidence correction mechanism.
+2. Every evidence row identifies exactly one subject: one `user_id` or one
+   normalized `external_email`, never both and never neither. The database check
+   is `NOT VALID` only to tolerate potentially malformed historical rows; it is
+   enforced for new writes.
+3. Policy-v2 evidence insertion and result recomputation occur in one database
+   transaction through `record_attendance_evidence_v2`. A committed evidence row
+   cannot be left with a stale derived row by that path.
+4. Feedback submission, Recall completion, teacher invitation acceptance, and
+   teaching-slot claim do not create policy-v2 attendance.
+5. A certificate requires the current finalized revision and a `PRESENT` or
+   `LATE` result. Both application code and a database trigger enforce this.
+6. Finalized attendance cannot be edited. A moderator must reopen it with a
+   reason, append corrections, and create a new final revision.
+7. Tenant scope comes from the authenticated organization and the session row.
+   The service-role RPC locks and matches `org_id`, `department_id`, and
+   `session_id`; it does not trust client-supplied scope by itself.
+8. Missing evidence is not silently treated as presence. At finalization every
+   expected roster member without a result receives an explicit `ABSENT` or
+   `EXCUSED` result.
 
 ## Storage model
 
+### Session governance fields
+
+`sessions` carries:
+
+| Field | Contract |
+|---|---|
+| `attendance_policy_version` | `1` for migrated historical sessions; default `2` for new sessions |
+| `attendance_phase` | `OPEN`, `REVIEW`, or `FINALIZED` |
+| `attendance_revision` | Starts at zero and increments exactly once per successful finalization |
+| `attendance_finalized_at/by` | Actor and time for the current final revision |
+| `attendance_reopened_at/by/reason` | Most recent documented reopening |
+| `attendance_locked*` | Compatibility lock fields; synchronized with the phase |
+| `group_code_version` | Monotonic generation number |
+| `group_code_expires_at` | Server-enforced expiry |
+
+`attendance_phase` is authoritative for the new lifecycle. `attendance_locked`
+remains synchronized because older views and integrations still read it.
+The deprecated `sessions.group_code_hash` column is kept null. The active salted
+verifier lives in deny-all `session_attendance_secrets`, keyed by session and
+tenant, so an ordinary session/RLS payload cannot expose it.
+
 ### `attendance_evidence`
 
-Each row carries:
+An evidence row contains tenant/session identifiers, its one subject, `source`,
+server observation time, JSON metadata, creator, and creation time. Policy v2
+also uses:
 
-- `org_id`, `department_id`, and `session_id`;
-- either `user_id` or `external_email`;
-- `source`;
-- `observed_at`, the time used by window validation and lateness;
-- JSON `metadata`, including optional code version, feedback id, actor id, or
-  `status_override`;
-- `created_by` and row creation time.
+- `source_event_key`: optional idempotency key, unique within a session; and
+- `correction_reason`: required for `MODERATOR_CONFIRMATION`.
 
-The evidence identity and its parent session must be tenant-consistent. Public
-flows do not get a generic evidence writer; the source-specific action/DAL path
-constructs the row.
+Evidence metadata may include `code_version`, `actor_user_id`, integration
+metadata, or a controlled `status_override`. Evidence is provenance and must not
+be rewritten to make a later outcome look like the original observation.
 
 ### `attendance`
 
-The materialized row carries the same tenant/session/subject identity plus:
+The materialized row is unique per `(session_id, user_id)` or
+`(session_id, external_email)` and contains:
 
-- `status`: `PRESENT`, `LATE`, or `ABSENT`;
-- `primary_source`;
-- `first_evidence_at` (a legacy name; it is the timestamp of the selected primary
-  evidence);
-- `computed_at`; and
-- row-level lock metadata.
+- `status`: `PRESENT`, `LATE`, `ABSENT`, or `EXCUSED`;
+- `primary_source` and `first_evidence_at` (the selected primary evidence time,
+  despite the legacy field name);
+- computation time;
+- lock/finalization actor and time; and
+- the attendance `revision` represented by the row.
 
-Separate partial unique indexes cover `(session_id, user_id)` and
-`(session_id, external_email)`. Derivation upserts on the appropriate identity.
-An ABSENT row can exist after a recomputation with no valid evidence, but the
-system does not pre-materialize an ABSENT row for every expected member.
+While a session is open or under review, evidence-backed results can be
+materialized without being certificate-eligible. At finalization all rows are
+locked and stamped with the new revision.
 
-## Evidence sources
+### `session_participants`
 
-| Source | Priority | Created by current implementation | Window | Meaning |
+This deny-all-RLS, service-DAL table is the session roster snapshot. It supports
+an internal user or external email, display name, participant role
+(`ATTENDEE`/`TEACHER`), and expectation (`EXPECTED`/`OPTIONAL`/`EXCUSED`).
+
+- Recording evidence adds the subject as `OPTIONAL` if they are not already
+  rostered.
+- Finalization snapshots current department members as expected attendees.
+- Accepted registered session teachers are upserted as expected teachers.
+- A current department member already added by evidence is normalized to
+  `EXPECTED`, unless their expectation is explicitly `EXCUSED`.
+
+The snapshot is taken at finalization time. It is not a historical claim about
+department membership at session start. A future pre-session roster feature
+must define its own snapshot time and change semantics explicitly.
+
+### `session_activity_events`
+
+This is the human-readable, append-only session operations log used by the
+management Activity Log tab. Attendance evidence, finalization, reopening,
+certificate reconciliation, feedback-report release, and document events are
+recorded here. It supplements rather than replaces the source tables.
+
+## Lifecycle
+
+### `OPEN`
+
+New sessions start open. Authenticated self/group-code evidence and authorized
+moderator/integration evidence may be recorded during their source windows.
+Results are provisional. The finalize action is unavailable before session end.
+
+### `REVIEW`
+
+Review means a previously finalized revision has been reopened. Existing
+evidence and results remain visible, row locks are cleared, and corrections are
+appended. The reopening reason is durable. Certificates from the old canonical
+revision are revoked immediately and the post-session report watermark is
+cleared.
+
+### `FINALIZED`
+
+Only a published session whose `date_end` is not in the future can be finalized.
+The database transaction:
+
+1. obtains a row lock on the session;
+2. rejects tenant mismatch, unpublished/future sessions, and duplicate
+   finalization without reopening;
+3. increments the revision;
+4. snapshots current department members and accepted registered teachers;
+5. creates explicit `ABSENT`/`EXCUSED` rows for expected subjects with no row;
+6. locks and stamps every session attendance row with actor, time, and revision;
+7. sets the session phase and compatibility lock fields; and
+8. appends activity events and reconciles certificate eligibility.
+
+Finalization does not infer presence from roster membership or teacher role.
+
+### Reopening and correction
+
+Only a department moderator can reopen. A trimmed reason of at least three
+characters is required by the database RPC. Reopening is itself not a result
+change; it creates a controlled review window.
+
+Manual marking uses `MODERATOR_CONFIRMATION`, a new random idempotency key, a
+required reason, and an explicit override of `PRESENT`, `LATE`, `ABSENT`, or
+`EXCUSED`. It outranks all earlier evidence but does not delete it. After review,
+the moderator finalizes again, creating the next revision.
+
+Calling finalize twice without an intervening reopen is rejected by the
+database trigger, even if a client bypasses the disabled UI button.
+
+## Evidence sources and derivation
+
+| Source | Priority | Policy-v2 producer | Validity | Meaning |
 |---|---:|---|---|---|
-| `TEACHER` | 5 | Moderator mark; accepted registered-teacher flow; registered slot claim; post-session teacher attribution; teacher feedback release | Always valid | Human/programme assertion or registered teacher attribution |
-| `TEAMS` | 4 | Moderator-capable action only; no importer is shipped | Always valid | Reserved for meeting-platform attendance |
-| `FEEDBACK` | 3 | Public feedback submission, best-effort | Check-in open through feedback deadline, inclusive | Feedback receipt used as attendance evidence |
-| `GROUP_CODE` | 2 | Authenticated check-in using active session code version | Check-in window, inclusive | Participant used the group-code UI |
-| `SELF_CHECKIN` | 1 | Authenticated user for themself; Jitsi join attempts this source | Check-in window, inclusive | Participant self-attestation |
-| `RECALL` | 0 | Passing accountless catch-up Recall answer for an absent user | Session end through end + 21 days, inclusive | Learning catch-up, explicitly not evidence of physical presence |
+| `MODERATOR_CONFIRMATION` | 6 | Department moderator | No time limit; reason required | Reviewed human decision/correction |
+| `TEACHER` | 5 | No ordinary v2 producer; retained for policy-v1/history and reviewed integrations | No time limit | Historical teacher assertion; assignment alone is excluded |
+| `TEAMS` | 4 | Department moderator/integration action | No time limit | Reserved meeting-platform observation; no importer currently ships |
+| `FEEDBACK` | 3 | None in v2 | Policy v1 only | Historical feedback-derived evidence |
+| `GROUP_CODE` | 2 | Authenticated subject after secure-code verification | Check-in window inclusive | Possession of the active session code |
+| `SELF_CHECKIN` | 1 | Authenticated subject for themself; Jitsi join attempts it | Check-in window inclusive | Participant self-attestation |
+| `RECALL` | 0 | None in v2 | Policy v1 only, end through end + 21 days | Historical catch-up learning completion |
 
-The numeric priority is the current `EVIDENCE_PRIORITY` constant. New sources
-require coordinated changes to the Postgres enum and `is_evidence_valid`, DAL
-type, pure computation, permissions, UI/report labels, tests, and this table.
+For a subject, derivation:
 
-## Time windows
+1. revalidates every row using its stored `observed_at`;
+2. under policy v2 excludes `FEEDBACK`, `RECALL`, and `TEACHER` rows whose
+   metadata says `assigned_as_teacher: true`;
+3. sorts valid evidence by priority descending and then observation time
+   ascending;
+4. selects the first row as primary;
+5. uses its `status_override` when present, otherwise derives `PRESENT` or
+   `LATE`; and
+6. returns `ABSENT` with no primary source when no evidence is valid.
 
-Let:
+The TypeScript implementation is `lib/attendance/compute.ts`. The policy-v2 RPC
+mirrors its source filtering, priority, and lateness rules. A semantic change
+must update both implementations, the tests, and this specification.
 
-- `S` be `session.date_start`;
-- `E` be `session.date_end`;
-- `open` default to 15 minutes;
-- `close` default to 45 minutes;
-- `feedback` default to 120 minutes; and
-- `late` default to 10 minutes.
+### Time boundaries
 
-Per-session values override those defaults using nullish semantics in the pure
-computation, so zero is a meaningful configured value there.
+Let `S` be start and `E` be end. Null settings use these defaults:
 
 | Boundary | Formula |
 |---|---|
-| Check-in opens | `S - checkin_open_mins_before` |
-| Check-in closes | `S + checkin_close_mins_after` |
-| Feedback evidence closes | `E + feedback_valid_mins_after_end` |
-| Late threshold | `S + late_after_mins` |
-| Recall evidence closes | `E + 21 days` |
+| Check-in opens | `S - (checkin_open_mins_before ?? 15 minutes)` |
+| Check-in closes | `S + (checkin_close_mins_after ?? 45 minutes)` |
+| Historical feedback closes | `E + (feedback_valid_mins_after_end ?? 120 minutes)` |
+| Late threshold | `S + (late_after_mins ?? 10 minutes)` |
+| Historical Recall closes | `E + 21 days` |
 
-`SELF_CHECKIN` and `GROUP_CODE` accept both endpoints of the check-in interval.
-`FEEDBACK` accepts from check-in opening through the feedback deadline, both
-inclusive. `RECALL` accepts both `E` and exactly `E + 21 days`. `TEACHER` and
-`TEAMS` have no time restriction.
-
-The SQL `is_evidence_valid` function mirrors these source windows as a database
-utility. Runtime derivation uses the TypeScript pure function and must remain in
-semantic lockstep with it.
-
-### Lateness boundary
-
-Lateness is strict: primary evidence observed **after** `S + late` produces
-`LATE`; evidence exactly at the threshold produces `PRESENT`. A primary
-`metadata.status_override` replaces this derived status.
-
-## Deterministic derivation
-
-For one subject and one session:
-
-1. Revalidate every evidence row against the window for its source using its
-   stored `observed_at`.
-2. Discard invalid evidence.
-3. If none remains, return `ABSENT`, null primary source, and null timestamp.
-4. Sort valid evidence by source priority descending.
-5. Within the same source priority, sort `observed_at` ascending.
-6. Select the first item as the primary evidence.
-7. Calculate `PRESENT`/`LATE` using that item's timestamp and the late threshold.
-8. If the primary item has `metadata.status_override`, use it instead.
-9. Upsert the materialized row with the primary source/timestamp and current
-   computation time.
-
-Consequences that callers must understand:
-
-- A teacher observation at 10:30 outranks a self check-in at 09:55; if there is
-  no override, lateness is calculated from 10:30.
-- `first_evidence_at` is not the earliest timestamp across all sources. It is the
-  primary evidence timestamp after priority selection.
-- Manual correction does not erase earlier evidence. It adds high-priority
-  `TEACHER` evidence with an explicit override.
-- A later real-presence source outranks `RECALL`, so catch-up remains visible only
-  when it is the strongest evidence available.
+Endpoints are inclusive. Lateness is strict: evidence exactly at the late
+threshold is `PRESENT`; evidence after it is `LATE`. Zero is a meaningful
+configuration because runtime logic uses nullish rather than truthy fallback.
 
 ## Source authorization and ingestion
 
 ### Self check-in
 
-The caller must be authenticated, and `payload.userId` must equal the current
-user. The session's organization is established by `requireOrg` and the session
-read. The observation time is the server's current time. On success the subject
-is immediately recomputed unless attendance is locked.
+The caller must be authenticated and the target user must equal the caller.
+Server time is authoritative. Joining a Petrios Meet/Jitsi room attempts this
+same path as a best-effort side effect; room visibility does not widen the
+attendance window and a displayed meeting is not proof that check-in succeeded.
+When an enabled, unexpired group-code verifier exists, plain self check-in is
+disabled and the participant must submit the active code. This makes moderator
+activation of the stronger shared-presence signal meaningful instead of leaving
+an equivalent no-code bypass.
 
-Joining an in-app Jitsi room attempts a `SELF_CHECKIN` as a best-effort side
-effect. The room display window (30 minutes before through 30 minutes after the
-session) is broader than the default attendance window (15 minutes before
-through 45 minutes after start), so opening the room does not guarantee a valid
-check-in.
+### Secure group code
 
-### Group code
+A moderator generation action:
 
-A moderator generates/regenerates a code by:
+1. creates six characters from an unambiguous alphabet with cryptographic,
+   unbiased randomness;
+2. increments `group_code_version`;
+3. calculates expiry using session end plus the configured close minutes;
+4. transactionally stores only `scrypt$<salt>$<derived-key>` in the deny-all
+   secret table while updating session version/expiry; and
+5. returns the clear code once to the moderator.
 
-1. incrementing `sessions.group_code_version`;
-2. setting expiry to session end plus check-in-close minutes; and
-3. calling the Postgres `generate_group_code(session_id, version)` function.
+The “current code” route returns only active/version/expiry state. It cannot
+reconstruct or redisplay the clear code. Regeneration invalidates the prior
+version. The moderator Attendance tab generates and displays the clear code in
+ephemeral client state; leaving/refreshing loses it and requires rotation. The
+participant Attendance tab accepts the announced code and otherwise uses plain
+self check-in only while no active code exists.
 
-The database function derives a six-character value from session id, version,
-and the current calendar date. Regeneration invalidates older versions. The
-check-in action requires authentication, group-code enablement, an active
-version, matching supplied version when present, and a nonexpired timestamp.
+For each authenticated attempt the server records a deny-all-RLS attempt row
+before credential validation. It enforces a rolling ten-minute limit of fewer
+than six attempts per user and fewer than thirty per pseudonymized IP. The IP is
+HMACed with `ATTENDANCE_RATE_LIMIT_SECRET`, falling back to the server-only
+Supabase service key; if neither exists, IP counting is disabled but per-user
+counting remains. Raw IP addresses are not stored in this table.
 
-Current limitations:
+The action checks enablement, active version, optional supplied-version match,
+expiry, and the scrypt verifier using a timing-safe comparison. Success records
+the code version in evidence and uses a deterministic source-event key so replay
+does not duplicate evidence. Rate limiting is a mitigation, not proof of a
+person's physical location; moderators retain the correction workflow.
 
-- The submitted code string is used only to choose `GROUP_CODE`; the action does
-  **not compare the string itself** with the generated value. The enforced
-  credential is the optional version plus current session state. This is weaker
-  than the UI implies and should be fixed before calling the value a secure code.
-- If the RPC fails, generation returns an application-random fallback but does
-  not persist that value. Later display/validation cannot reliably reconstruct
-  the fallback.
-- The generation action uses `checkin_close_mins_after || 45`; a configured zero
-  is therefore replaced with 45 for code expiry, unlike the nullish window
-  computation.
-- The database-derived value changes with the calendar date even when version is
-  unchanged.
+The obsolete deterministic SQL generator has public execution revoked.
 
-These are documented implementation facts, not desired security properties.
+### Moderator and integration evidence
 
-### Feedback
+`MODERATOR_CONFIRMATION` and `TEAMS` require department-moderator authority in
+the action before the service RPC is called. Direct policy-v2 client inserts are
+denied by RLS. A database evidence-scope trigger also matches session/org/
+department and permits reviewed policy-v2 evidence only for an existing session
+participant/result, current department member, or accepted registered teacher.
+It prevents a direct action call from attaching a reasoned result to an
+unrelated auth user. Policy-v1 direct policies remain narrowly scoped for
+historical compatibility.
 
-Public feedback submission writes a feedback row first, then best-effort creates
-`FEEDBACK` evidence for the matched user or external email. This path does not
-use the authenticated `addEvidence` action because the form is accountless.
-Failure to create evidence does not roll back feedback.
+The current app deliberately rejects attempts to create `FEEDBACK`, `RECALL`, or
+ordinary `TEACHER` evidence through `addEvidence`. Accepting a teaching
+assignment or slot changes teaching responsibility only.
 
-Feedback evidence alone is not guaranteed to immediately create/update the
-materialized attendance row in every public path. A later recomputation (or
-another source) may materialize it. The feedback form itself currently accepts
-published sessions without server-enforcing the attendance feedback window; see
-spec 05. Evidence still has its own validity semantics during recomputation.
+## Feedback and Recall separation
 
-### Teacher and Teams
+Public feedback can resolve a stored `user_id` from the supplied email for
+feedback-record association. That resolution does not prove the submitter is
+that user and is never used for attendance or certificate eligibility.
 
-Interactive `TEACHER` and `TEAMS` evidence requires department-moderator
-authorization. Manual marking writes `TEACHER` with `status_override`, then
-recomputes the subject.
+Passing Recall questions records learning completion and can update the Recall
+answer state. Under policy v2 it does not change physical attendance. Policy-v1
+historical evidence remains interpretable so old records are not rewritten.
 
-Several system flows create `TEACHER` evidence directly with a service-role DAL:
+## Participant notifications
 
-- a registered teacher accepts an assignment;
-- a registered member claims a teaching slot;
-- the teacher-feedback release flow; and
-- the post-session reporting job for every registered `session_teachers` row.
+After the finalization transaction commits, Petrios creates an in-app
+notification for every attendance row with an internal `user_id`. It names the
+session, status, and revision and links to the session. Reopening similarly
+notifies participants that the record is under review. Notification rows use a
+per-user lifecycle deduplication key, so retries do not create duplicates.
 
-The final job currently does not restrict teacher rows to `ACCEPTED`; pending or
-declined registered assignments can therefore receive teacher evidence. This is
-a known status-filter gap.
+Notification creation is intentionally outside the finalization transaction: a
+notification provider/storage failure must not roll back a valid attendance
+revision. The server action uses `Promise.allSettled`, returns the failure count
+to the moderator UI, and leaves the durable attendance result intact. External
+email subjects have no in-app inbox and are not emailed by this workflow.
 
-`TEAMS` exists in schema and computation, but no Microsoft Teams attendance
-importer is implemented.
+## Certificates and the post-session job
 
-### Recall catch-up
+Attendance finalization is the only recognition gate. Feedback is not required
+and `require_feedback_for_certificate` is a legacy setting with no policy-v2
+effect.
 
-Recall links are HMAC capabilities naming a session and user. If the current
-materialized attendance is not `PRESENT`/`LATE`, the answer is `CATCH_UP`. A score
-of at least two out of three within 21 days inserts `RECALL` evidence with
-`status_override: PRESENT`, unless the session is locked, and recomputes. See
-spec 08 for token, question, and analytics behavior.
+The post-session job does not create evidence or recompute attendance. It skips
+sessions that are not finalized, reads current `PRESENT`/`LATE` internal users,
+calls the canonical eligibility service, inserts an idempotent role-specific
+certificate, and sends through `session_deliveries`. Provider `{ error }`
+results are failures. Successful recipient deliveries are skipped on retry and
+the session watermark is written only when every eligible recipient completes.
 
-## Locking
-
-Department moderators may lock or unlock attendance. Locking updates:
-
-- the session-level `attendance_locked`, timestamp, and actor fields; and
-- every existing materialized attendance row's lock fields.
-
-Interactive evidence ingestion checks the session lock before recomputation.
-The post-session job also skips its batch recomputation when the session is
-locked. Evidence can still be inserted: the lock freezes the derived view, not
-the audit input stream.
-
-Unlocking clears the session and existing-row lock metadata. It does **not**
-automatically recompute every subject, so evidence accumulated during the lock
-may remain unapplied until another recomputation path runs. Any bulk “unlock and
-refresh” feature must enumerate both internal and external evidence subjects and
-be safe under concurrent evidence insertion.
-
-The simple `recomputeAttendance` action itself does not independently refuse a
-locked session; callers are expected to honor the lock. New callers must perform
-that check or intentionally define an authorized correction operation.
-
-## Post-session derivation job
-
-`/api/cron/post-session-reports` authenticates with the cron Bearer secret and
-selects a capped set of published sessions that ended at least 24 hours ago and
-have no report watermark.
-
-For each session it:
-
-1. ensures one `TEACHER` evidence row for every registered teacher id, observed
-   at session start;
-2. if unlocked, groups existing evidence by user or external email and recomputes
-   only those subjects;
-3. emits a best-effort `attendance.computed` webhook;
-4. identifies internal `PRESENT` and `LATE` users;
-5. issues missing attendee certificates and sends certificate email; and
-6. writes the report watermark.
-
-Per-attendee thrown certificate/PDF/email errors are caught. The shared mail
-adapter normally reports provider failure as `{ error }`; this job does not
-inspect that result, so such an attempt is treated as success. A session can
-still be watermarked after individual or adapter-reported failures, so the job
-is not a guaranteed delivery retry queue. If there are no present/late
-materialized users, it watermarks without certificate delivery.
-
-The job does not generate ABSENT rows for all department members. Dashboards and
-portfolio views that need expected attendance synthesize ABSENT for missing rows.
+Reopening revokes canonical `VALID` certificates immediately and clears the
+watermark. A later finalization can issue a new certificate and delivery tied to
+the new certificate id. Revoked codes remain queryable as revoked audit history
+but cannot be downloaded as valid PDFs.
 
 ## Reads, exports, and privacy
 
-- A participant can read supported self/organization attendance through RLS and
-  application projections.
-- Moderators can view evidence detail for a session.
-- Attendance CSV exports include internal user id or external email, status,
-  primary source, selected timestamp, computation time, and lock state.
-- The bearer API's `read:attendance` scope returns user ids/external emails and is
-  therefore a PII-bearing integration scope.
-- Audit, portfolio, certificates, and Recall interpret `PRESENT` and `LATE` as
-  attended. They must retain the source where provenance matters.
+- A participant reads only attendance allowed by RLS/application projection.
+- Department moderators can see the roster, computed results, evidence reasons,
+  lifecycle revision, and session activity.
+- The former “Attendance Audit” feedback list is not an attendance audit. The
+  management UI now separates Attendance, Feedback, and Activity Log.
+- Attendance CSV export is department-moderator gated. It includes subject id or
+  external email, status, source, timestamps, and lock state. Every field is
+  quoted and values beginning with spreadsheet formula sigils (`=`, `+`, `-`,
+  `@`) are prefixed with an apostrophe.
+- The bearer `read:attendance` API remains PII-bearing and must be scoped and
+  handled accordingly.
 
-CSV output quotes every field but does not currently add spreadsheet-formula
-neutralization. Treat exported files as sensitive and review formula-injection
-risk before adding free-text fields.
+## Concurrency, idempotency, and failure behavior
 
-## Dormant session settings
+- Evidence RPCs row-lock the session, so finalization and new evidence cannot
+  interleave into a partially finalized revision.
+- `source_event_key` makes self check-in and group-code replay idempotent.
+- Partial subject indexes keep one derived row per identity.
+- Finalization and reopening are database transactions; an activity insert or
+  lifecycle invariant failure rolls back the whole operation.
+- Notification failure is reported separately after commit.
+- Certificate uniqueness is partial by session, subject, role, and `VALID`
+  status. Revocation permits a replacement while preserving the old row.
 
-`attendance_mode` and strict-token fields exist on sessions, but current runtime
-check-ins do not implement a strict token branch. They must not be described in
-UI or integration documentation as an active security mode until the action,
-database verification, rotation/expiry, and tests are implemented.
+## Current limitations
+
+- No Microsoft Teams attendance importer is implemented; `TEAMS` is a reserved
+  reviewed source.
+- No pre-session roster editor is implemented. Expected membership is
+  snapshotted from current department membership at finalization.
+- External-email subjects can be represented in evidence/results but the
+  canonical certificate workflow currently requires a registered user.
+- `attendance_mode` and strict-token fields are dormant. They must not be
+  marketed as active security modes.
+- The rate-limit attempt table has no automated retention job yet. Operators
+  must include it in technical-log retention policy.
+- In-app notification failure is visible to the moderator but has no background
+  retry worker. Attendance correctness does not depend on notification delivery.
 
 ## Verification contract
 
-Tests for `lib/attendance/compute.ts` cover defaults and overrides, inclusive
-boundaries, priority, tie-breaking, overrides, invalid evidence, and Recall. A
-change to attendance must add cases for:
+Attendance changes require at least:
 
-- the exact opening/closing instant;
-- null versus zero settings;
-- multiple competing sources;
-- locked and unlocked behavior;
-- internal and external subjects;
-- duplicate/replayed requests; and
-- SQL/TypeScript window parity where the database function is affected.
-
-Before merging, verify that every evidence producer is enumerated in this spec
-and that no caller writes `attendance` as if it were raw input.
+- pure tests for exact window endpoints, null/zero settings, priority,
+  tie-breaking, overrides, policy-v1 compatibility, and policy-v2 exclusions;
+- group-code tests for alphabet, normalization, salted verifier, incorrect code,
+  and malformed verifier;
+- database review of subject constraints, v2 RLS denial, RPC grants,
+  idempotency indexes, row locks, duplicate-finalization rejection, roster
+  seeding, and certificate triggers;
+- action tests or integration checks for source authorization, replay,
+  rate-limit boundary, finalization, reopening reason, notification failure,
+  and moderator-only export;
+- confirmation that feedback, assignment/claim, Recall, feedback release, and
+  the post-session job do not create physical-attendance evidence; and
+- lint, typecheck, unit tests, production build, and migration execution against
+  a representative database before deployment.

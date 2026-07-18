@@ -1,6 +1,6 @@
 export type LocationType = 'MS_TEAMS' | 'IN_PERSON' | 'HYBRID' | 'JITSI'
 export type SessionStatus = 'DRAFT' | 'PUBLISHED' | 'CANCELLED'
-export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LATE'
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED'
 export type AttendanceMethod = 'SELF_CHECKIN' | 'MANUAL'
 export type CertificateRole = 'ATTENDEE' | 'TEACHER'
 export type UserRole = 'org_admin' | 'department_admin' | 'faculty' | 'trainee'
@@ -59,6 +59,8 @@ export interface Department {
   created_by: string
   created_at: string
   feedback_form_fields?: DepartmentFeedbackField[]
+  lead_name?: string | null
+  certificate_coordinator_names?: string[]
 }
 
 export interface DepartmentFeedbackField {
@@ -190,6 +192,15 @@ export interface Session {
   attendance_locked?: boolean
   attendance_locked_at?: string | null
   attendance_locked_by?: string | null
+  attendance_policy_version?: 1 | 2
+  attendance_phase?: 'OPEN' | 'REVIEW' | 'FINALIZED'
+  attendance_revision?: number
+  attendance_finalized_at?: string | null
+  attendance_finalized_by?: string | null
+  attendance_reopened_at?: string | null
+  attendance_reopened_by?: string | null
+  attendance_reopen_reason?: string | null
+  group_code_hash?: string | null
   report_sent_at?: string | null
   reminder_sent_at?: string | null
 }
@@ -268,6 +279,7 @@ export interface AppNotification {
   title: string
   body: string | null
   link: string | null
+  dedupe_key?: string | null
   read_at: string | null
   created_at: string
 }
@@ -279,13 +291,16 @@ export interface Attendance {
   user_id: string | null
   external_email: string | null
   status: AttendanceStatus
-  primary_source: 'SELF_CHECKIN' | 'GROUP_CODE' | 'FEEDBACK' | 'TEACHER' | 'TEAMS' | 'RECALL' | null
+  primary_source: 'SELF_CHECKIN' | 'GROUP_CODE' | 'FEEDBACK' | 'TEACHER' | 'TEAMS' | 'RECALL' | 'MODERATOR_CONFIRMATION' | null
   first_evidence_at: string | null
   computed_at: string
   locked: boolean
   locked_by: string | null
   locked_at: string | null
   created_at: string
+  revision?: number
+  finalized_at?: string | null
+  finalized_by?: string | null
 }
 
 export interface TeacherEmail {
@@ -321,7 +336,7 @@ export interface Certificate {
   org_id: string
   department_id: string
   session_id: string
-  user_id: string
+  user_id: string | null
   certificate_role: CertificateRole
   issued_at: string
   pdf_storage_path: string | null
@@ -329,7 +344,15 @@ export interface Certificate {
   recipient_name: string | null
   issued_by: string | null
   issued_by_name: string | null
+  coordinator_names: string[]
   created_at: string
+  recipient_email?: string | null
+  status?: 'VALID' | 'REVOKED' | 'LEGACY'
+  attendance_revision?: number | null
+  issuance_source?: string | null
+  revoked_at?: string | null
+  revoked_by?: string | null
+  revocation_reason?: string | null
 }
 
 

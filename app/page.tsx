@@ -47,13 +47,13 @@ const AUDIENCES = [
     initial: 'T',
     title: 'For trainees',
     lead: 'Turn up, and the evidence takes care of itself.',
-    body: 'Attendance is recorded the moment you scan, join the video room, or give feedback. Your curriculum passport shows which Progress+ domains you’ve covered, and a verifiable portfolio pack is one click when ARCP season arrives. Missed a session? Pass three recall questions and catch up — honestly labelled.',
+    body: 'Check in with your account or the secure session code; organisers review and finalize a complete attendance roster. Your curriculum passport shows which Progress+ domains you’ve covered, and a verifiable portfolio pack is one click when ARCP season arrives. Recall quizzes support learning after a missed session without rewriting physical attendance.',
   },
   {
     initial: 'F',
     title: 'For teachers & faculty',
     lead: 'Teaching should count for you too.',
-    body: 'Claim a teaching slot in one click — no account needed if you’re external. Feedback comes back anonymised with themes, certificates are automatic, and every session you teach builds an appraisal-ready dossier: sessions, hours, reach, and what attendees actually said.',
+    body: 'Claim a teaching slot in one click — no account needed if you’re external. Teacher reports contain privacy-safe aggregate feedback, certificates follow finalized attendance, and every session you teach builds an appraisal-ready dossier: sessions, hours, reach, and improvement themes.',
   },
   {
     initial: 'O',
@@ -68,7 +68,7 @@ const CONTRASTS = [
     old: 'Sign-in sheets and box-ticking',
     oldDetail: 'A register that proves someone held a pen.',
     now: 'Evidence-based attendance',
-    nowDetail: 'Check-ins, video joins, and feedback feed one audited, lockable record.',
+    nowDetail: 'Check-ins and reviewed evidence feed one revisioned, finalized roster.',
   },
   {
     old: 'Records trapped in one trust',
@@ -99,7 +99,7 @@ const STEPS = [
   {
     step: '02',
     title: 'Teach',
-    body: 'Schedule sessions or publish claimable slots. Built-in video, QR feedback, automatic reminders and certificates.',
+    body: 'Schedule sessions or publish claimable slots. Built-in video, QR feedback, private documents, automatic reminders, and certificates after attendance finalization.',
   },
   {
     step: '03',

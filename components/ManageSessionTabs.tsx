@@ -11,7 +11,6 @@ import { FeedbackSummaryPanel } from './FeedbackSummaryPanel'
 import { DepartmentQRCodePanel } from './DepartmentQRCodePanel'
 import { FeedbackListPanel } from './FeedbackListPanel'
 import { EditSessionForm } from './EditSessionForm'
-import { AuditPanel } from './AuditPanel'
 import { ReleaseTeacherFeedbackPanel } from './ReleaseTeacherFeedbackPanel'
 import { RecallQuestionsPanel } from './RecallQuestionsPanel'
 import { RecallAnalyticsPanel } from './RecallAnalyticsPanel'
@@ -24,6 +23,11 @@ import { Button } from './Button'
 import { LOCATION_TYPE_LABELS, type Session, type TeacherInvitation } from '@/lib/types'
 import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
 import { sessionMeetingUrl } from '@/lib/jitsi'
+import type { SessionDocument } from '@/lib/db/session-documents'
+import { SessionDocumentsPanel } from './SessionDocumentsPanel'
+import type { AttendanceEvidence, SessionActivityEvent, SessionParticipant } from '@/lib/db/attendance'
+import { SessionAttendanceManagementPanel } from './SessionAttendanceManagementPanel'
+import { SessionActivityPanel } from './SessionActivityPanel'
 
 interface ManageSessionTabsProps {
   session: Session
@@ -39,6 +43,14 @@ interface ManageSessionTabsProps {
   /** Server-computed opsEnabled() — OPS_ENABLED=false removes the surface. */
   showAudioRecap?: boolean
   audioRecap?: AudioRecapMeta | null
+  documents?: SessionDocument[]
+  canUploadDocuments?: boolean
+  currentUserId: string
+  attendanceGovernance?: {
+    participants: SessionParticipant[]
+    evidence: AttendanceEvidence[]
+    activity: SessionActivityEvent[]
+  }
 }
 
 export function ManageSessionTabs({
@@ -54,8 +66,12 @@ export function ManageSessionTabs({
   feedbackActions = [],
   showAudioRecap = false,
   audioRecap = null,
+  documents = [],
+  canUploadDocuments = false,
+  currentUserId,
+  attendanceGovernance = { participants: [], evidence: [], activity: [] },
 }: ManageSessionTabsProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'meeting' | 'teachers' | 'feedback' | 'recall' | 'audit' | 'certificates'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'meeting' | 'teachers' | 'attendance' | 'feedback' | 'recall' | 'documents' | 'certificates' | 'activity'>('overview')
   const meetingUrl = sessionMeetingUrl(session)
   const [editMode, setEditMode] = useState(false)
 
@@ -63,10 +79,12 @@ export function ManageSessionTabs({
     { id: 'overview' as const, label: 'Overview' },
     { id: 'meeting' as const, label: 'Meeting Link' },
     { id: 'teachers' as const, label: 'Teachers' },
+    { id: 'attendance' as const, label: 'Attendance' },
     { id: 'feedback' as const, label: 'Feedback' },
     { id: 'recall' as const, label: 'Recall' },
-    { id: 'audit' as const, label: 'Audit' },
+    { id: 'documents' as const, label: 'Documents' },
     { id: 'certificates' as const, label: 'Certificates' },
+    { id: 'activity' as const, label: 'Activity Log' },
   ]
 
   return (
@@ -231,13 +249,28 @@ export function ManageSessionTabs({
           </div>
         )}
 
-        {activeTab === 'audit' && (
+        {activeTab === 'attendance' && (
           <Card>
-            <h2 className="text-xl font-mono font-bold mb-4">Attendance Audit</h2>
-            <p className="font-mono text-sm text-gray-600 mb-4">
-              Feedback submissions serve as attendance records. Each entry below represents a confirmed attendee.
-            </p>
-            <AuditPanel sessionId={session.id} />
+            <h2 className="text-xl font-mono font-bold mb-4">Attendance Governance</h2>
+            <SessionAttendanceManagementPanel
+              session={session}
+              attendance={attendance}
+              participants={attendanceGovernance.participants}
+              evidence={attendanceGovernance.evidence}
+            />
+          </Card>
+        )}
+
+        {activeTab === 'documents' && (
+          <Card>
+            <h2 className="mb-4 font-mono text-xl font-bold">Session Documents</h2>
+            <SessionDocumentsPanel
+              sessionId={session.id}
+              documents={documents}
+              canUpload={canUploadDocuments}
+              canManage
+              currentUserId={currentUserId}
+            />
           </Card>
         )}
 
@@ -245,7 +278,11 @@ export function ManageSessionTabs({
           <div className="space-y-6">
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Generate Certificates</h2>
-              <CertificateGenerationPanel sessionId={session.id} attendance={attendance} />
+              <CertificateGenerationPanel
+                sessionId={session.id}
+                attendance={attendance}
+                attendanceFinalized={session.attendance_phase === 'FINALIZED'}
+              />
             </Card>
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Release Feedback to Teachers</h2>
@@ -256,6 +293,16 @@ export function ManageSessionTabs({
               />
             </Card>
           </div>
+        )}
+
+        {activeTab === 'activity' && (
+          <Card>
+            <h2 className="mb-4 font-mono text-xl font-bold">Session Activity Log</h2>
+            <p className="mb-4 font-mono text-sm text-gray-600">
+              Governed attendance, report, certificate, and document events. Raw feedback and secrets are never copied here.
+            </p>
+            <SessionActivityPanel events={attendanceGovernance.activity} />
+          </Card>
         )}
       </div>
     </div>

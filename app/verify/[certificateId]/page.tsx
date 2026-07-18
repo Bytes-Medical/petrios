@@ -2,6 +2,7 @@ import { getCertificateByCode } from '@/app/actions/certificates'
 import { buildSignatories } from '@/lib/certificates/signatories'
 import Image from 'next/image'
 import { Wordmark } from '@/components/Wordmark'
+import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
 
 export default async function VerifyCertificatePage(
   props: {
@@ -10,6 +11,8 @@ export default async function VerifyCertificatePage(
 ) {
   const params = await props.params;
   const certificate = await getCertificateByCode(params.certificateId)
+  const revoked = certificate?.status === 'REVOKED'
+  const legacy = certificate?.status === 'LEGACY'
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-8">
@@ -21,14 +24,25 @@ export default async function VerifyCertificatePage(
 
         {certificate ? (
           <div className="border border-black bg-white">
-            {/* Success banner */}
-            <div className="bg-green-50 border-b border-green-200 px-6 py-4">
+            <div className={`${revoked ? 'bg-red-50 border-red-200' : legacy ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'} border-b px-6 py-4`}>
               <div className="flex items-center gap-2">
-                <span className="text-green-600 text-xl">&#10003;</span>
-                <span className="font-mono text-sm font-bold text-green-800">
-                  Valid Certificate
+                <span className={`${revoked ? 'text-red-600' : legacy ? 'text-amber-700' : 'text-green-600'} text-xl`}>
+                  {revoked ? <>&#10007;</> : legacy ? '!' : <>&#10003;</>}
+                </span>
+                <span className={`${revoked ? 'text-red-800' : legacy ? 'text-amber-900' : 'text-green-800'} font-mono text-sm font-bold`}>
+                  {revoked ? 'Revoked Certificate' : legacy ? 'Legacy Certificate Record' : 'Valid Certificate'}
                 </span>
               </div>
+              {revoked ? (
+                <p className="mt-2 font-mono text-xs text-red-800">
+                  This code is retained for audit history but is no longer valid.
+                  {certificate.revocation_reason ? ` ${certificate.revocation_reason}.` : ''}
+                </p>
+              ) : legacy ? (
+                <p className="mt-2 font-mono text-xs text-amber-900">
+                  This certificate predates the finalized-attendance eligibility gate.
+                </p>
+              ) : null}
             </div>
 
             {/* Certificate ID */}
@@ -69,11 +83,14 @@ export default async function VerifyCertificatePage(
               {certificate.organizations?.name && (
                 <Detail label="Organisation" value={certificate.organizations.name} />
               )}
-              {buildSignatories(
-                certificate.departments?.lead_name,
-                certificate.issued_by_name
-              ).map((s) => (
-                <Detail key={s.label} label={s.label} value={s.value} />
+              {buildSignatories({
+                coordinatorNames: resolveTeachingCoordinatorNames(
+                  certificate.coordinator_names,
+                  certificate.departments?.lead_name
+                ),
+                issuerName: certificate.issued_by_name,
+              }).map((s) => (
+                <Detail key={`${s.label}-${s.value}`} label={s.label} value={s.value} />
               ))}
               <Detail
                 label="Issued"

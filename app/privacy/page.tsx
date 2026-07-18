@@ -54,16 +54,16 @@ export default function PrivacyPolicyPage() {
         <ul className="list-disc space-y-2 pl-5">
           <li><strong>Identity and account:</strong> name, email, training grade, authentication identifiers, profile, and account status.</li>
           <li><strong>Membership and authority:</strong> organisation, department, role, invitations, and teaching assignments.</li>
-          <li><strong>Teaching activity:</strong> sessions created, taught, joined, or attended; attendance evidence and derived status; teaching slots and claims.</li>
+          <li><strong>Teaching activity:</strong> sessions created, taught, joined, or attended; private session documents; attendance evidence, roster, corrections, and finalized status; teaching slots and claims.</li>
           <li><strong>Feedback:</strong> first name, last name, email, ratings, answers, and free-text comments. The public feedback form does not require an account, but its submissions are <strong>identified, not anonymous</strong>.</li>
-          <li><strong>Records and learning:</strong> certificates, Recall answers, personal reflections, curriculum coverage, portfolio snapshots, and teaching dossiers.</li>
+          <li><strong>Records and learning:</strong> certificates (including recipient, teaching-coordinator, and issuer names), Recall answers, personal reflections, curriculum coverage, portfolio snapshots, and teaching dossiers.</li>
           <li><strong>Communications:</strong> invitation, reminder, notification, newsletter, feedback-release, and delivery status data.</li>
           <li><strong>Security and technical data:</strong> essential authentication cookies, IP/network data available to infrastructure providers, request and error logs, API credentials, audit events, and abuse-prevention signals.</li>
         </ul>
         <p>
           Petrios is not designed for patient records. Users should not enter patient data,
           clinical secrets, or unnecessary special-category data in session descriptions,
-          feedback, reflections, or assistant messages.
+          feedback, uploaded session documents, reflections, or assistant messages.
         </p>
       </ComplianceSection>
 
@@ -89,11 +89,13 @@ export default function PrivacyPolicyPage() {
 
       <ComplianceSection title="Feedback and AI processing">
         <p>
-          Raw feedback remains identifiable to authorised moderators, and teacher feedback-release
-          emails currently include the submitter’s name. Some AI paths omit stored identity fields
-          and the Ops synthesis path removes known names and quarantines welfare or conduct signals;
-          that processing does not make the source record anonymous. Free text can itself identify
-          a person, so users should avoid unnecessary identifying details.
+          Raw feedback remains identifiable to authorised moderators. Teacher feedback-release
+          emails contain aggregate ratings only, omit respondent names, email addresses, and raw
+          comments, and withhold detailed analytics when fewer than five people respond. Optional
+          summary paths omit stored identity fields, remove known names where detectable, treat
+          comments as untrusted, and route configured welfare or conduct signals to human review.
+          These controls do not make the source record anonymous. Free text can itself identify a
+          person, so users should avoid unnecessary identifying details.
         </p>
         <p>
           Optional AI features are currently <strong>{config.aiEnabled ? `enabled through ${config.aiProvider}` : 'disabled'}</strong>.
@@ -151,10 +153,12 @@ export default function PrivacyPolicyPage() {
         <p>
           Petrios does not currently enforce one universal automatic retention schedule. The
           controller must set and document periods for accounts, membership, attendance evidence,
-          feedback, communications, audit data, certificates, portfolio records, and provider logs,
+          feedback, private session documents, delivery ledgers, communications, audit data,
+          certificates, portfolio records, and provider logs,
           then implement deletion or anonymisation operations appropriate to those periods.
-          Attendance evidence is append-oriented in normal application flows, and public verification
-          records may need separate revocation and retention decisions.
+          Attendance evidence is append-only in normal application/RLS flows, corrections are new
+          reasoned rows, and public verification or archived document records need separate
+          revocation, deletion, and retention decisions.
         </p>
       </ComplianceSection>
 

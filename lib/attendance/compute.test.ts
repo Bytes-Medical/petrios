@@ -61,6 +61,7 @@ describe('isWithinEvidenceWindow', () => {
   it('always accepts teacher and teams evidence', () => {
     expect(isWithinEvidenceWindow('TEACHER', at('2027-01-01T00:00:00Z'), session)).toBe(true)
     expect(isWithinEvidenceWindow('TEAMS', at('2020-01-01T00:00:00Z'), session)).toBe(true)
+    expect(isWithinEvidenceWindow('MODERATOR_CONFIRMATION', at('2020-01-01T00:00:00Z'), session)).toBe(true)
   })
 
   it('accepts recall evidence from session end until 21 days after', () => {
@@ -192,5 +193,49 @@ describe('computeAttendanceFromEvidence', () => {
     )
     expect(result.status).toBe('ABSENT')
     expect(result.primarySource).toBeNull()
+  })
+
+  it('policy v2 never treats feedback or recall completion as attendance', () => {
+    const result = computeAttendanceFromEvidence(
+      [
+        evidence('FEEDBACK', '2026-07-01T11:30:00.000Z'),
+        evidence('RECALL', '2026-07-03T09:00:00.000Z', {
+          status_override: 'PRESENT',
+        }),
+      ],
+      { ...session, attendance_policy_version: 2 }
+    )
+    expect(result).toEqual({
+      status: 'ABSENT',
+      primarySource: null,
+      firstEvidenceAt: null,
+    })
+  })
+
+  it('policy v2 ignores teacher-assignment attribution', () => {
+    const result = computeAttendanceFromEvidence(
+      [
+        evidence('TEACHER', '2026-07-01T10:00:00.000Z', {
+          assigned_as_teacher: true,
+        }),
+      ],
+      { ...session, attendance_policy_version: 2 }
+    )
+    expect(result.status).toBe('ABSENT')
+    expect(result.primarySource).toBeNull()
+  })
+
+  it('a reasoned moderator decision outranks other evidence and can excuse', () => {
+    const result = computeAttendanceFromEvidence(
+      [
+        evidence('GROUP_CODE', '2026-07-01T10:02:00.000Z'),
+        evidence('MODERATOR_CONFIRMATION', '2026-07-02T10:00:00.000Z', {
+          status_override: 'EXCUSED',
+        }),
+      ],
+      { ...session, attendance_policy_version: 2 }
+    )
+    expect(result.status).toBe('EXCUSED')
+    expect(result.primarySource).toBe('MODERATOR_CONFIRMATION')
   })
 })

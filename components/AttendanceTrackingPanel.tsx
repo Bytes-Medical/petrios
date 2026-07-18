@@ -27,9 +27,14 @@ export function AttendanceTrackingPanel({ sessionId, attendance, isLocked = fals
 
     setLoading(`${userId}-${status}`)
     setError(null)
+    const reason = window.prompt('Reason for this attendance decision:')?.trim()
+    if (!reason) {
+      setLoading(null)
+      return
+    }
 
     try {
-      await markAttendance(sessionId, userId, status)
+      await markAttendance(sessionId, userId, status, reason)
       window.location.reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to mark attendance')
@@ -50,10 +55,12 @@ export function AttendanceTrackingPanel({ sessionId, attendance, isLocked = fals
   }
 
   async function handleUnlock() {
+    const reason = window.prompt('Why is finalized attendance being reopened?')?.trim()
+    if (!reason) return
     setLoading('unlock')
     setError(null)
     try {
-      await unlockAttendance(sessionId)
+      await unlockAttendance(sessionId, reason)
       window.location.reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to unlock attendance')
@@ -198,6 +205,15 @@ export function AttendanceTrackingPanel({ sessionId, attendance, isLocked = fals
                           className="text-xs"
                         >
                           Absent
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => handleMarkAttendance(record.user_id, 'EXCUSED')}
+                          disabled={loading === `${record.user_id}-EXCUSED` || record.status === 'EXCUSED'}
+                          className="text-xs"
+                        >
+                          Excused
                         </Button>
                       </>
                     )}

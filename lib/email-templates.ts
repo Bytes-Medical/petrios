@@ -1,5 +1,6 @@
 import { LOCATION_TYPE_LABELS } from '@/lib/types'
 import type { Session } from '@/lib/types'
+import { escapeHtml } from '@/lib/html'
 
 interface TeacherFeedbackEmailParams {
   teacherName: string
@@ -9,7 +10,7 @@ interface TeacherFeedbackEmailParams {
   totalResponses: number
   averageRating: number
   ratingDistribution: Record<number, number>
-  comments: { attendee_first_name: string | null; attendee_last_name: string | null; comment: string }[]
+  privacySuppressed: boolean
 }
 
 export function buildTeacherFeedbackEmailHtml(params: TeacherFeedbackEmailParams): string {
@@ -21,8 +22,13 @@ export function buildTeacherFeedbackEmailHtml(params: TeacherFeedbackEmailParams
     totalResponses,
     averageRating,
     ratingDistribution,
-    comments,
+    privacySuppressed,
   } = params
+
+  const safeTeacherName = escapeHtml(teacherName)
+  const safeSessionTitle = escapeHtml(sessionTitle)
+  const safeSessionDate = escapeHtml(sessionDate)
+  const safeDepartmentName = escapeHtml(departmentName)
 
   const ratingBars = [5, 4, 3, 2, 1].map(star => {
     const count = ratingDistribution[star] || 0
@@ -40,26 +46,18 @@ export function buildTeacherFeedbackEmailHtml(params: TeacherFeedbackEmailParams
     `
   }).join('')
 
-  const commentsSection = comments.length > 0
-    ? `
-      <h3 style="font-size:14px;margin:24px 0 12px;">Attendee Comments</h3>
-      ${comments.map(c => {
-        const name = [c.attendee_first_name, c.attendee_last_name].filter(Boolean).join(' ') || 'Anonymous'
-        return `
-          <div style="border-left:3px solid #000;padding:8px 12px;margin:8px 0;background:#fafafa;">
-            <p style="margin:0 0 4px;font-size:12px;color:#666;">${name}</p>
-            <p style="margin:0;">${c.comment}</p>
-          </div>
-        `
-      }).join('')}
-    `
+  const privacyNotice = privacySuppressed
+    ? `<p style="margin:20px 0;padding:12px;border:1px solid #999;background:#fafafa;">
+        Detailed analytics are withheld because fewer than five responses were received.
+        This protects respondents from being identified in a small group.
+      </p>`
     : ''
 
   return `
     <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
       <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Session Feedback Summary</h2>
-      <p style="margin:20px 0;">Dear ${teacherName},</p>
-      <p style="margin:20px 0;">Thank you for delivering <strong>${sessionTitle}</strong> on ${sessionDate} (${departmentName}). Below is a summary of the feedback collected from attendees.</p>
+      <p style="margin:20px 0;">Dear ${safeTeacherName},</p>
+      <p style="margin:20px 0;">Thank you for delivering <strong>${safeSessionTitle}</strong> on ${safeSessionDate} (${safeDepartmentName}). Below is a privacy-safe aggregate of the feedback collected.</p>
 
       <table style="width:100%;border-collapse:collapse;margin:20px 0;">
         <tr>
@@ -68,18 +66,18 @@ export function buildTeacherFeedbackEmailHtml(params: TeacherFeedbackEmailParams
         </tr>
         <tr>
           <td style="padding:8px 0;font-weight:bold;">Average Rating:</td>
-          <td style="padding:8px 0;">${averageRating}/5</td>
+          <td style="padding:8px 0;">${privacySuppressed ? 'Withheld' : `${averageRating}/5`}</td>
         </tr>
       </table>
 
-      <h3 style="font-size:14px;margin:20px 0 12px;">Rating Breakdown</h3>
-      <table style="width:100%;border-collapse:collapse;">
-        ${ratingBars}
-      </table>
+      ${privacySuppressed ? privacyNotice : `
+        <h3 style="font-size:14px;margin:20px 0 12px;">Rating Breakdown</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          ${ratingBars}
+        </table>
+      `}
 
-      ${commentsSection}
-
-      <p style="margin:24px 0 12px;"><strong>Your teaching certificate is attached to this email.</strong></p>
+      <p style="margin:24px 0 12px;">No respondent names, email addresses, or raw comments are included in this report.</p>
 
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
         This email was sent via Petrios.
@@ -92,11 +90,13 @@ export function buildCertificateEmailHtml(
   sessionTitle: string,
   recipientName: string
 ): string {
+  const safeSessionTitle = escapeHtml(sessionTitle)
+  const safeRecipientName = escapeHtml(recipientName)
   return `
     <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
       <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Your Attendance Certificate</h2>
-      <p style="margin:20px 0;">Dear ${recipientName},</p>
-      <p style="margin:20px 0;">Thank you for attending <strong>${sessionTitle}</strong>. Your attendance certificate is now ready for download when you sign in to your dashboard.</p>
+      <p style="margin:20px 0;">Dear ${safeRecipientName},</p>
+      <p style="margin:20px 0;">Thank you for attending <strong>${safeSessionTitle}</strong>. Your attendance certificate is now ready for download when you sign in to your dashboard.</p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
         This email was sent via Petrios.
       </p>

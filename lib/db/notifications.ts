@@ -14,16 +14,23 @@ export async function insertNotificationAsSystem(input: {
   title: string
   body?: string | null
   link?: string | null
+  dedupeKey?: string | null
 }): Promise<void> {
   const db = await getServiceDb()
-  const { error } = await db.from('notifications').insert({
+  const row = {
     org_id: input.orgId,
     user_id: input.userId,
     type: input.type,
     title: input.title,
     body: input.body ?? null,
     link: input.link ?? null,
-  })
+    dedupe_key: input.dedupeKey ?? null,
+  }
+  const { error } = input.dedupeKey
+    ? await db
+        .from('notifications')
+        .upsert(row, { onConflict: 'user_id,dedupe_key', ignoreDuplicates: true })
+    : await db.from('notifications').insert(row)
 
   if (error) throw toDbError('Failed to create notification', error)
 }

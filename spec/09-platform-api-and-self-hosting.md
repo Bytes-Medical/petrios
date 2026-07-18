@@ -152,8 +152,11 @@ not filter to slots published/offered to a particular audience.
 
 Looks up the globally unique code, then returns 404 unless the certificate
 organization matches the token. Response includes code, role, recipient name,
-issued time, session id/title/date, department id/name, and `valid: true`.
-“Valid” means the row exists; certificates have no revoke state.
+ordered snapshotted `teaching_coordinators`, issued time,
+session id/title/date, department id/name, lifecycle `status`, revocation fields,
+and `valid`. Only status `VALID` returns `valid: true`;
+`LEGACY` and `REVOKED` remain resolvable audit states rather than false “not
+found” responses.
 
 ## Webhook administration
 

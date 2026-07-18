@@ -17,7 +17,14 @@ export function ReleaseTeacherFeedbackPanel({
   registeredTeacherCount,
 }: ReleaseTeacherFeedbackPanelProps) {
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ sentCount: number; totalTeachers: number } | null>(null)
+  const [result, setResult] = useState<{
+    sentCount: number
+    totalTeachers: number
+    failedCount: number
+    privacySuppressed: boolean
+    alreadyReleased: boolean
+    inProgressCount: number
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const acceptedInvitations = invitations.filter(i => i.status === 'ACCEPTED')
@@ -49,9 +56,10 @@ export function ReleaseTeacherFeedbackPanel({
   return (
     <div className="space-y-4">
       <p className="font-mono text-sm text-gray-600">
-        Send each teacher a feedback summary email with their teaching certificate attached.
-        This will generate a <strong>Teacher</strong> certificate and email it along with the
-        session&apos;s feedback statistics and attendee comments.
+        Send each accepted teacher a privacy-safe aggregate report. Respondent
+        names, email addresses, raw comments, attendance changes, and certificates
+        are never included in this action. Detailed analytics are withheld when
+        fewer than five people responded.
       </p>
 
       <div className="font-mono text-sm">
@@ -74,7 +82,11 @@ export function ReleaseTeacherFeedbackPanel({
 
       {result && (
         <div className="border border-black bg-green-50 p-3 font-mono text-sm">
-          ✓ Feedback and certificates sent to {result.sentCount} of {result.totalTeachers} teacher{result.totalTeachers !== 1 ? 's' : ''}.
+          {result.alreadyReleased
+            ? '✓ The current feedback set was already released; no duplicate email was sent.'
+            : `✓ Feedback report sent to ${result.sentCount} of ${result.totalTeachers} teacher${result.totalTeachers !== 1 ? 's' : ''}.`}
+          {result.failedCount > 0 ? ` ${result.failedCount} delivery attempt${result.failedCount === 1 ? '' : 's'} failed.` : ''}
+          {result.inProgressCount > 0 ? ` ${result.inProgressCount} delivery attempt${result.inProgressCount === 1 ? ' is' : 's are'} already in progress.` : ''}
         </div>
       )}
 

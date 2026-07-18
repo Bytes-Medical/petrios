@@ -109,21 +109,32 @@ export async function findDepartmentOrgId(id: string): Promise<string | null> {
 
 export interface DepartmentSettingsRow {
   leadName: string | null
+  coordinatorNames: string[]
   feedbackFormFields: unknown
 }
 
-export async function findDepartmentNameAndLead(
+export async function findDepartmentCertificateSettings(
   departmentId: string
-): Promise<{ name: string; lead_name: string | null } | null> {
+): Promise<{
+  name: string
+  lead_name: string | null
+  certificate_coordinator_names: string[]
+} | null> {
   const db = await getDb()
   const { data, error } = await db
     .from('departments')
-    .select('name, lead_name')
+    .select('name, lead_name, certificate_coordinator_names')
     .eq('id', departmentId)
     .maybeSingle()
 
-  if (error) throw toDbError('Failed to fetch department name/lead', error)
-  return (data as { name: string; lead_name: string | null } | null) ?? null
+  if (error) throw toDbError('Failed to fetch department certificate settings', error)
+  return (
+    (data as {
+      name: string
+      lead_name: string | null
+      certificate_coordinator_names: string[]
+    } | null) ?? null
+  )
 }
 
 export async function findDepartmentSettings(
@@ -133,7 +144,7 @@ export async function findDepartmentSettings(
   const db = await getDb()
   const { data, error } = await db
     .from('departments')
-    .select('lead_name, feedback_form_fields')
+    .select('lead_name, certificate_coordinator_names, feedback_form_fields')
     .eq('id', departmentId)
     .eq('org_id', orgId)
     .maybeSingle()
@@ -141,26 +152,35 @@ export async function findDepartmentSettings(
   if (error) throw toDbError('Failed to fetch department settings', error)
   if (!data) return null
 
-  const row = data as { lead_name: string | null; feedback_form_fields: unknown }
+  const row = data as {
+    lead_name: string | null
+    certificate_coordinator_names: string[] | null
+    feedback_form_fields: unknown
+  }
   return {
     leadName: row.lead_name ?? null,
+    coordinatorNames: row.certificate_coordinator_names ?? [],
     feedbackFormFields: row.feedback_form_fields ?? null,
   }
 }
 
-export async function updateDepartmentLeadName(
+export async function updateDepartmentCertificateCoordinators(
   departmentId: string,
   orgId: string,
-  leadName: string | null
+  coordinatorNames: string[]
 ): Promise<void> {
   const db = await getServiceDb()
   const { error } = await db
     .from('departments')
-    .update({ lead_name: leadName })
+    .update({
+      certificate_coordinator_names: coordinatorNames,
+      // Keep the historical single-value column coherent for older clients.
+      lead_name: coordinatorNames[0] ?? null,
+    })
     .eq('id', departmentId)
     .eq('org_id', orgId)
 
-  if (error) throw toDbError('Failed to update department lead', error)
+  if (error) throw toDbError('Failed to update certificate coordinators', error)
 }
 
 export async function updateDepartmentFeedbackFormFields(

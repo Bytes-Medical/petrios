@@ -9,7 +9,7 @@ feedback, teaching evidence, communications, reporting, API integration, and an
 optional AI-assisted operations layer.
 
 This document describes the source and migrations through
-`044_single_moderator_organization.sql`. It is an implementation specification, not a generic
+`051_attendance_secret_boundary.sql`. It is an implementation specification, not a generic
 Next.js architecture recommendation.
 
 ## Runtime stack
@@ -236,8 +236,9 @@ Database writes and side effects are not globally transactional.
 - Webhooks are fire-and-forget, one attempt, and never fail the initiating action.
 - Notifications are internal database records and may be created independently
   from email.
-- Certificate PDFs are generated from stored certificate/session data; the file
-  is not generally stored as a blob.
+- Certificate PDFs are generated from stored certificate/session data,
+  including the issued coordinator-name snapshot, and use the fixed Petrios UI
+  brand palette/wordmark; the file is not generally stored as a blob.
 - Audio recaps are an exception: approved MP3 bytes are stored in Postgres.
 
 Every workflow spec lists its own ordering and failure semantics. Callers must not

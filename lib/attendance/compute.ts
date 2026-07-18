@@ -9,14 +9,14 @@ import type { AttendanceStatus } from '@/lib/types'
  */
 
 export const EVIDENCE_PRIORITY: Record<EvidenceSource, number> = {
+  MODERATOR_CONFIRMATION: 6,
   TEACHER: 5,
   TEAMS: 4,
   FEEDBACK: 3,
   GROUP_CODE: 2,
   SELF_CHECKIN: 1,
-  // Catch-up attendance (passed recall questions after missing the session).
-  // Lowest priority: it can never outrank evidence of real presence, and
-  // primary_source='RECALL' keeps it visibly distinct in audit/portfolio.
+  // Historical policy-v1 Recall evidence. Policy v2 filters it out and the
+  // current Recall action does not create new physical-attendance evidence.
   RECALL: 0,
 }
 
@@ -35,6 +35,7 @@ export interface AttendanceWindowSession {
   checkin_close_mins_after?: number | null
   feedback_valid_mins_after_end?: number | null
   late_after_mins?: number | null
+  attendance_policy_version?: number | null
 }
 
 export interface EvidenceForCompute {
@@ -94,6 +95,7 @@ export function isWithinEvidenceWindow(
       return at >= checkInStart && at <= feedbackEnd
     case 'TEACHER':
     case 'TEAMS':
+    case 'MODERATOR_CONFIRMATION':
       return true
     case 'RECALL': {
       const end = new Date(session.date_end).getTime()
@@ -118,9 +120,19 @@ export function computeAttendanceFromEvidence(
   evidence: EvidenceForCompute[],
   session: AttendanceWindowSession
 ): ComputedAttendance {
-  const valid = evidence.filter((ev) =>
-    isWithinEvidenceWindow(ev.source, new Date(ev.observed_at), session)
-  )
+  const valid = evidence.filter((ev) => {
+    if (!isWithinEvidenceWindow(ev.source, new Date(ev.observed_at), session)) {
+      return false
+    }
+
+    if ((session.attendance_policy_version ?? 1) >= 2) {
+      if (ev.source === 'FEEDBACK' || ev.source === 'RECALL') return false
+      if (ev.source === 'TEACHER' && ev.metadata?.assigned_as_teacher === true) {
+        return false
+      }
+    }
+    return true
+  })
 
   if (valid.length === 0) {
     return { status: 'ABSENT', primarySource: null, firstEvidenceAt: null }

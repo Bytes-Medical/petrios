@@ -80,7 +80,7 @@ export function FeedbackForm({ sessionId, sessionTitle, feedbackFields }: Feedba
       showToast({
         variant: 'success',
         title: 'Feedback submitted',
-        description: `Your attendance for ${sessionTitle} has been recorded.`,
+        description: `Your feedback for ${sessionTitle} has been recorded. Attendance is managed separately.`,
       })
 
       setFirstName('')
@@ -102,14 +102,16 @@ export function FeedbackForm({ sessionId, sessionTitle, feedbackFields }: Feedba
     <form onSubmit={handleSubmit} className="space-y-8">
       <div className="space-y-3 border border-black p-4">
         <p className="font-mono text-xs uppercase tracking-[0.22em] text-gray-500">
-          Attendance and Feedback
+          Identified session feedback
         </p>
         <p className="font-mono text-sm text-gray-600">
           Fields marked with * are required.
         </p>
         <p className="font-mono text-xs text-gray-500 italic leading-6">
-          Your feedback is anonymised before it is released to teachers. Your name and email are
-          only used to issue your attendance certificate.
+          Your name and email are stored with this response and visible to authorised moderators.
+          Teacher release contains aggregate ratings only, omits identities and raw comments, and
+          withholds detailed analytics when fewer than five people respond. Feedback does not mark
+          attendance or issue a certificate.
         </p>
       </div>
 

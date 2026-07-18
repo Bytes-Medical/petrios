@@ -20,12 +20,12 @@ const FEATURES: Feature[] = [
   {
     eyebrow: 'Attendance',
     title: 'Evidence, not box-ticking',
-    body: 'Attendance is computed from an append-only evidence pipeline — teacher marking, video joins, feedback submissions, group codes, and self check-in, each with its own validity window and priority. The record shows how presence was proven, can be locked after the session, and exports to CSV.',
+    body: 'Attendance is computed from append-only evidence — moderator confirmation, reviewed integrations, secure group codes, and self check-in. Organisers finalize a complete roster into a numbered revision; corrections require a reason and a new revision. Feedback, teacher assignment, and Recall never masquerade as physical attendance.',
     points: [
-      'QR and rotating group codes for low-friction check-in',
-      'Joining the built-in video room checks you in automatically',
-      'Missed it? Pass three recall questions within 21 days and attendance is recorded — honestly labelled as caught-up',
-      'Full audit trail; locked sessions never silently change',
+      'Random, salted, rate-limited group codes for low-friction check-in',
+      'Joining the built-in video room attempts the same windowed self check-in',
+      'Missing evidence becomes an explicit absence when the roster is finalized',
+      'Append-only evidence, reasoned corrections, activity log, and safe CSV export',
     ],
   },
   {
@@ -34,7 +34,7 @@ const FEATURES: Feature[] = [
     body: 'Give any session a video room with zero setup — no links to paste, ever. Rooms are generated per session, embedded in the session page for members, and joinable by external guests with a plain link. Swap the backend for your own Jitsi server with one environment variable.',
     points: [
       'Auto-generated rooms on Jitsi (self-hostable)',
-      'Embedded joining records attendance evidence',
+      'Embedded joining attempts windowed self check-in',
       'Microsoft Teams links equally supported for Teams-first trusts',
     ],
   },
@@ -51,10 +51,10 @@ const FEATURES: Feature[] = [
   {
     eyebrow: 'Feedback',
     title: 'Accountless feedback, safely summarised',
-    body: 'Attendees scan a QR and answer your department’s custom form without needing an account. Submissions store the attendee’s name and email. AI summarises privacy-processed themes and suggestions for the teacher, with hard safety rails: known names are stripped, and anything raising welfare or conduct concerns is routed to a human and excluded from every AI output.',
+    body: 'Attendees scan a QR and answer your department’s custom form without needing an account. Submissions are identified, limited to the server-enforced window, and never create attendance or certificates. Moderators can request privacy-processed AI themes; teacher release contains aggregate ratings only and withholds detail below five responses.',
     points: [
       'Custom per-department forms with 1–5 scored questions',
-      'Live stats, AI theme summaries, teacher feedback release',
+      'Live stats, safety-screened AI summaries, privacy-safe teacher reports',
       'Low-scoring sessions alert moderators automatically',
     ],
   },
@@ -65,7 +65,7 @@ const FEATURES: Feature[] = [
     points: [
       'Portfolio packs are snapshotted and publicly verifiable by code',
       'Signed, portable teaching records survive rotating between trusts',
-      'Spaced recall questions (+3 and +14 days) turn attendance into retention',
+      'Spaced recall questions (+3 and +14 days) measure retention without changing attendance',
     ],
   },
   {
@@ -80,9 +80,10 @@ const FEATURES: Feature[] = [
   {
     eyebrow: 'Governance',
     title: 'Certificates, audit, and equity',
-    body: 'Automatic PDF certificates for teachers and attendees, publicly verifiable by code. The audit dashboard covers sessions, certificates, members — and an equity lens showing attendance rates by grade, so scheduling that excludes a cohort is visible before the GMC survey says so.',
+    body: 'PDF certificates require the current finalized attendance revision and are publicly verifiable, visibly legacy, or revoked after correction. The audit dashboard covers sessions, certificates, members — and an equity lens showing attendance rates by grade, so scheduling patterns can be reviewed early.',
     points: [
       'Public certificate verification at /verify',
+      'Private PDF, Word, and PowerPoint documents attached to each session',
       'Attendance equity by cohort with CSV export',
       'DTAC self-assessment and DPIA template included for NHS deployments',
     ],

@@ -4,11 +4,13 @@ import { emitWebhook } from '@/lib/webhooks'
 import { generateCertificateCode } from '@/lib/certificates/utils'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildCertificateEmailHtml } from '@/lib/email-templates'
-import { computeAttendanceFromEvidence } from '@/lib/attendance/compute'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as attendanceDb from '@/lib/db/attendance'
 import * as certificatesDb from '@/lib/db/certificates'
 import * as onboardingDb from '@/lib/db/onboarding'
+import * as deliveriesDb from '@/lib/db/session-deliveries'
+import { requireCertificateEligibility } from '@/lib/certificates/eligibility'
+import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
 
 export async function GET(request: NextRequest) {
   const unauthorized = unauthorizedCronResponse(request)
@@ -27,59 +29,9 @@ export async function GET(request: NextRequest) {
 
   for (const session of sessions) {
     try {
-      // 1. Record TEACHER evidence for assigned teachers (idempotent)
-      const teacherIds = await sessionsDb.listSessionTeacherIdsAsSystem(session.id)
-      for (const teacherId of teacherIds) {
-        const exists = await attendanceDb.evidenceExistsAsSystem({
-          sessionId: session.id,
-          userId: teacherId,
-          source: 'TEACHER',
-        })
-        if (!exists) {
-          await attendanceDb.insertAttendanceEvidenceAsSystem({
-            orgId: session.org_id,
-            sessionId: session.id,
-            departmentId: session.department_id,
-            userId: teacherId,
-            source: 'TEACHER',
-            observedAt: session.date_start,
-            metadata: { assigned_as_teacher: true },
-          })
-        }
-      }
-
-      // 2. Recompute attendance with the same evidence semantics as the
-      //    interactive pipeline (lib/attendance/compute). Locked sessions
-      //    keep their existing computed rows.
-      if (!session.attendance_locked) {
-        const evidence = await attendanceDb.listSessionEvidenceAsSystem(session.id)
-
-        const byAttendee = new Map<string, typeof evidence>()
-        for (const ev of evidence) {
-          const key = ev.user_id ? `u:${ev.user_id}` : ev.external_email ? `e:${ev.external_email}` : null
-          if (!key) continue
-          const list = byAttendee.get(key)
-          if (list) list.push(ev)
-          else byAttendee.set(key, [ev])
-        }
-
-        for (const [key, attendeeEvidence] of Array.from(byAttendee.entries())) {
-          const isUserId = key.startsWith('u:')
-          const identifier = key.slice(2)
-          const computed = computeAttendanceFromEvidence(attendeeEvidence, session)
-
-          await attendanceDb.upsertAttendance({
-            orgId: session.org_id,
-            sessionId: session.id,
-            departmentId: session.department_id,
-            userId: isUserId ? identifier : null,
-            externalEmail: isUserId ? null : identifier,
-            status: computed.status,
-            primarySource: computed.primarySource,
-            firstEvidenceAt: computed.firstEvidenceAt,
-          })
-        }
-      }
+      // Certificate recognition is downstream of human-reviewed finalization.
+      // Leave the session eligible for a later run until that gate is complete.
+      if (session.attendance_phase !== 'FINALIZED') continue
 
       // Integration event: attendance for this session has been computed.
       void emitWebhook(session.org_id, 'attendance.computed', {
@@ -100,12 +52,30 @@ export async function GET(request: NextRequest) {
 
       const profiles = await onboardingDb.listProfilesForUsers(attendeeIds)
       const profileByUserId = new Map(profiles.map((p) => [p.user_id, p]))
+      const coordinatorSettings =
+        await certificatesDb.findCertificateCoordinatorNamesAsSystem(session.department_id)
+      const coordinatorNames = resolveTeachingCoordinatorNames(
+        coordinatorSettings.coordinator_names,
+        coordinatorSettings.lead_name
+      )
+      let sessionHadFailure = false
 
       // 4. Issue certificates and email each attendee
       for (const attendeeId of attendeeIds) {
+        let claimedDeliveryId: string | null = null
         try {
           const profile = profileByUserId.get(attendeeId)
-          if (!profile?.email) continue
+          if (!profile?.email) {
+            sessionHadFailure = true
+            continue
+          }
+
+          const eligibility = await requireCertificateEligibility({
+            sessionId: session.id,
+            userId: attendeeId,
+            role: 'ATTENDEE',
+            orgId: session.org_id,
+          })
 
           const recipientName =
             profile.full_name ||
@@ -114,12 +84,14 @@ export async function GET(request: NextRequest) {
 
           const existingCert = await certificatesDb.findCertificateByUserAndSession(
             attendeeId,
-            session.id
+            session.id,
+            { role: 'ATTENDEE', includeLegacy: false }
           )
 
+          let certificateId = existingCert?.id ?? null
           if (!existingCert) {
             const code = generateCertificateCode()
-            await certificatesDb.insertCertificateAsSystem({
+            const certificate = await certificatesDb.insertCertificateAsSystem({
               orgId: session.org_id,
               departmentId: session.department_id,
               sessionId: session.id,
@@ -127,7 +99,12 @@ export async function GET(request: NextRequest) {
               role: 'ATTENDEE',
               certificateCode: code,
               recipientName,
+              recipientEmail: profile.email,
+              coordinatorNames,
+              attendanceRevision: eligibility.attendanceRevision,
+              issuanceSource: 'POST_SESSION_REPORT',
             })
+            certificateId = certificate.id
             void emitWebhook(session.org_id, 'certificate.issued', {
               session_id: session.id,
               certificate_code: code,
@@ -135,22 +112,63 @@ export async function GET(request: NextRequest) {
             })
           }
 
-          const html = buildCertificateEmailHtml(session.title, recipientName)
+          if (!certificateId) throw new Error('Certificate issuance did not return a record')
 
-          await mailer.emails.send({
+          const html = buildCertificateEmailHtml(session.title, recipientName)
+          const delivery = await deliveriesDb.getOrCreateSessionDelivery({
+            orgId: session.org_id,
+            departmentId: session.department_id,
+            sessionId: session.id,
+            recipientUserId: attendeeId,
+            recipientEmail: profile.email,
+            deliveryType: 'ATTENDANCE_CERTIFICATE',
+            relatedId: certificateId,
+          })
+          if (delivery.status === 'SENT') continue
+          if (!(await deliveriesDb.claimSessionDelivery(delivery.id))) {
+            sessionHadFailure = true
+            continue
+          }
+          claimedDeliveryId = delivery.id
+
+          const sendResult = await mailer.emails.send({
             from: fromAddress,
             to: profile.email,
             subject: `Your Attendance Certificate — ${session.title}`,
             html,
           })
+          await deliveriesDb.recordDeliveryAttempt({
+            id: delivery.id,
+            success: !sendResult.error,
+            providerMessageId: sendResult.data?.id,
+            error: sendResult.error?.message,
+          })
+          if (sendResult.error) {
+            sessionHadFailure = true
+            console.error(`Failed to send report to attendee ${attendeeId}: ${sendResult.error.message}`)
+          }
         } catch (err) {
+          sessionHadFailure = true
+          if (claimedDeliveryId) {
+            await deliveriesDb.recordDeliveryAttempt({
+              id: claimedDeliveryId,
+              success: false,
+              error: err instanceof Error ? err.message : 'Certificate delivery failed',
+            }).catch((deliveryError) => {
+              console.error(`Failed to record delivery failure for attendee ${attendeeId}:`, deliveryError)
+            })
+          }
           console.error(`Failed to send report to attendee ${attendeeId}:`, err)
         }
       }
 
-      // 5. Mark session as processed
-      await sessionsDb.markSessionReportSent(session.id)
-      processedCount++
+      // Only close the session-level selector once every recipient delivery is
+      // complete. Failed rows remain individually retryable and successful rows
+      // are skipped on the next invocation.
+      if (!sessionHadFailure) {
+        await sessionsDb.markSessionReportSent(session.id)
+        processedCount++
+      }
     } catch (err) {
       console.error(`Failed to process session ${session.id}:`, err)
     }

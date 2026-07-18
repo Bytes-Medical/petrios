@@ -55,16 +55,31 @@ export default async function CertificatesPage() {
                       <p>
                         <strong>Certificate Code:</strong> {cert.certificate_code}
                       </p>
+                      <p>
+                        <strong>Status:</strong>{' '}
+                        {cert.status === 'REVOKED'
+                          ? 'Revoked'
+                          : cert.status === 'LEGACY'
+                            ? 'Legacy record'
+                            : 'Valid'}
+                      </p>
+                      {cert.status === 'REVOKED' && cert.revocation_reason ? (
+                        <p className="text-red-700">
+                          <strong>Reason:</strong> {cert.revocation_reason}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto">
-                    <a
-                      href={`/api/certificates/${cert.id}/download`}
-                      className="font-mono text-sm underline text-center sm:text-left"
-                      target="_blank"
-                    >
-                      Download PDF
-                    </a>
+                    {cert.status !== 'REVOKED' ? (
+                      <a
+                        href={`/api/certificates/${cert.id}/download`}
+                        className="font-mono text-sm underline text-center sm:text-left"
+                        target="_blank"
+                      >
+                        Download PDF
+                      </a>
+                    ) : null}
                     <Link
                       href={`/verify/${cert.certificate_code}`}
                       className="font-mono text-sm underline text-center sm:text-left"

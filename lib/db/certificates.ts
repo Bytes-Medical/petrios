@@ -15,6 +15,7 @@ export interface CertificateWithSession extends Certificate {
     id: string
     name: string
     lead_name?: string | null
+    certificate_coordinator_names?: string[] | null
   } | null
   organizations: {
     id: string
@@ -36,6 +37,10 @@ export async function insertCertificate(input: {
   recipientName?: string
   issuedBy?: string | null
   issuedByName?: string | null
+  recipientEmail?: string | null
+  coordinatorNames?: string[]
+  attendanceRevision?: number | null
+  issuanceSource?: string
 }): Promise<Certificate> {
   const db = await getDb()
 
@@ -56,6 +61,11 @@ export async function insertCertificate(input: {
   if (input.issuedByName !== undefined) {
     row.issued_by_name = input.issuedByName
   }
+  if (input.recipientEmail !== undefined) row.recipient_email = input.recipientEmail
+  if (input.coordinatorNames !== undefined) row.coordinator_names = input.coordinatorNames
+  if (input.attendanceRevision !== undefined) row.attendance_revision = input.attendanceRevision
+  if (input.issuanceSource !== undefined) row.issuance_source = input.issuanceSource
+  row.status = 'VALID'
 
   const { data, error } = await db
     .from('certificates')
@@ -80,21 +90,35 @@ export async function insertCertificateAsSystem(input: {
   role: CertificateRole
   certificateCode: string
   recipientName: string
-}): Promise<void> {
+  recipientEmail?: string | null
+  coordinatorNames?: string[]
+  attendanceRevision?: number | null
+  issuanceSource?: string
+}): Promise<Certificate> {
   const { getServiceDb } = await import('./client')
   const db = await getServiceDb()
 
-  const { error } = await db.from('certificates').insert({
-    org_id: input.orgId,
-    department_id: input.departmentId,
-    session_id: input.sessionId,
-    user_id: input.userId,
-    certificate_role: input.role,
-    certificate_code: input.certificateCode,
-    recipient_name: input.recipientName,
-  })
+  const { data, error } = await db
+    .from('certificates')
+    .insert({
+      org_id: input.orgId,
+      department_id: input.departmentId,
+      session_id: input.sessionId,
+      user_id: input.userId,
+      certificate_role: input.role,
+      certificate_code: input.certificateCode,
+      recipient_name: input.recipientName,
+      recipient_email: input.recipientEmail ?? null,
+      coordinator_names: input.coordinatorNames ?? [],
+      attendance_revision: input.attendanceRevision ?? null,
+      issuance_source: input.issuanceSource ?? 'POST_SESSION_REPORT',
+      status: 'VALID',
+    })
+    .select()
+    .single()
 
   if (error) throw toDbError('Failed to create certificate', error)
+  return data as Certificate
 }
 
 export async function listMyCertificates(
@@ -119,7 +143,12 @@ export async function listMyCertificates(
 
 export interface CertificateForDownload extends Certificate {
   sessions: { id: string; title: string; date_start: string } | null
-  departments: { id: string; name: string; lead_name?: string | null } | null
+  departments: {
+    id: string
+    name: string
+    lead_name?: string | null
+    certificate_coordinator_names?: string[] | null
+  } | null
   organizations: { id: string; name: string } | null
 }
 
@@ -137,7 +166,7 @@ export async function findCertificateForDownload(
     .select(
       `*,
        sessions:session_id (id, title, date_start),
-       departments:department_id (id, name, lead_name),
+       departments:department_id (id, name, lead_name, certificate_coordinator_names),
        organizations:org_id (id, name)`
     )
     .eq('id', id)
@@ -158,7 +187,7 @@ export async function findCertificateByCode(
     .select(
       `*,
        sessions:session_id (id, title, date_start, description),
-       departments:department_id (id, name, lead_name),
+       departments:department_id (id, name, lead_name, certificate_coordinator_names),
        organizations:org_id (id, name)`
     )
     .eq('certificate_code', code)
@@ -193,7 +222,14 @@ export interface SessionWithCertificateContext {
   date_end: string
   status: string
   require_feedback_for_certificate?: boolean
-  departments: { id: string; name: string; lead_name?: string | null } | null
+  attendance_phase?: 'OPEN' | 'REVIEW' | 'FINALIZED'
+  attendance_revision?: number
+  departments: {
+    id: string
+    name: string
+    lead_name?: string | null
+    certificate_coordinator_names?: string[] | null
+  } | null
   organizations: { id: string; name: string } | null
 }
 
@@ -210,7 +246,7 @@ export async function findSessionForCertificate(
     .from('sessions')
     .select(
       `*,
-       departments:department_id (id, name, lead_name),
+       departments:department_id (id, name, lead_name, certificate_coordinator_names),
        organizations:org_id (id, name)`
     )
     .eq('id', sessionId)
@@ -227,6 +263,7 @@ export async function listSessionTeacherIds(sessionId: string): Promise<string[]
     .from('session_teachers')
     .select('user_id')
     .eq('session_id', sessionId)
+    .eq('status', 'ACCEPTED')
 
   if (error) throw toDbError('Failed to list session teachers', error)
   return ((data as { user_id: string }[] | null) ?? []).map((r) => r.user_id)
@@ -265,26 +302,104 @@ export async function hasUserSubmittedFeedback(
   return !!data
 }
 
+export interface CertificateLookup {
+  id: string
+  certificate_code: string
+  certificate_role: string
+  issued_at: string
+  recipient_name: string | null
+  recipient_email: string | null
+  issued_by_name: string | null
+  coordinator_names: string[]
+  status: 'VALID' | 'REVOKED' | 'LEGACY'
+  attendance_revision: number | null
+}
+
 export async function findCertificateByUserAndSession(
   userId: string,
-  sessionId: string
-): Promise<{ certificate_code: string; certificate_role: string; issued_at: string; recipient_name: string | null; issued_by_name: string | null } | null> {
+  sessionId: string,
+  options: { role?: CertificateRole; includeLegacy?: boolean } = {}
+): Promise<CertificateLookup | null> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+  let query = db
+    .from('certificates')
+    .select('id, certificate_code, certificate_role, issued_at, recipient_name, recipient_email, issued_by_name, coordinator_names, status, attendance_revision')
+    .eq('user_id', userId)
+    .eq('session_id', sessionId)
+    .in('status', options.includeLegacy === false ? ['VALID'] : ['VALID', 'LEGACY'])
+    .order('issued_at', { ascending: false })
+    .limit(1)
+  if (options.role) query = query.eq('certificate_role', options.role)
+  const { data, error } = await query.maybeSingle()
+
+  if (error) throw toDbError('Failed to find certificate', error)
+  return data as CertificateLookup | null
+}
+
+export async function findFinalizedAttendanceForUserAsSystem(
+  sessionId: string,
+  userId: string
+): Promise<{ status: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'; revision: number } | null> {
   const { getServiceDb } = await import('./client')
   const db = await getServiceDb()
   const { data, error } = await db
-    .from('certificates')
-    .select('certificate_code, certificate_role, issued_at, recipient_name, issued_by_name')
-    .eq('user_id', userId)
+    .from('attendance')
+    .select('status, revision')
     .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .not('finalized_at', 'is', null)
     .maybeSingle()
+  if (error) throw toDbError('Failed to read finalized attendance', error)
+  return data as { status: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'; revision: number } | null
+}
 
-  if (error) throw toDbError('Failed to find certificate', error)
-  return data
+export async function userIsAcceptedTeacherAsSystem(
+  sessionId: string,
+  userId: string
+): Promise<boolean> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('session_teachers')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .eq('status', 'ACCEPTED')
+    .maybeSingle()
+  if (error) throw toDbError('Failed to verify accepted teacher', error)
+  return !!data
+}
+
+export async function revokeCertificateAsSystem(input: {
+  certificateId: string
+  actorUserId: string
+  reason: string
+}): Promise<void> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+  const { error } = await db
+    .from('certificates')
+    .update({
+      status: 'REVOKED',
+      revoked_at: new Date().toISOString(),
+      revoked_by: input.actorUserId,
+      revocation_reason: input.reason,
+    })
+    .eq('id', input.certificateId)
+    .eq('status', 'VALID')
+  if (error) throw toDbError('Failed to revoke certificate', error)
 }
 
 export async function findSessionForCertificateById(
   sessionId: string
-): Promise<{ title: string; date_start: string; org_name: string | null; department_name: string | null; lead_name: string | null } | null> {
+): Promise<{
+  title: string
+  date_start: string
+  org_name: string | null
+  department_name: string | null
+  lead_name: string | null
+} | null> {
   const { getServiceDb } = await import('./client')
   const db = await getServiceDb()
   const { data, error } = await db
@@ -305,5 +420,29 @@ export async function findSessionForCertificateById(
     org_name: org?.name ?? null,
     department_name: dept?.name ?? null,
     lead_name: (dept as Record<string, unknown>)?.lead_name as string | null ?? null,
+  }
+}
+
+/**
+ * Service-role read for the CRON_SECRET-authenticated certificate worker. The
+ * returned department names are snapshotted onto newly issued certificates.
+ */
+export async function findCertificateCoordinatorNamesAsSystem(
+  departmentId: string
+): Promise<{ coordinator_names: string[]; lead_name: string | null }> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('departments')
+    .select('certificate_coordinator_names, lead_name')
+    .eq('id', departmentId)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to load certificate coordinator settings', error)
+  return {
+    coordinator_names:
+      (data as { certificate_coordinator_names?: string[] } | null)
+        ?.certificate_coordinator_names ?? [],
+    lead_name: (data as { lead_name?: string | null } | null)?.lead_name ?? null,
   }
 }

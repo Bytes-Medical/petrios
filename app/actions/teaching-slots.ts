@@ -34,7 +34,6 @@ import * as contactsDb from '@/lib/db/external-contacts'
 import * as departmentsDb from '@/lib/db/departments'
 import * as onboardingDb from '@/lib/db/onboarding'
 import * as notificationsDb from '@/lib/db/notifications'
-import * as attendanceDb from '@/lib/db/attendance'
 import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
 import { DbNotFoundError } from '@/lib/db'
 
@@ -339,21 +338,6 @@ async function performClaim(ctx: ClaimContext) {
         userId: ctx.claimedByUserId,
         invitedBy: claimed.created_by,
       })
-      // Teaching a session counts as attending it (same as accepting a
-      // teaching assignment). Non-fatal.
-      try {
-        await attendanceDb.insertAttendanceEvidenceAsSystem({
-          orgId: ctx.orgId,
-          sessionId,
-          departmentId: claimed.department_id,
-          userId: ctx.claimedByUserId,
-          source: 'TEACHER',
-          observedAt: new Date().toISOString(),
-          metadata: { assigned_as_teacher: true },
-        })
-      } catch (err) {
-        console.error('Failed to record teacher evidence for claim:', err)
-      }
     }
 
     if (ctx.attachExternal) {

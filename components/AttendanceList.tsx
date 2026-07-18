@@ -8,15 +8,18 @@ interface AttendanceListProps {
   sessionId: string
   attendance: Attendance[]
   teachers: any[]
+  readOnly?: boolean
 }
 
-export function AttendanceList({ sessionId, attendance, teachers }: AttendanceListProps) {
+export function AttendanceList({ sessionId, attendance, teachers, readOnly = false }: AttendanceListProps) {
   const { pendingKey: updating, run } = useActionWithRefresh()
 
   function handleMarkAttendance(userId: string, status: AttendanceStatus) {
+    const reason = window.prompt('Reason for this attendance decision:')?.trim()
+    if (!reason) return
     run(async () => {
       try {
-        await markAttendance(sessionId, userId, status)
+        await markAttendance(sessionId, userId, status, reason)
       } catch (error) {
         console.error('Failed to mark attendance:', error)
         throw error
@@ -50,7 +53,7 @@ export function AttendanceList({ sessionId, attendance, teachers }: AttendanceLi
             )}
           </div>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-            {record.user_id && (
+            {record.user_id && !readOnly && (
               <>
                 <button
                   onClick={() => handleMarkAttendance(record.user_id!, 'PRESENT')}
@@ -72,6 +75,13 @@ export function AttendanceList({ sessionId, attendance, teachers }: AttendanceLi
                   className="px-3 py-1 border border-black bg-white text-black font-mono text-xs hover:bg-gray-50 disabled:opacity-50"
                 >
                   Late
+                </button>
+                <button
+                  onClick={() => handleMarkAttendance(record.user_id!, 'EXCUSED')}
+                  disabled={updating === record.user_id}
+                  className="px-3 py-1 border border-black bg-white text-black font-mono text-xs hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Excused
                 </button>
               </>
             )}

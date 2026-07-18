@@ -29,9 +29,9 @@ export function FeedbackSummaryPanel({ sessionId }: FeedbackSummaryPanelProps) {
   return (
     <div className="space-y-4">
       <p className="font-mono text-sm text-gray-600">
-        Let AI read every response and surface the themes, so you don&apos;t have
-        to scroll through comments one by one. Summaries are anonymous and stay
-        on this page.
+        Let AI read identity-field-omitted response text and surface possible
+        themes. Free text can still contain identifying details, so verify the
+        result against the raw responses before using it. Summaries stay on this page.
       </p>
 
       <Button onClick={generate} disabled={isPending} variant="secondary">

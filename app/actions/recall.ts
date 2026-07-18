@@ -8,10 +8,7 @@ import {
   verifyRecallToken,
   type RecallQuestion,
 } from '@/lib/recall'
-import {
-  computeAttendanceFromEvidence,
-  isWithinEvidenceWindow,
-} from '@/lib/attendance/compute'
+import { isWithinEvidenceWindow } from '@/lib/attendance/compute'
 import * as recallDb from '@/lib/db/recall'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as attendanceDb from '@/lib/db/attendance'
@@ -196,37 +193,8 @@ export async function submitRecallAnswers(
     passed,
   })
 
-  // The supervisor rule: a passing catch-up is accepted attendance evidence.
-  // RECALL is the lowest-priority source and stays visible as the primary
-  // source, so caught-up attendance is always distinguishable in audits.
-  let caughtUp = false
-  const attendanceLocked = !!session.attendance_locked
-  if (kind === 'CATCH_UP' && passed && !attendanceLocked) {
-    await attendanceDb.insertAttendanceEvidenceAsSystem({
-      orgId: session.org_id,
-      sessionId: session.id,
-      departmentId: session.department_id,
-      userId: verified.userId,
-      source: 'RECALL',
-      observedAt: now.toISOString(),
-      metadata: { status_override: 'PRESENT', method: 'RECALL_CATCH_UP', score },
-    })
-
-    const allEvidence = await attendanceDb.listSessionEvidenceAsSystem(session.id)
-    const mine = allEvidence.filter((e) => e.user_id === verified.userId)
-    const computed = computeAttendanceFromEvidence(mine, session)
-    await attendanceDb.upsertAttendance({
-      orgId: session.org_id,
-      sessionId: session.id,
-      departmentId: session.department_id,
-      userId: verified.userId,
-      externalEmail: null,
-      status: computed.status,
-      primarySource: computed.primarySource,
-      firstEvidenceAt: computed.firstEvidenceAt,
-    })
-    caughtUp = true
-  }
+  // Catch-up is learning completion, not evidence of physical attendance.
+  const caughtUp = kind === 'CATCH_UP' && passed
 
   return {
     score,
@@ -234,7 +202,7 @@ export async function submitRecallAnswers(
     passed,
     kind,
     caughtUp,
-    attendanceLocked: kind === 'CATCH_UP' && passed && attendanceLocked,
+    attendanceLocked: false,
     review: set.questions.map((q, i) => ({
       question: q.question,
       correct: q.options[q.answer_index],

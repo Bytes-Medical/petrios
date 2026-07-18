@@ -12,6 +12,7 @@ import { profileDisplayName } from '@/lib/contacts'
 import { getApprovedAudioRecap } from '@/app/actions/audio-recaps'
 import { AudioRecapPlayer } from '@/components/AudioRecapPlayer'
 import * as onboardingDb from '@/lib/db/onboarding'
+import { canUploadSessionDocuments, getSessionDocuments } from '@/app/actions/session-documents'
 
 export default async function SessionPage(
   props: {
@@ -36,13 +37,15 @@ export default async function SessionPage(
   const isVideoSession =
     session.location_type === 'JITSI' && session.status === 'PUBLISHED'
 
-  const [teachers, attendance, canManage, approvedRecap, videoProfile] =
+  const [teachers, attendance, canManage, approvedRecap, videoProfile, documents, canUploadDocuments] =
     await Promise.all([
       getSessionTeachers(params.id),
       getAttendance(params.id),
       isDepartmentModerator(session.department_id),
       getApprovedAudioRecap(params.id),
       isVideoSession ? onboardingDb.findProfileByUserId(user.id) : Promise.resolve(null),
+      getSessionDocuments(params.id),
+      canUploadSessionDocuments(params.id),
     ])
 
   // Petrios Meet sessions embed their video room; name shown to the room.
@@ -95,7 +98,11 @@ export default async function SessionPage(
           session={session}
           sessionId={params.id}
           teachers={teachers}
-          attendance={attendance}
+          attendance={attendance.filter((row) => row.user_id === user.id)}
+          documents={documents}
+          canUploadDocuments={canUploadDocuments}
+          currentUserId={user.id}
+          serverNow={new Date().toISOString()}
         />
       </div>
     </div>

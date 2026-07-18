@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
           notification: {
             type: 'RECALL_QUESTIONS_READY',
             title: `Recall questions ready to review: "${session.title}"`,
-            body: 'Review, edit, and approve them to enable retention follow-ups and catch-up attendance.',
+            body: 'Review, edit, and approve them to enable retention follow-ups and catch-up learning.',
             link: `/sessions/${session.id}/manage`,
           },
         })

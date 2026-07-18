@@ -1,15 +1,10 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireDepartmentModerator, requireOrg } from '@/lib/auth'
-import { generateCertificatePDF } from '@/lib/certificates/pdf'
-import { generateCertificateCode } from '@/lib/certificates/utils'
-import * as attendanceDb from '@/lib/db/attendance'
+import { createHash } from 'node:crypto'
+import { requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
-import {
-  buildCertificateEmailHtml,
-  buildTeacherFeedbackEmailHtml,
-} from '@/lib/email-templates'
+import { buildTeacherFeedbackEmailHtml } from '@/lib/email-templates'
 import {
   buildFeedbackSubmission,
   extractTextResponses,
@@ -27,8 +22,9 @@ import { summarizeFeedback } from '@/lib/ai/feedback-summary'
 import * as feedbackDb from '@/lib/db/feedback'
 import * as onboardingDb from '@/lib/db/onboarding'
 import * as sessionsDb from '@/lib/db/sessions'
-import * as certificatesDb from '@/lib/db/certificates'
-import { DbNotFoundError } from '@/lib/db'
+import * as feedbackReportsDb from '@/lib/db/feedback-reports'
+import * as deliveriesDb from '@/lib/db/session-deliveries'
+import { DbConflictError, DbNotFoundError } from '@/lib/db'
 
 export interface FeedbackData {
   firstName: string
@@ -100,6 +96,9 @@ export async function submitFeedback(sessionId: string, feedback: FeedbackData) 
   if (!firstName || !lastName || !email) {
     throw new Error('Please fill in your name and email.')
   }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('Enter a valid email address.')
+  }
 
   const session = await feedbackDb.findSessionForFeedbackSubmission(sessionId)
   if (!session) {
@@ -108,6 +107,15 @@ export async function submitFeedback(sessionId: string, feedback: FeedbackData) 
 
   if (session.status !== 'PUBLISHED') {
     throw new Error('Feedback can only be submitted for published sessions')
+  }
+
+  const now = Date.now()
+  const opensAt = new Date(session.date_start).getTime()
+    - (session.checkin_open_mins_before ?? 15) * 60 * 1000
+  const closesAt = new Date(session.date_end).getTime()
+    + (session.feedback_valid_mins_after_end ?? 120) * 60 * 1000
+  if (now < opensAt || now > closesAt) {
+    throw new Error('The feedback window for this session is closed')
   }
 
   const department = await feedbackDb.findDepartmentForFeedbackSubmission(
@@ -129,95 +137,25 @@ export async function submitFeedback(sessionId: string, feedback: FeedbackData) 
   const profile = await onboardingDb.findProfileByEmail(email)
   const resolvedUserId = profile?.user_id ?? null
 
-  const inserted = await feedbackDb.insertSessionFeedback({
-    orgId: session.org_id,
-    sessionId,
-    userId: resolvedUserId,
-    rating: derivedRating,
-    comment: derivedComment,
-    answers: submittedAnswers,
-    firstName,
-    lastName,
-    email,
-  })
-
-  // Create attendance evidence — feedback submission = attended
+  let inserted: { id: string }
   try {
-    await attendanceDb.insertAttendanceEvidence({
+    inserted = await feedbackDb.insertSessionFeedback({
       orgId: session.org_id,
       sessionId,
-      departmentId: session.department_id,
       userId: resolvedUserId,
-      externalEmail: resolvedUserId ? null : email,
-      source: 'FEEDBACK',
-      observedAt: new Date().toISOString(),
-      metadata: { feedback_id: inserted.id },
-      createdBy: resolvedUserId,
+      rating: derivedRating,
+      comment: derivedComment,
+      answers: submittedAnswers,
+      firstName,
+      lastName,
+      email,
+      submissionKey: createHash('sha256').update(email).digest('hex'),
     })
-  } catch {
-    // Non-fatal — evidence creation failure shouldn't block feedback
-  }
-
-  try {
-    const recipientName = `${firstName} ${lastName}`
-    const orgName = await feedbackDb.findOrganizationName(session.org_id)
-
-    if (orgName) {
-      const certificateCode = generateCertificateCode()
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-      const verifyUrl = `${baseUrl}/verify/${certificateCode}`
-
-      await certificatesDb.insertCertificate({
-        orgId: session.org_id,
-        departmentId: session.department_id,
-        sessionId,
-        userId: resolvedUserId,
-        role: 'ATTENDEE',
-        certificateCode,
-        recipientName,
-      })
-
-      const pdfBuffer = await generateCertificatePDF({
-        orgName,
-        departmentName: department.name,
-        sessionTitle: session.title,
-        sessionDate: new Date(session.date_start).toLocaleDateString('en-GB', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        }),
-        recipientName,
-        role: 'Attendee',
-        certificateCode,
-        issuedDate: new Date().toLocaleDateString('en-GB', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        }),
-        verifyUrl,
-        leadName: department.lead_name || undefined,
-      })
-
-      const mailer = getEmailClient()
-      const fromAddress = getFromAddress()
-      const htmlBody = buildCertificateEmailHtml(session.title, recipientName)
-
-      await mailer.emails.send({
-        from: fromAddress,
-        to: email,
-        subject: `Your Attendance Certificate — ${session.title}`,
-        html: htmlBody,
-        attachments: [
-          {
-            filename: `certificate-${certificateCode}.pdf`,
-            content: pdfBuffer,
-          },
-        ],
-      })
+  } catch (error) {
+    if (error instanceof DbConflictError) {
+      throw new Error('Feedback has already been submitted for this email address')
     }
-  } catch (certError) {
-    console.error('Failed to generate/email certificate:', certError)
+    throw error
   }
 
   revalidatePath(`/sessions/${sessionId}`)
@@ -384,6 +322,7 @@ export async function getSessionFeedbackAudit(sessionId: string) {
 }
 
 export async function releaseTeacherFeedback(sessionId: string) {
+  const actorUserId = await requireAuth()
   const orgId = await requireOrg()
 
   const session = await sessionsDb.findSession(sessionId, orgId)
@@ -393,24 +332,14 @@ export async function releaseTeacherFeedback(sessionId: string) {
 
   await requireDepartmentModerator(session.department_id)
 
-  const [orgName, department, feedbackStats] = await Promise.all([
-    feedbackDb.findOrganizationName(orgId),
+  const [department, feedbackStats] = await Promise.all([
     feedbackDb.findDepartmentForFeedbackSubmission(session.department_id),
     getSessionFeedbackStats(sessionId),
   ])
 
-  if (!orgName || !department) {
-    throw new DbNotFoundError('Organization or department not found')
+  if (!department) {
+    throw new DbNotFoundError('Department not found')
   }
-
-  const feedbackComments = await feedbackDb.listSessionFeedbackComments(sessionId)
-  const comments = feedbackComments
-    .filter((entry) => entry.comment && entry.comment.trim().length > 0)
-    .map((entry) => ({
-      attendee_first_name: entry.attendee_first_name,
-      attendee_last_name: entry.attendee_last_name,
-      comment: entry.comment!,
-    }))
 
   const [externalTeachers, registeredTeachers] = await Promise.all([
     feedbackDb.listAcceptedTeacherInvitations(sessionId),
@@ -429,7 +358,7 @@ export async function releaseTeacherFeedback(sessionId: string) {
     }
   }
 
-  const allTeachers = [
+  const teacherCandidates = [
     ...externalTeachers.map((teacher) => ({
       email: teacher.email,
       name: `${teacher.first_name} ${teacher.last_name}`,
@@ -441,6 +370,11 @@ export async function releaseTeacherFeedback(sessionId: string) {
       userId: teacher.userId as string | null,
     })),
   ]
+  const allTeachers = Array.from(
+    new Map(
+      teacherCandidates.map((teacher) => [teacher.email.trim().toLowerCase(), teacher])
+    ).values()
+  )
 
   if (allTeachers.length === 0) {
     throw new Error('No teachers found for this session')
@@ -455,42 +389,29 @@ export async function releaseTeacherFeedback(sessionId: string) {
 
   const mailer = getEmailClient()
   const fromAddress = getFromAddress()
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-
   let sentCount = 0
+  let deliveredThisRun = 0
+  let inProgressCount = 0
+  const failures: string[] = []
+  const privacySuppressed = feedbackStats.total < 5
+  const report = await feedbackReportsDb.createApprovedTeacherFeedbackReport({
+    orgId,
+    departmentId: session.department_id,
+    sessionId,
+    actorUserId,
+    responseCount: feedbackStats.total,
+    privacySuppressed,
+    analyticsSnapshot: {
+      total: feedbackStats.total,
+      averageRating: privacySuppressed ? null : feedbackStats.averageRating,
+      ratingDistribution: privacySuppressed ? null : feedbackStats.ratingDistribution,
+      questionSummaries: privacySuppressed ? [] : feedbackStats.questionSummaries,
+    },
+  })
 
   for (const teacher of allTeachers) {
+    let deliveryId: string | null = null
     try {
-      const certificateCode = generateCertificateCode()
-      const verifyUrl = `${baseUrl}/verify/${certificateCode}`
-
-      await certificatesDb.insertCertificate({
-        orgId,
-        departmentId: session.department_id,
-        sessionId,
-        userId: teacher.userId,
-        role: 'TEACHER',
-        certificateCode,
-        recipientName: teacher.name,
-      })
-
-      const pdfBuffer = await generateCertificatePDF({
-        orgName,
-        departmentName: department.name,
-        sessionTitle: session.title,
-        sessionDate,
-        recipientName: teacher.name,
-        role: 'Teacher',
-        certificateCode,
-        issuedDate: new Date().toLocaleDateString('en-GB', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        }),
-        verifyUrl,
-        leadName: department.lead_name || undefined,
-      })
-
       const html = buildTeacherFeedbackEmailHtml({
         teacherName: teacher.name,
         sessionTitle: session.title,
@@ -499,121 +420,106 @@ export async function releaseTeacherFeedback(sessionId: string) {
         totalResponses: feedbackStats.total,
         averageRating: feedbackStats.averageRating,
         ratingDistribution: feedbackStats.ratingDistribution,
-        comments,
+        privacySuppressed,
       })
 
-      await mailer.emails.send({
+      const delivery = await deliveriesDb.getOrCreateSessionDelivery({
+        orgId,
+        departmentId: session.department_id,
+        sessionId,
+        recipientUserId: teacher.userId,
+        recipientEmail: teacher.email,
+        deliveryType: 'TEACHER_FEEDBACK_REPORT',
+        relatedId: report.id,
+      })
+      deliveryId = delivery.id
+      if (delivery.status === 'SENT') {
+        sentCount += 1
+        continue
+      }
+      if (!(await deliveriesDb.claimSessionDelivery(delivery.id))) {
+        inProgressCount += 1
+        continue
+      }
+      const result = await mailer.emails.send({
         from: fromAddress,
         to: teacher.email,
         subject: `Teaching Feedback Released — ${session.title}`,
         html,
-        attachments: [
-          {
-            filename: `teacher-certificate-${certificateCode}.pdf`,
-            content: pdfBuffer,
-          },
-        ],
+      })
+      if (result.error) {
+        throw new Error(result.error.message)
+      }
+      await deliveriesDb.recordDeliveryAttempt({
+        id: delivery.id,
+        success: true,
+        providerMessageId: result.data?.id,
       })
 
       sentCount += 1
+      deliveredThisRun += 1
     } catch (error) {
       console.error(`Failed to send teacher feedback to ${teacher.email}:`, error)
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Teacher attendance: ensure all teachers have TEACHER evidence
-  // -----------------------------------------------------------------------
-  for (const teacher of allTeachers) {
-    if (!teacher.userId) continue
-    try {
-      await attendanceDb.insertAttendanceEvidence({
-        orgId,
-        sessionId,
-        departmentId: session.department_id,
-        userId: teacher.userId,
-        externalEmail: null,
-        source: 'TEACHER',
-        observedAt: session.date_start,
-        metadata: { assigned_as_teacher: true },
-        createdBy: null,
-      })
-    } catch {
-      // Evidence may already exist — non-fatal
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Trainee reports: send attendance report + certificate to each attendee
-  // -----------------------------------------------------------------------
-  // Get attendees with PRESENT status (teachers excluded — they got their email above)
-  const attendeeIds = await feedbackDb.listPresentAttendeeUserIds(sessionId)
-  const attendeeProfiles = new Map(
-    (await onboardingDb.listProfilesForUsers(attendeeIds)).map((p) => [p.user_id, p])
-  )
-
-  let traineesSent = 0
-  const teacherUserIds = new Set(allTeachers.filter((t) => t.userId).map((t) => t.userId))
-
-  if (attendeeIds.length > 0) {
-    for (const attendeeUserId of attendeeIds) {
-      if (teacherUserIds.has(attendeeUserId)) continue
-
-      try {
-        const profile = attendeeProfiles.get(attendeeUserId)
-        if (!profile?.email) continue
-
-        const recipientName =
-          profile.full_name ||
-          [profile.first_name, profile.last_name].filter(Boolean).join(' ') ||
-          profile.email
-
-        // Generate or find certificate
-        const existingCert = await certificatesDb.findCertificateByUserAndSession(
-          attendeeUserId, sessionId
-        )
-
-        let certCode: string
-        if (existingCert) {
-          certCode = existingCert.certificate_code
-        } else {
-          certCode = generateCertificateCode()
-          await certificatesDb.insertCertificate({
-            orgId,
-            departmentId: session.department_id,
-            sessionId,
-            userId: attendeeUserId,
-            role: 'ATTENDEE',
-            certificateCode: certCode,
-            recipientName,
-          })
-        }
-
-        const traineeHtml = buildCertificateEmailHtml(session.title, recipientName)
-
-        await mailer.emails.send({
-          from: fromAddress,
-          to: profile.email,
-          subject: `Your Attendance Certificate — ${session.title}`,
-          html: traineeHtml,
+      failures.push(teacher.email)
+      if (deliveryId) {
+        await deliveriesDb.recordDeliveryAttempt({
+          id: deliveryId,
+          success: false,
+          error: error instanceof Error ? error.message : 'Feedback report delivery failed',
+        }).catch((deliveryError) => {
+          console.error('Failed to record teacher feedback delivery failure:', deliveryError)
         })
-
-        traineesSent++
-      } catch (err) {
-        console.error(`Failed to send trainee certificate to ${attendeeUserId}:`, err)
       }
     }
   }
 
-  // Mark session report as sent
-  await sessionsDb.markSessionReportSent(sessionId)
+  if (
+    report.alreadyReleased &&
+    deliveredThisRun === 0 &&
+    failures.length === 0 &&
+    inProgressCount === 0
+  ) {
+    return {
+      sentCount,
+      totalTeachers: allTeachers.length,
+      failedCount: 0,
+      privacySuppressed,
+      alreadyReleased: true,
+      inProgressCount: 0,
+    }
+  }
+
+  if (inProgressCount > 0) {
+    return {
+      sentCount,
+      totalTeachers: allTeachers.length,
+      failedCount: failures.length,
+      privacySuppressed,
+      alreadyReleased: false,
+      inProgressCount,
+    }
+  }
+
+  await feedbackReportsDb.finishTeacherFeedbackReport({
+    reportId: report.id,
+    released: failures.length === 0,
+    orgId,
+    departmentId: session.department_id,
+    sessionId,
+    actorUserId,
+    sentCount,
+    failedCount: failures.length,
+  })
 
   revalidatePath(`/sessions/${sessionId}/manage`)
 
   return {
     sentCount,
     totalTeachers: allTeachers.length,
-    traineesSent,
+    failedCount: failures.length,
+    privacySuppressed,
+    alreadyReleased: report.alreadyReleased && deliveredThisRun === 0,
+    inProgressCount: 0,
   }
 }
 

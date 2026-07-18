@@ -14,6 +14,8 @@ import { opsEnabled } from '@/lib/ops/flags'
 import * as feedbackActionsDb from '@/lib/db/feedback-actions'
 import Link from 'next/link'
 import { ManageSessionTabs } from '@/components/ManageSessionTabs'
+import { canUploadSessionDocuments, getSessionDocuments } from '@/app/actions/session-documents'
+import { getSessionAttendanceGovernance } from '@/app/actions/attendance-evidence'
 
 export default async function ManageSessionPage(
   props: {
@@ -52,6 +54,9 @@ export default async function ManageSessionPage(
     recallSet,
     feedbackActions,
     audioRecap,
+    documents,
+    canUploadDocuments,
+    attendanceGovernance,
   ] = await Promise.all([
     getDepartment(session.department_id),
     isDepartmentModerator(session.department_id),
@@ -64,6 +69,9 @@ export default async function ManageSessionPage(
     getRecallSetForSession(params.id),
     feedbackActionsDb.listActionsForSession(params.id),
     showAudioRecap ? getAudioRecap(params.id) : Promise.resolve(null),
+    getSessionDocuments(params.id, true),
+    canUploadSessionDocuments(params.id),
+    getSessionAttendanceGovernance(params.id),
   ])
 
   if (!canManage) {
@@ -95,6 +103,10 @@ export default async function ManageSessionPage(
           feedbackActions={feedbackActions}
           showAudioRecap={showAudioRecap}
           audioRecap={audioRecap}
+          documents={documents}
+          canUploadDocuments={canUploadDocuments}
+          currentUserId={user.id}
+          attendanceGovernance={attendanceGovernance}
         />
       </div>
     </div>

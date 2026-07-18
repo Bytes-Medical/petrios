@@ -111,17 +111,15 @@ records the inviter.
 
 The invited user can respond once while status is `PENDING`:
 
-- accept uses a compare-and-set to `ACCEPTED`, best-effort inserts `TEACHER`
-  attendance evidence observed at response time, and notifies the inviter (or
+- accept uses a compare-and-set to `ACCEPTED` and notifies the inviter (or
   session creator) by bell/email;
-- decline changes to `DECLINED` and creates no attendance evidence;
+- decline changes to `DECLINED`;
 - repeated response is rejected.
 
-Notification/evidence failures do not revert the accepted/declined state.
-Teacher evidence is always time-valid, so a response outside the session window
-still counts unless later corrected. The post-session job currently attributes
-teacher evidence to all registered teacher rows regardless of response status;
-certificate/release flows have their own status-filter caveats in spec 05.
+Notification failure does not revert the accepted/declined state. Assignment
+acceptance describes teaching responsibility and does not prove physical
+attendance. Accepted teachers must still have finalized `PRESENT`/`LATE`
+attendance before a teacher certificate can be issued; see specs 03 and 05.
 
 Removing an assignment deletes the relationship; it does not remove previously
 created attendance evidence or certificates.
@@ -215,9 +213,115 @@ not a per-recipient retry queue or delivery guarantee.
 
 The post-session report job processes published sessions whose end is at least
 24 hours in the past and whose report watermark is null, with a fixed batch cap.
-It recomputes attendance (unless locked), emits the attendance event, and issues
-attendee recognition as described in specs 03 and 05. It does not issue teacher
+It does not recompute or infer attendance. Sessions remain unwatermarked until a
+moderator finalizes attendance. The job then emits the attendance event for that
+final revision and issues attendee recognition through the per-recipient
+delivery ledger described in specs 03 and 05. It does not issue teacher
 certificates.
+
+## Session documents
+
+Every session page has a Documents tab. Metadata lives in the deny-all-RLS
+`session_documents` table and objects live in the private Supabase Storage bucket
+`session-documents`. No public bucket URL or general browser object policy is
+created.
+
+### Upload authority and limits
+
+A department moderator or an `ACCEPTED` registered session teacher may upload.
+The action re-resolves session and organization scope before using the service
+DAL. Other session users can list/download documents if the normal session read
+authorizes them; archived objects are visible only in the moderator management
+view and are not downloadable.
+
+Supported formats and exact MIME types are:
+
+| Extension | MIME type | Browser behavior |
+|---|---|---|
+| `.pdf` | `application/pdf` | Same-origin authenticated inline view or download |
+| `.docx` | Open XML Word MIME | Download |
+| `.pptx` | Open XML PowerPoint MIME | Download |
+
+The maximum is 25 MiB in application validation, Next Server Action body
+configuration, bucket configuration, and the database check. Legacy `.doc`,
+`.ppt`, macro-enabled files, and all other formats are rejected.
+
+### Validation and storage sequence
+
+The server sanitizes path/control characters from the display filename, checks
+extension/MIME agreement and size, reads the bytes, and then performs basic
+content validation:
+
+- PDF must begin `%PDF-`;
+- Office files must have a ZIP signature, `[Content_Types].xml`, and the correct
+  `word/` or `ppt/` package prefix; and
+- any package containing `vbaProject.bin` is rejected.
+
+After validation it calculates SHA-256 and uses an unguessable object path:
+`<org>/<session>/<document UUID>.<extension>`. Metadata transitions
+`UPLOADING/PENDING` to `AVAILABLE/BASIC_VALIDATED` only after object storage
+succeeds. Failure marks the row `REJECTED` and attempts object cleanup. Upload
+and archive actions append session activity events. Completed permanent
+deletions append an operational activity event on a best-effort basis.
+
+`BASIC_VALIDATED` is deliberately not called malware-scanned. Package-marker
+checks do not replace antivirus/content-disarm scanning. The UI tells users to
+treat downloaded Office content as untrusted. A deployment requiring malware
+assurance must add a quarantine/scanner transition before `AVAILABLE` and must
+not simply relabel this state.
+
+### Download, archive, and permanent delete
+
+The same-origin download route requires authentication and current organization
+session access, then matches document id, session id, org id, and `AVAILABLE`
+status before a service-role object read. Responses use the stored MIME type,
+safe RFC 5987 content disposition, `private, no-store`, and `nosniff`. Only PDFs
+honor `?view=1` as inline; Office files always download, so no Word/PPT webviewer
+or conversion service is introduced.
+
+Archiving is moderator-only, stamps actor/time, prevents future route lookup,
+and preserves the private object for audit/retention. It is not secure deletion.
+
+Permanent deletion is a separate, explicitly destructive action exposed as
+**Delete permanently**:
+
+- a department moderator may delete any `AVAILABLE` or `ARCHIVED` document in
+  the session;
+- an uploader may delete a document only when `uploaded_by` matches their
+  authenticated user id;
+- the ordinary Documents tab shows the button only for the current uploader,
+  while Manage Session shows it for the moderator on both available and
+  archived rows; and
+- the browser requires confirmation explaining that the stored file is removed
+  and the action cannot be undone.
+
+The server re-resolves the session under the current organization, matches the
+document by document/session/organization, and repeats the moderator-or-uploader
+authorization; UI visibility is not the security boundary. It removes the
+private storage object first, then hard-deletes the `session_documents` metadata
+row. Removing bytes first avoids leaving an inaccessible bucket orphan when the
+database succeeds but storage fails. If object removal succeeds and metadata
+deletion fails, the row can temporarily remain and a retry treats a missing
+object as already removed before deleting the row.
+
+After both deletions complete, `SESSION_DOCUMENT_DELETED` is written to
+`session_activity_events` with document id and filename. That event is
+best-effort because activity is an operational projection rather than the
+deletion transaction: failure to write it does not resurrect the object or turn
+a completed deletion into an application error.
+
+“Permanent” describes removal from the live Petrios database and private
+bucket. It does not promise immediate erasure from storage-provider backups,
+database backups, infrastructure logs, or other copies governed by operator
+retention. The activity event deliberately retains the document id and filename.
+
+Session deletion cascades metadata and follows the storage provider's separate
+object-lifecycle behavior; operators must test cleanup/retention rather than
+assuming a relational cascade deletes bucket objects.
+
+Current limitations: there is no antivirus service, Office-to-HTML conversion,
+version-replacement UI, background orphan cleanup, retention job, or public
+sharing link.
 
 ## Teaching slot model
 
@@ -296,8 +400,8 @@ After winning, orchestration:
 
 1. creates a `DRAFT` session using the suggestion or “Teaching session — topic
    TBC” and attributes creation to the original slot creator;
-2. for a registered user, inserts an `ACCEPTED` session-teacher row and
-   best-effort `TEACHER` evidence;
+2. for a registered user, inserts an `ACCEPTED` session-teacher row without
+   creating attendance evidence;
 3. for an external contact, inserts an accepted external invitation but no
    attendance evidence;
 4. links the slot to the new session;

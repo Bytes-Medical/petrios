@@ -1,9 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireAuth, requireOrg } from '@/lib/auth'
+import { requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
 import type { AttendanceStatus } from '@/lib/types'
 import * as attendanceDb from '@/lib/db/attendance'
+import * as sessionsDb from '@/lib/db/sessions'
+import { DbNotFoundError } from '@/lib/db'
 
 export async function checkIn(sessionId: string, groupCode?: string, codeVersion?: number) {
   const userId = await requireAuth()
@@ -21,6 +23,7 @@ export async function checkIn(sessionId: string, groupCode?: string, codeVersion
   await addEvidence(sessionId, source, {
     userId,
     metadata,
+    submittedCode: groupCode,
   })
 
   revalidatePath(`/sessions/${sessionId}`)
@@ -30,20 +33,20 @@ export async function checkIn(sessionId: string, groupCode?: string, codeVersion
 export async function markAttendance(
   sessionId: string,
   userId: string,
-  status: AttendanceStatus
+  status: AttendanceStatus,
+  reason: string
 ) {
   await requireAuth()
 
-  const { addEvidence, recomputeAttendance } = await import('./attendance-evidence')
+  const { addEvidence } = await import('./attendance-evidence')
 
-  await addEvidence(sessionId, 'TEACHER', {
+  await addEvidence(sessionId, 'MODERATOR_CONFIRMATION', {
     userId,
     metadata: {
       status_override: status,
     },
+    correctionReason: reason,
   })
-
-  await recomputeAttendance(sessionId, userId, null)
 
   revalidatePath(`/sessions/${sessionId}`)
   return { success: true }
@@ -56,6 +59,9 @@ export async function getAttendance(sessionId: string) {
 
 export async function exportAttendanceCSV(sessionId: string) {
   const orgId = await requireOrg()
+  const session = await sessionsDb.findSessionScope(sessionId, orgId)
+  if (!session) throw new DbNotFoundError('Session not found')
+  await requireDepartmentModerator(session.department_id)
   const attendance = await attendanceDb.listAttendance(orgId, sessionId, {
     orderBy: 'first_evidence_at',
   })
@@ -79,9 +85,10 @@ export async function exportAttendanceCSV(sessionId: string) {
     a.locked ? 'Yes' : 'No',
   ])
 
+  const safeCell = (value: string) => /^[=+\-@]/.test(value) ? `'${value}` : value
   const csv = [
     headers.join(','),
-    ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
+    ...rows.map((row) => row.map((cell) => `"${safeCell(cell).replaceAll('"', '""')}"`).join(',')),
   ].join('\n')
 
   return csv

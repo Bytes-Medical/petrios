@@ -12,6 +12,7 @@ import * as departmentsDb from '@/lib/db/departments'
 import * as onboardingDb from '@/lib/db/onboarding'
 import { DbNotFoundError } from '@/lib/db'
 import type { TraineeGrade, UserRole } from '@/lib/types'
+import { validateTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
 
 export async function createDepartment(name: string) {
   const userId = await requireAuth()
@@ -97,7 +98,7 @@ export async function getMyModeratedDepartment(orgId?: string) {
   return departments[0] ?? null
 }
 
-export async function getDepartmentLeadSettings(departmentId: string) {
+export async function getDepartmentCertificateSettings(departmentId: string) {
   await requireDepartmentModerator(departmentId)
   const orgId = await requireOrg()
 
@@ -107,22 +108,28 @@ export async function getDepartmentLeadSettings(departmentId: string) {
   }
 
   return {
-    leadName: settings.leadName || '',
+    coordinatorNames:
+      settings.coordinatorNames.length > 0
+        ? settings.coordinatorNames
+        : settings.leadName
+          ? [settings.leadName]
+          : [],
     feedbackFormFields: normalizeDepartmentFeedbackFields(settings.feedbackFormFields),
   }
 }
 
-export async function updateDepartmentLeadSettings(
+export async function updateDepartmentCertificateSettings(
   departmentId: string,
-  leadName: string
+  coordinatorNames: string[]
 ) {
   await requireDepartmentModerator(departmentId)
   const orgId = await requireOrg()
+  const normalizedNames = validateTeachingCoordinatorNames(coordinatorNames)
 
-  await departmentsDb.updateDepartmentLeadName(
+  await departmentsDb.updateDepartmentCertificateCoordinators(
     departmentId,
     orgId,
-    leadName.trim() || null
+    normalizedNames
   )
 
   revalidatePath('/dashboard')

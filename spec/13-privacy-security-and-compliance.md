@@ -31,9 +31,10 @@ spec 11 for identity, and spec 12 for reports/exports.
    “not declared by this deployment” state until the operator configures one.
 2. **Feedback is not described as anonymous.** Public/accountless describes an
    authentication boundary only. Current submissions store name and email;
-   moderator audit exposes them; teacher feedback release prints the name.
-   Removing identity fields from a model prompt or aggregate does not make the
-   source record anonymous.
+   moderator audit exposes them. Teacher feedback release is now aggregate-only,
+   omits respondent identity/raw comments, and suppresses detailed analytics
+   below five responses. Those release controls still do not make the source
+   record anonymous.
 3. **No tracking banner without tracking.** The base application ships no
    advertising, behavioural tracking, or non-essential analytics storage, so it
    does not manufacture a consent banner. An operator or feature that introduces
@@ -134,12 +135,12 @@ The public privacy notice summarizes these active families:
 |---|---|---|
 | Identity/account | Name, email, grade, auth id, profile/status | Supabase Auth/database; server-rendered role UI; authentication email |
 | Authority | Org/department memberships, roles, invitations, assignments | Authorisation ladder, RLS/service DAL, moderator/admin surfaces |
-| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration | Member pages, invite email, calendar/API/webhook/export paths |
-| Attendance | Evidence source/timestamp, derived status, locks | Moderator/teacher views, certificates, reports, portable records, portfolio |
-| Feedback | First/last name, email, rating, answers, comment | Public submission; moderator raw audit; teacher release; stats; optional AI |
-| Learning evidence | Certificates, Recall answers, reflections, curriculum, snapshots | Personal dashboards, emails, PDFs, capability verification pages |
-| Communications | Recipient, content, attachment, send/status/unsubscribe metadata | SMTP/Resend; in-app notifications; capability links |
-| Security/technical | Essential cookie, IP/network/provider logs, API/audit/run metadata | App/database/provider logs, security monitoring and incident review |
+| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration, private session documents | Member pages, private storage/download, invite email, calendar/API/webhook/export paths |
+| Attendance | Evidence source/timestamp, roster, derived status, lifecycle revision, corrections | Moderator/teacher views, in-app notifications, certificates, reports, portable records, portfolio |
+| Feedback | First/last name, email, rating, answers, comment, aggregate report snapshots | Public submission; moderator raw audit; privacy-safe teacher release; stats; optional AI |
+| Learning evidence | Certificates, recipient/coordinator/issuer names, Recall answers, reflections, curriculum, snapshots | Personal dashboards, emails, PDFs, capability verification pages (certificate coordinator/issuer attribution is visible to a code bearer) |
+| Communications | Recipient, content, attachment, send/status/claim/unsubscribe metadata | SMTP/Resend; delivery ledgers; in-app notifications; capability links |
+| Security/technical | Essential cookie, IP/network/provider logs, HMAC-pseudonymized group-code attempt data, API/audit/run metadata | App/database/provider logs, security monitoring and incident review |
 
 Petrios is not designed for patient data. That design intention does not
 technically prevent a user entering patient or special-category information in
@@ -161,10 +162,11 @@ The following words have distinct meanings:
 
 Current feedback is identified. Ops synthesis is privacy processed, but comments
 can contain self-identifying text and deterministic removal is not a guarantee of
-anonymisation. General on-demand summary omits identity columns but does not run
-the full Ops name/safety preprocessing described in spec 06. Teaching dossier
-themes are aggregated outputs; raw source and teacher-email release remain
-identified as specified in spec 05.
+anonymisation. The general on-demand summary now omits identity columns, strips
+known name-like tokens, fences untrusted text, and refuses configured welfare/
+safety signals, but it does not implement every heuristic/structured Ops control
+in spec 06. Teacher email is aggregate-only and threshold-suppressed; the raw
+source and moderator audit remain identified as specified in spec 05.
 
 Marketing, prompts, code comments, assistant knowledge, documentation, exports,
 and UI labels must use these terms consistently. Prompt wording matters because
@@ -246,10 +248,13 @@ Controllers must define category-specific:
 8. implementation and sampled verification; and
 9. communication to the person.
 
-Normal application flows treat attendance evidence as append-oriented, but the
-database policy limitation in spec 03 must be considered in retention design.
-Public/signed records already exported cannot necessarily be recalled. Email
-already delivered cannot be erased from a recipient mailbox by Petrios.
+Attendance evidence is append-only in application/RLS operation and corrections
+are new reasoned rows. Parent deletion can still cascade according to schema, so
+controllers must define whether retention ends in parent deletion, restriction,
+or continued preservation. Public/signed records already exported cannot
+necessarily be recalled. Email already delivered cannot be erased from a
+recipient mailbox by Petrios. Archived private session documents remain stored
+until a separate deletion/retention operation removes the object.
 
 ## Browser security baseline
 

@@ -7,7 +7,6 @@ import { buildTeacherResponseEmailHtml } from '@/lib/email-templates'
 import { notifyUser } from '@/lib/notify'
 import { profileDisplayName } from '@/lib/contacts'
 import * as sessionsDb from '@/lib/db/sessions'
-import * as attendanceDb from '@/lib/db/attendance'
 import * as onboardingDb from '@/lib/db/onboarding'
 import * as traineeDb from '@/lib/db/trainee-dashboard'
 import { DbNotFoundError } from '@/lib/db'
@@ -19,9 +18,9 @@ export async function getMyTeachingAssignments() {
 }
 
 /**
- * A teacher accepting or declining their own PENDING assignment. On accept,
- * TEACHER attendance evidence is recorded and the inviting moderator is
- * notified by email and in-app notification.
+ * A teacher accepting or declining their own PENDING assignment. A response
+ * changes assignment state only; it is not proof that the future session was
+ * delivered. The inviting moderator is notified by email and in-app notification.
  */
 export async function respondToTeachingAssignment(
   sessionId: string,
@@ -51,26 +50,6 @@ export async function respondToTeachingAssignment(
   })
   if (!updated) {
     throw new Error('This invitation has already been responded to')
-  }
-
-  if (accept) {
-    // Teaching a session counts as attending it; recorded here (not at
-    // invite time) so declined teachers are never marked present.
-    try {
-      await attendanceDb.insertAttendanceEvidence({
-        orgId,
-        sessionId,
-        departmentId: session.department_id,
-        userId,
-        externalEmail: null,
-        source: 'TEACHER',
-        observedAt: new Date().toISOString(),
-        metadata: { assigned_as_teacher: true },
-        createdBy: userId,
-      })
-    } catch {
-      // Non-fatal — evidence may already exist
-    }
   }
 
   // Notify the inviter (fall back to the session creator). Non-fatal.

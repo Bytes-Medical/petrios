@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireOrg, getCurrentUser } from '@/lib/auth'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
 import * as certificatesDb from '@/lib/db/certificates'
+import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -20,6 +21,13 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
+    if (certificate.status === 'REVOKED') {
+      return NextResponse.json(
+        { error: 'This certificate was revoked after attendance was reopened or corrected' },
+        { status: 410 }
+      )
+    }
+
     const orgName = certificate.organizations?.name || 'Organization'
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin
     const verifyUrl = `${baseUrl}/verify/${certificate.certificate_code}`
@@ -31,12 +39,15 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       sessionDate: certificate.sessions?.date_start
         ? new Date(certificate.sessions.date_start).toLocaleDateString()
         : 'Unknown',
-      recipientName: user?.email || certificate.user_id,
+      recipientName: certificate.recipient_name || user?.email || certificate.user_id,
       role: certificate.certificate_role === 'ATTENDEE' ? 'Attendee' : 'Teacher',
       certificateCode: certificate.certificate_code,
       issuedDate: new Date(certificate.issued_at).toLocaleDateString(),
       verifyUrl,
-      leadName: certificate.departments?.lead_name || undefined,
+      coordinatorNames: resolveTeachingCoordinatorNames(
+        certificate.coordinator_names,
+        certificate.departments?.lead_name
+      ),
       issuerName: certificate.issued_by_name || undefined,
     })
 

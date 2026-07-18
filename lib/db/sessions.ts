@@ -431,6 +431,9 @@ export interface SessionNeedingReport {
   feedback_valid_mins_after_end: number | null
   late_after_mins: number | null
   attendance_locked: boolean | null
+  attendance_policy_version: number | null
+  attendance_phase: 'OPEN' | 'REVIEW' | 'FINALIZED' | null
+  attendance_revision: number | null
 }
 
 export async function listSessionsNeedingReport(): Promise<SessionNeedingReport[]> {
@@ -442,7 +445,7 @@ export async function listSessionsNeedingReport(): Promise<SessionNeedingReport[
   const { data, error } = await db
     .from('sessions')
     .select(
-      'id, org_id, department_id, title, date_start, date_end, checkin_open_mins_before, checkin_close_mins_after, feedback_valid_mins_after_end, late_after_mins, attendance_locked'
+      'id, org_id, department_id, title, date_start, date_end, checkin_open_mins_before, checkin_close_mins_after, feedback_valid_mins_after_end, late_after_mins, attendance_locked, attendance_policy_version, attendance_phase, attendance_revision'
     )
     .eq('status', 'PUBLISHED')
     .lte('date_end', cutoff)

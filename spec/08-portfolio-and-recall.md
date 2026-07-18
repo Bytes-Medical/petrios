@@ -13,8 +13,9 @@ The subsystem contains four distinct artifacts:
 - a stored, publicly verifiable portfolio-pack snapshot; and
 - a live teacher dossier PDF assembled on demand.
 
-Petrios Recall is a separate learning-retention workflow whose passing catch-up
-answer can create low-priority attendance evidence.
+Petrios Recall is a separate learning-retention workflow. A passing catch-up
+answer records learning completion but does not prove or modify policy-v2
+physical attendance.
 
 ## Live curriculum passport
 
@@ -164,7 +165,7 @@ per session. It has two goals:
 
 - `RETENTION`: measure whether learning persisted for attendees; and
 - `CATCH_UP`: offer current department members without attended status a short
-  learning path that can earn explicitly labelled Recall attendance.
+  learning path whose completion is explicitly distinct from attendance.
 
 It must never expose individual scores to organizers. The public respondent sees
 their own result through a bearer link.
@@ -279,24 +280,18 @@ scoring. Missing/out-of-range values simply do not match; extra values are
 ignored. The fixed question schema keeps total at three, but explicit answer
 validation should precede any future variable-length format.
 
-## Catch-up attendance
+## Catch-up learning completion
 
-If an answer is `CATCH_UP`, passes, and session attendance is unlocked, the
-server:
+Every accepted answer inserts only the unique `recall_answers` row. When a
+`CATCH_UP` answer passes, the response returns `caughtUp: true` to describe the
+learning path; it does not append `RECALL` evidence, recompute attendance, issue
+a certificate, or depend on the attendance lock. The compatibility
+`attendanceLocked` response field is currently always false.
 
-- inserts `RECALL` evidence at answer time with `status_override: PRESENT`, method
-  marker, and score;
-- recomputes that user's attendance from all evidence; and
-- returns `caughtUp: true`.
-
-`RECALL` has the lowest evidence priority. If it is primary, reports show source
-`RECALL`, preserving the distinction from physical participation. A stronger
-valid source can supersede it.
-
-When attendance is locked, the answer is still stored but no Recall evidence is
-inserted; the response reports the lock. Unlocking later does not retroactively
-grant catch-up evidence. A failed `RETENTION` answer has no attendance effect;
-retention respondents already have attended status.
+Policy-v1 historical `RECALL` evidence remains readable by the attendance
+derivation so old provenance is not silently rewritten. There is no current
+producer for new Recall attendance evidence. A failed answer likewise has no
+attendance effect.
 
 ## Retention analytics and privacy
 
