@@ -31,20 +31,26 @@ export default async function SessionPage(
     redirect('/dashboard')
   }
 
+  // Stage 1: the reads below key off session fields; then fetch concurrently.
   const session = await getSession(params.id)
-  const teachers = await getSessionTeachers(params.id)
-  const attendance = await getAttendance(params.id)
-  const canManage = await isDepartmentModerator(session.department_id)
-  const approvedRecap = await getApprovedAudioRecap(params.id)
+  const isVideoSession =
+    session.location_type === 'JITSI' && session.status === 'PUBLISHED'
+
+  const [teachers, attendance, canManage, approvedRecap, videoProfile] =
+    await Promise.all([
+      getSessionTeachers(params.id),
+      getAttendance(params.id),
+      isDepartmentModerator(session.department_id),
+      getApprovedAudioRecap(params.id),
+      isVideoSession ? onboardingDb.findProfileByUserId(user.id) : Promise.resolve(null),
+    ])
 
   // Petrios Meet sessions embed their video room; name shown to the room.
-  let videoDisplayName: string | null = null
-  if (session.location_type === 'JITSI' && session.status === 'PUBLISHED') {
-    const profile = await onboardingDb.findProfileByUserId(user.id)
-    videoDisplayName = profile
-      ? profileDisplayName(profile, user.email ?? 'Attendee')
-      : user.email ?? 'Attendee'
-  }
+  const videoDisplayName = isVideoSession
+    ? videoProfile
+      ? profileDisplayName(videoProfile, user.email ?? 'Attendee')
+      : (user.email ?? 'Attendee')
+    : null
 
   return (
     <div className="min-h-screen">

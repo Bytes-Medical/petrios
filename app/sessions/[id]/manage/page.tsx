@@ -33,24 +33,42 @@ export default async function ManageSessionPage(
     redirect('/dashboard')
   }
 
+  // Stage 1: everything below keys off session.department_id.
   const session = await getSession(params.id)
-  const department = await getDepartment(session.department_id)
-  const canManage = await isDepartmentModerator(session.department_id)
+
+  // Stage 2: all reads, fetched concurrently. The moderator gate runs after
+  // the fan-out — each action still enforces its own auth internally, so a
+  // non-moderator wastes a few reads on the redirect path but sees nothing.
+  const showAudioRecap = opsEnabled()
+  const [
+    department,
+    canManage,
+    teachers,
+    departmentMembers,
+    attendance,
+    emailHistory,
+    invitations,
+    isPersonal,
+    recallSet,
+    feedbackActions,
+    audioRecap,
+  ] = await Promise.all([
+    getDepartment(session.department_id),
+    isDepartmentModerator(session.department_id),
+    getSessionTeachers(params.id),
+    getDepartmentMemberUsers(session.department_id),
+    getAttendance(params.id),
+    getTeacherEmailHistory(params.id),
+    getSessionInvitations(params.id),
+    isPersonalWorkspace(orgId),
+    getRecallSetForSession(params.id),
+    feedbackActionsDb.listActionsForSession(params.id),
+    showAudioRecap ? getAudioRecap(params.id) : Promise.resolve(null),
+  ])
 
   if (!canManage) {
     redirect(`/sessions/${params.id}`)
   }
-
-  const teachers = await getSessionTeachers(params.id)
-  const departmentMembers = await getDepartmentMemberUsers(session.department_id)
-  const attendance = await getAttendance(params.id)
-  const emailHistory = await getTeacherEmailHistory(params.id)
-  const invitations = await getSessionInvitations(params.id)
-  const isPersonal = await isPersonalWorkspace(orgId)
-  const recallSet = await getRecallSetForSession(params.id)
-  const feedbackActions = await feedbackActionsDb.listActionsForSession(params.id)
-  const showAudioRecap = opsEnabled()
-  const audioRecap = showAudioRecap ? await getAudioRecap(params.id) : null
 
   return (
     <div className="min-h-screen">

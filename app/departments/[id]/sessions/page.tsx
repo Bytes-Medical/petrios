@@ -26,9 +26,11 @@ export default async function DepartmentSessionsPage(
     redirect('/dashboard')
   }
 
-  const department = await getDepartment(params.id)
-  const sessions = await getSessions(params.id)
-  const canManage = await isDepartmentModerator(params.id)
+  const [department, sessions, canManage] = await Promise.all([
+    getDepartment(params.id),
+    getSessions(params.id),
+    isDepartmentModerator(params.id),
+  ])
 
   return (
     <div className="min-h-screen">
