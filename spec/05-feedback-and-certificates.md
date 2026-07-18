@@ -25,7 +25,8 @@ The invariants are:
 5. Free text is untrusted at prompt, HTML, export, and public-output boundaries.
 6. A `VALID` certificate can be created only from the current finalized
    attendance revision through the canonical eligibility boundary.
-7. Provider-reported email errors are durable failures, not successful sends.
+7. Provider-reported email errors and a teacher-report transport response
+   without a message id are durable failures, not successful sends.
 8. Coordinator attribution on an issued certificate is a snapshot and must not
    change when later department settings are edited.
 
@@ -197,7 +198,7 @@ not release authorization.
 If the latest report has the same immutable response count:
 
 - `FAILED` or `APPROVED` is reused for retry;
-- `RELEASED` is reused so already-sent recipients are not emailed twice; and
+- `RELEASED` is reused as the already-approved immutable snapshot; and
 - a newly accepted teacher without a delivery row can receive that same report.
 
 A changed response count creates the next version. Concurrent version creation
@@ -206,17 +207,46 @@ is reconciled against the unique `(session_id, version)` row.
 Each recipient/report pair has one `session_deliveries` row. Before contacting
 the provider, a worker atomically claims `PENDING`/`FAILED` as `SENDING`.
 Concurrent workers cannot claim the same row. A `SENDING` claim older than 15
-minutes can be recovered after a crashed worker. `SENT` is skipped on retry.
+minutes can be recovered after a crashed worker. Background jobs and an
+unfinished first release skip `SENT` on retry.
+
+The moderator control is deliberately different after a report has reached
+`RELEASED`: every later click is an explicit resend of that same approved
+snapshot to the current de-duplicated accepted-teacher list. On that path only,
+the claim may transition `SENT` back to `SENDING`. This permits any number of
+intentional resends without weakening certificate-email or cron idempotency.
+The in-flight lease still prevents two concurrent clicks or browser tabs from
+contacting the provider for the same recipient at the same time. The button
+remains enabled after success and labels the next action as a resend; it does
+not claim that a resend was skipped merely because an older attempt succeeded.
 
 Provider data id and `{ error }`, attempt count, last error/time, and sent time
-are stored. A report becomes `RELEASED` only when the current action observes no
-failed or in-progress recipient. Activity events record approval, release, or
-failure.
+are stored. A failed resend preserves the last successful provider id and
+successful sent time while recording the new failure and incremented attempt
+count. A first release becomes `RELEASED` only when the current action observes
+no failed or in-progress recipient. A later failed resend does not change that
+historical lifecycle fact back to `FAILED`.
 
-This is effectively-once at the application claim boundary, not a mathematical
-exactly-once email guarantee: a provider may accept an email and the database
-write may then fail, causing a later retry. Provider-supported idempotency would
-be needed to close that final distributed-systems gap.
+Every completed moderator attempt appends an activity event with a unique
+`attempt_id`, report id, resend flag, sent count, and failed count. Event types
+distinguish `RELEASED`, `FAILED`, `RESENT`, and `RESEND_FAILED`. The response UI
+shows recipient-level failure messages and any provider receipt ids returned in
+that browser action. The teacher-report path rejects any transport success
+without a nonblank provider id as untraceable and cannot set the ledger to
+`SENT`; this includes the local development sink. The Resend adapter independently
+enforces the same requirement for a Resend 2xx response.
+
+`SENT` means the configured SMTP or Resend transport accepted the submission;
+it is not proof that the message reached the inbox. Final delivery, deferral,
+bounce, spam filtering, or complaint status remains in the provider unless a
+provider webhook/status ingestion feature is added. A displayed Resend receipt
+is the support reference for investigating that downstream state.
+
+Ordinary first-release retry is effectively-once at the application claim
+boundary, not a mathematical exactly-once email guarantee: a provider may
+accept an email and the database write may then fail, causing a later retry.
+Explicit resends are intentionally at-least-once user actions. Provider-supported
+idempotency would be needed to close the provider-acceptance/database-write gap.
 
 Teacher feedback release never:
 
@@ -409,6 +439,8 @@ spec 09 capability.
   retention, and incident handling.
 - Report claims prevent concurrent application sends, but provider acceptance
   followed by ledger failure can still produce an at-least-once retry.
+- Provider acceptance and a receipt id do not prove inbox delivery; Petrios does
+  not currently ingest delivery/bounce webhooks.
 - Certificate codes are public bearer identifiers and must not contain hidden
   sensitive data.
 - No general retention worker currently deletes feedback, report snapshots,
@@ -427,8 +459,10 @@ Changes require tests or integration coverage for:
   name stripping;
 - threshold behavior at four and five responses and HTML escaping;
 - accepted-teacher filtering, normalized recipient de-duplication, report
-  version reuse, delivery claim/reclaim, provider error, partial retry, and
-  already-sent skip;
+  version reuse, default delivery claim/reclaim, provider error, missing
+  transport/Resend receipt, partial retry, already-sent skip during first-release recovery,
+  explicit repeated resend, concurrent resend suppression, preserved historical
+  release status, and resend activity metadata;
 - application and database certificate eligibility, role-specific uniqueness,
   batch partial failure, cron watermark, reopen revocation, HTTP 410 download,
   public valid/legacy/revoked states, coordinator normalization/snapshotting,

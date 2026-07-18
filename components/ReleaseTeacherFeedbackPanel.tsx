@@ -21,8 +21,11 @@ export function ReleaseTeacherFeedbackPanel({
     sentCount: number
     totalTeachers: number
     failedCount: number
+    failures: { email: string; message: string }[]
+    providerReceipts: { email: string; id: string }[]
     privacySuppressed: boolean
-    alreadyReleased: boolean
+    resend: boolean
+    previouslyDeliveredCount: number
     inProgressCount: number
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -38,8 +41,8 @@ export function ReleaseTeacherFeedbackPanel({
     try {
       const res = await releaseTeacherFeedback(sessionId)
       setResult(res)
-    } catch (err: any) {
-      setError(err.message || 'Failed to release feedback')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to release feedback')
     } finally {
       setLoading(false)
     }
@@ -59,7 +62,8 @@ export function ReleaseTeacherFeedbackPanel({
         Send each accepted teacher a privacy-safe aggregate report. Respondent
         names, email addresses, raw comments, attendance changes, and certificates
         are never included in this action. Detailed analytics are withheld when
-        fewer than five people responded.
+        fewer than five people responded. After release, you can deliberately
+        resend the same report; concurrent clicks are still blocked.
       </p>
 
       <div className="font-mono text-sm">
@@ -81,12 +85,55 @@ export function ReleaseTeacherFeedbackPanel({
       </div>
 
       {result && (
-        <div className="border border-black bg-green-50 p-3 font-mono text-sm">
-          {result.alreadyReleased
-            ? '✓ The current feedback set was already released; no duplicate email was sent.'
-            : `✓ Feedback report sent to ${result.sentCount} of ${result.totalTeachers} teacher${result.totalTeachers !== 1 ? 's' : ''}.`}
-          {result.failedCount > 0 ? ` ${result.failedCount} delivery attempt${result.failedCount === 1 ? '' : 's'} failed.` : ''}
-          {result.inProgressCount > 0 ? ` ${result.inProgressCount} delivery attempt${result.inProgressCount === 1 ? ' is' : 's are'} already in progress.` : ''}
+        <div
+          className={`border p-3 font-mono text-sm ${
+            result.failedCount > 0
+              ? 'border-red-600 bg-red-50 text-red-800'
+              : result.inProgressCount > 0
+                ? 'border-amber-700 bg-amber-50 text-amber-900'
+                : 'border-black bg-green-50'
+          }`}
+        >
+          <p>
+            {result.failedCount === 0 && result.inProgressCount === 0 ? '✓ ' : ''}
+            The email provider accepted {result.sentCount} of {result.totalTeachers}{' '}
+            delivery{result.totalTeachers === 1 ? '' : 'ies'} in this{' '}
+            {result.resend ? 'resend' : 'release'} attempt.
+          </p>
+          {result.previouslyDeliveredCount > 0 && (
+            <p className="mt-2">
+              {result.previouslyDeliveredCount} recipient
+              {result.previouslyDeliveredCount === 1 ? ' was' : 's were'} already
+              delivered during an earlier partial attempt and were not duplicated.
+            </p>
+          )}
+          {result.inProgressCount > 0 && (
+            <p className="mt-2">
+              {result.inProgressCount} delivery attempt
+              {result.inProgressCount === 1 ? ' is' : 's are'} already in progress.
+            </p>
+          )}
+          {result.failures.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {result.failures.map((failure) => (
+                <li key={failure.email}>
+                  {failure.email}: {failure.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {result.providerReceipts.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer">Provider receipts</summary>
+              <ul className="mt-1 space-y-1 pl-4">
+                {result.providerReceipts.map((receipt) => (
+                  <li key={`${receipt.email}-${receipt.id}`}>
+                    {receipt.email}: {receipt.id}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
 
@@ -98,13 +145,15 @@ export function ReleaseTeacherFeedbackPanel({
 
       <Button
         onClick={handleRelease}
-        disabled={loading || !!result}
+        disabled={loading}
       >
         {loading
           ? 'Sending...'
           : result
-            ? 'Sent ✓'
-            : `Release Feedback to ${totalTeachers} Teacher${totalTeachers !== 1 ? 's' : ''}`
+            ? result.failedCount > 0 || result.inProgressCount > 0
+              ? 'Try Feedback Delivery Again'
+              : `Resend Feedback to ${totalTeachers} Teacher${totalTeachers !== 1 ? 's' : ''}`
+            : `Send / Resend Feedback to ${totalTeachers} Teacher${totalTeachers !== 1 ? 's' : ''}`
         }
       </Button>
     </div>

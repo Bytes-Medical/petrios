@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildTeacherFeedbackEmailHtml } from '@/lib/email-templates'
@@ -390,9 +390,10 @@ export async function releaseTeacherFeedback(sessionId: string) {
   const mailer = getEmailClient()
   const fromAddress = getFromAddress()
   let sentCount = 0
-  let deliveredThisRun = 0
+  let previouslyDeliveredCount = 0
   let inProgressCount = 0
-  const failures: string[] = []
+  const failures: { email: string; message: string }[] = []
+  const providerReceipts: { email: string; id: string }[] = []
   const privacySuppressed = feedbackStats.total < 5
   const report = await feedbackReportsDb.createApprovedTeacherFeedbackReport({
     orgId,
@@ -408,9 +409,13 @@ export async function releaseTeacherFeedback(sessionId: string) {
       questionSummaries: privacySuppressed ? [] : feedbackStats.questionSummaries,
     },
   })
+  const resend = report.alreadyReleased
+  const attemptId = randomUUID()
 
   for (const teacher of allTeachers) {
     let deliveryId: string | null = null
+    let deliveryClaimed = false
+    let publicFailureMessage = 'Petrios could not start this delivery attempt.'
     try {
       const html = buildTeacherFeedbackEmailHtml({
         teacherName: teacher.name,
@@ -433,14 +438,19 @@ export async function releaseTeacherFeedback(sessionId: string) {
         relatedId: report.id,
       })
       deliveryId = delivery.id
-      if (delivery.status === 'SENT') {
-        sentCount += 1
+      if (delivery.status === 'SENT' && !resend) {
+        previouslyDeliveredCount += 1
         continue
       }
-      if (!(await deliveriesDb.claimSessionDelivery(delivery.id))) {
+      if (
+        !(await deliveriesDb.claimSessionDelivery(delivery.id, {
+          allowPreviouslySent: resend,
+        }))
+      ) {
         inProgressCount += 1
         continue
       }
+      deliveryClaimed = true
       const result = await mailer.emails.send({
         from: fromAddress,
         to: teacher.email,
@@ -448,20 +458,31 @@ export async function releaseTeacherFeedback(sessionId: string) {
         html,
       })
       if (result.error) {
+        publicFailureMessage = result.error.message
         throw new Error(result.error.message)
       }
+      if (!result.data?.id) {
+        publicFailureMessage =
+          'The email transport did not return a provider receipt, so Petrios did not record this attempt as sent.'
+        throw new Error(publicFailureMessage)
+      }
+      publicFailureMessage =
+        'The provider accepted the email, but Petrios could not record the receipt. Retrying may send another copy.'
       await deliveriesDb.recordDeliveryAttempt({
         id: delivery.id,
         success: true,
-        providerMessageId: result.data?.id,
+        providerMessageId: result.data.id,
       })
 
       sentCount += 1
-      deliveredThisRun += 1
+      providerReceipts.push({ email: teacher.email, id: result.data.id })
     } catch (error) {
       console.error(`Failed to send teacher feedback to ${teacher.email}:`, error)
-      failures.push(teacher.email)
-      if (deliveryId) {
+      failures.push({
+        email: teacher.email,
+        message: publicFailureMessage,
+      })
+      if (deliveryId && deliveryClaimed) {
         await deliveriesDb.recordDeliveryAttempt({
           id: deliveryId,
           success: false,
@@ -473,29 +494,16 @@ export async function releaseTeacherFeedback(sessionId: string) {
     }
   }
 
-  if (
-    report.alreadyReleased &&
-    deliveredThisRun === 0 &&
-    failures.length === 0 &&
-    inProgressCount === 0
-  ) {
-    return {
-      sentCount,
-      totalTeachers: allTeachers.length,
-      failedCount: 0,
-      privacySuppressed,
-      alreadyReleased: true,
-      inProgressCount: 0,
-    }
-  }
-
   if (inProgressCount > 0) {
     return {
       sentCount,
       totalTeachers: allTeachers.length,
       failedCount: failures.length,
+      failures,
+      providerReceipts,
       privacySuppressed,
-      alreadyReleased: false,
+      resend,
+      previouslyDeliveredCount,
       inProgressCount,
     }
   }
@@ -503,6 +511,8 @@ export async function releaseTeacherFeedback(sessionId: string) {
   await feedbackReportsDb.finishTeacherFeedbackReport({
     reportId: report.id,
     released: failures.length === 0,
+    resend,
+    attemptId,
     orgId,
     departmentId: session.department_id,
     sessionId,
@@ -517,8 +527,11 @@ export async function releaseTeacherFeedback(sessionId: string) {
     sentCount,
     totalTeachers: allTeachers.length,
     failedCount: failures.length,
+    failures,
+    providerReceipts,
     privacySuppressed,
-    alreadyReleased: report.alreadyReleased && deliveredThisRun === 0,
+    resend,
+    previouslyDeliveredCount,
     inProgressCount: 0,
   }
 }

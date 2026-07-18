@@ -346,7 +346,11 @@ actor user id or `system`, and raw subject user id/external email when present.
 It does not currently display the JSON `details`, resolve names, paginate, or
 export. Typical new events cover attendance evidence/finalization/reopening,
 certificate issuance/reconciliation, teacher feedback report lifecycle, and
-session document upload/archive.
+session document upload/archive. Teacher feedback attempts distinguish first
+release success/failure from explicit resend success/failure. Each completed
+attempt stores a unique attempt id, report id, resend flag, and aggregate
+sent/failed counts in event details; the current Activity Log displays the event
+type but still does not render those JSON details.
 
 The event table is deny-all RLS and read through the service DAL only after the
 session-management page establishes moderator authority. It is append-only by

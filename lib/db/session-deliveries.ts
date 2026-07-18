@@ -1,17 +1,26 @@
 import { getServiceDb } from './client'
 import { toDbError } from './errors'
+import {
+  claimableSessionDeliveryStatuses,
+  type SessionDeliveryStatus,
+} from '@/lib/session-delivery-policy'
 
 export interface SessionDelivery {
   id: string
-  status: 'PENDING' | 'SENDING' | 'SENT' | 'FAILED'
+  status: SessionDeliveryStatus
   attempt_count: number
 }
 
 /**
  * Acquire a delivery before contacting the provider. A 15-minute lease makes
  * crashed SENDING attempts recoverable while preventing concurrent sends.
+ * SENT is claimable only for an explicit moderator resend; cron callers keep
+ * the default effectively-once behavior.
  */
-export async function claimSessionDelivery(id: string): Promise<boolean> {
+export async function claimSessionDelivery(
+  id: string,
+  options: { allowPreviouslySent?: boolean } = {}
+): Promise<boolean> {
   const db = await getServiceDb()
   const now = new Date()
   const claim = {
@@ -23,7 +32,10 @@ export async function claimSessionDelivery(id: string): Promise<boolean> {
     .from('session_deliveries')
     .update(claim)
     .eq('id', id)
-    .in('status', ['PENDING', 'FAILED'])
+    .in(
+      'status',
+      claimableSessionDeliveryStatuses(options.allowPreviouslySent === true)
+    )
     .select('id')
     .maybeSingle()
   if (freshError) throw toDbError('Failed to claim delivery', freshError)
@@ -103,7 +115,7 @@ export async function recordDeliveryAttempt(input: {
   const db = await getServiceDb()
   const { data: current, error: readError } = await db
     .from('session_deliveries')
-    .select('attempt_count')
+    .select('attempt_count, provider_message_id, sent_at')
     .eq('id', input.id)
     .single()
   if (readError) throw toDbError('Failed to read delivery attempt count', readError)
@@ -114,10 +126,12 @@ export async function recordDeliveryAttempt(input: {
     .update({
       status: input.success ? 'SENT' : 'FAILED',
       attempt_count: Number(current.attempt_count) + 1,
-      provider_message_id: input.providerMessageId ?? null,
+      provider_message_id: input.success
+        ? (input.providerMessageId ?? null)
+        : current.provider_message_id,
       last_error: input.success ? null : (input.error ?? 'Unknown delivery error'),
       last_attempt_at: now,
-      sent_at: input.success ? now : null,
+      sent_at: input.success ? now : current.sent_at,
       updated_at: now,
     })
     .eq('id', input.id)

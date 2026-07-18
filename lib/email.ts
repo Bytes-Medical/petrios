@@ -54,6 +54,13 @@ function parseEmail(input: string): string {
   return (match ? match[1] : input).trim()
 }
 
+/** A successful Resend submission must carry the provider's traceable id. */
+export function parseResendProviderMessageId(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object' || !('id' in payload)) return null
+  const id = (payload as { id?: unknown }).id
+  return typeof id === 'string' && id.trim().length > 0 ? id.trim() : null
+}
+
 function toBase64(content: Buffer | Uint8Array | string): string {
   if (typeof content === 'string') return content // assume already base64
   return Buffer.from(content).toString('base64')
@@ -234,8 +241,18 @@ export function getEmailClient() {
             return { data: null, error: { message } }
           }
 
-          // Resend returns 200 with the email id in the JSON body.
-          return { data: { id: payload?.id ?? null }, error: null }
+          // Do not persist an untraceable HTTP response as SENT. A genuine
+          // Resend acceptance includes a message id that can be inspected in
+          // the provider dashboard if inbox delivery is later questioned.
+          const providerMessageId = parseResendProviderMessageId(payload)
+          if (!providerMessageId) {
+            return {
+              data: null,
+              error: { message: 'Resend returned success without a provider message id' },
+            }
+          }
+
+          return { data: { id: providerMessageId }, error: null }
         } catch (err) {
           return {
             data: null,

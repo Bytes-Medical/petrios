@@ -95,6 +95,8 @@ export async function createApprovedTeacherFeedbackReport(input: {
 export async function finishTeacherFeedbackReport(input: {
   reportId: string
   released: boolean
+  resend: boolean
+  attemptId: string
   orgId: string
   departmentId: string
   sessionId: string
@@ -104,20 +106,43 @@ export async function finishTeacherFeedbackReport(input: {
 }): Promise<void> {
   const db = await getServiceDb()
   const now = new Date().toISOString()
-  const { error } = await db
-    .from('teacher_feedback_reports')
-    .update({ status: input.released ? 'RELEASED' : 'FAILED', released_at: input.released ? now : null })
-    .eq('id', input.reportId)
-    .eq('session_id', input.sessionId)
-  if (error) throw toDbError('Failed to finish teacher feedback report', error)
+
+  // A failed resend does not undo the fact that this approved snapshot was
+  // released successfully before. First-release attempts still drive the
+  // report lifecycle; resends are additional audited delivery attempts.
+  if (!input.resend) {
+    const { error } = await db
+      .from('teacher_feedback_reports')
+      .update({
+        status: input.released ? 'RELEASED' : 'FAILED',
+        released_at: input.released ? now : null,
+      })
+      .eq('id', input.reportId)
+      .eq('session_id', input.sessionId)
+    if (error) throw toDbError('Failed to finish teacher feedback report', error)
+  }
+
+  const eventType = input.resend
+    ? input.released
+      ? 'TEACHER_FEEDBACK_REPORT_RESENT'
+      : 'TEACHER_FEEDBACK_REPORT_RESEND_FAILED'
+    : input.released
+      ? 'TEACHER_FEEDBACK_REPORT_RELEASED'
+      : 'TEACHER_FEEDBACK_REPORT_FAILED'
 
   const { error: activityError } = await db.from('session_activity_events').insert({
     org_id: input.orgId,
     department_id: input.departmentId,
     session_id: input.sessionId,
-    event_type: input.released ? 'TEACHER_FEEDBACK_REPORT_RELEASED' : 'TEACHER_FEEDBACK_REPORT_FAILED',
+    event_type: eventType,
     actor_user_id: input.actorUserId,
-    details: { report_id: input.reportId, sent_count: input.sentCount, failed_count: input.failedCount },
+    details: {
+      report_id: input.reportId,
+      attempt_id: input.attemptId,
+      resend: input.resend,
+      sent_count: input.sentCount,
+      failed_count: input.failedCount,
+    },
   })
   if (activityError) throw toDbError('Failed to record feedback report release', activityError)
 }

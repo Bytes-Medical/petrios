@@ -123,7 +123,7 @@ and increments/stamps the revision in one RPC transaction.
 | `session_feedback` | Submitted identity snapshot, configurable answer snapshot, derived rating/comment | Public/accountless submission path; moderator raw access |
 | `feedback_actions` | “You said, we did” public response | Moderator-authored, department scoped |
 | `teacher_feedback_reports` | Moderator-approved, versioned aggregate release snapshot | Deny-all; privacy-suppression and release/failure state |
-| `session_deliveries` | Per-recipient/report-or-certificate delivery ledger and recoverable send claim | Deny-all; unique natural delivery identity, 15-minute stale-claim recovery |
+| `session_deliveries` | Per-recipient/report-or-certificate delivery ledger and recoverable send claim | Deny-all; unique natural delivery identity, 15-minute stale-claim recovery; `SENT` is reclaimable only for an explicit moderator feedback resend |
 | `certificates` | Issued certificate metadata, public code, attendance revision, coordinator-name snapshot, and validity/revocation state | Database eligibility trigger; partial uniqueness for one current `VALID` subject/session/role row |
 
 Feedback stores the submitter's first name, last name, and email; “public form”
