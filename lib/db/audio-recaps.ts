@@ -1,5 +1,9 @@
 import { getServiceDb } from './client'
 import { toDbError } from './errors'
+import type {
+  AudioRecapResearchSource,
+  AudioRecapSourceDocument,
+} from '@/lib/audio-recap-types'
 
 /**
  * Audio recaps DAL (audio_recaps, deny-all RLS). Service role justification:
@@ -15,7 +19,7 @@ import { toDbError } from './errors'
  */
 
 const META_COLUMNS =
-  'id, org_id, session_id, script, model, tts_model, tts_voice, audio_bytes, status, approved_by, approved_at, created_at, updated_at'
+  'id, org_id, session_id, script, model, tts_model, tts_voice, audio_bytes, source_documents, source_digest, research_sources, research_performed, status, approved_by, approved_at, created_at, updated_at'
 
 export interface AudioRecapMeta {
   id: string
@@ -26,6 +30,12 @@ export interface AudioRecapMeta {
   tts_model: string | null
   tts_voice: string | null
   audio_bytes: number | null
+  source_documents: AudioRecapSourceDocument[]
+  source_digest: string | null
+  research_sources: AudioRecapResearchSource[]
+  research_performed: boolean
+  /** Computed by the authorized action; not stored in the table. */
+  source_stale?: boolean
   status: 'draft' | 'approved'
   approved_by: string | null
   approved_at: string | null
@@ -52,6 +62,10 @@ export async function upsertDraftScript(input: {
   sessionId: string
   script: string
   model: string | null
+  sourceDocuments: AudioRecapSourceDocument[]
+  sourceDigest: string
+  researchSources: AudioRecapResearchSource[]
+  researchPerformed: boolean
 }): Promise<AudioRecapMeta> {
   const db = await getServiceDb()
   const { data, error } = await db
@@ -62,6 +76,10 @@ export async function upsertDraftScript(input: {
         session_id: input.sessionId,
         script: input.script,
         model: input.model,
+        source_documents: input.sourceDocuments,
+        source_digest: input.sourceDigest,
+        research_sources: input.researchSources,
+        research_performed: input.researchPerformed,
         audio: null,
         audio_bytes: null,
         status: 'draft',
@@ -146,17 +164,29 @@ export async function approveRecap(input: {
 /** The one blob read — used only by the streaming route. */
 export async function findRecapAudio(
   sessionId: string
-): Promise<{ audio: Buffer; status: 'draft' | 'approved' } | null> {
+): Promise<{
+  audio: Buffer
+  status: 'draft' | 'approved'
+  source_digest: string | null
+} | null> {
   const db = await getServiceDb()
   const { data, error } = await db
     .from('audio_recaps')
-    .select('audio, status')
+    .select('audio, status, source_digest')
     .eq('session_id', sessionId)
     .maybeSingle()
 
   if (error) throw toDbError('Failed to fetch recap audio', error)
-  const row = data as { audio: string | null; status: 'draft' | 'approved' } | null
+  const row = data as {
+    audio: string | null
+    status: 'draft' | 'approved'
+    source_digest: string | null
+  } | null
   if (!row?.audio) return null
   const hex = row.audio.startsWith('\\x') ? row.audio.slice(2) : row.audio
-  return { audio: Buffer.from(hex, 'hex'), status: row.status }
+  return {
+    audio: Buffer.from(hex, 'hex'),
+    status: row.status,
+    source_digest: row.source_digest,
+  }
 }

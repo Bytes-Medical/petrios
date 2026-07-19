@@ -92,6 +92,12 @@ export function SessionDocumentsPanel({
             <p className="mt-1 font-mono text-xs text-gray-600">
               PDF, DOCX, or PPTX only; maximum 25 MiB. Macro-enabled and legacy Office files are rejected.
             </p>
+            <p className="mt-1 font-mono text-xs text-gray-600">
+              Available documents become the learning sources for Audio Recap. They are sent to the
+              configured AI provider only when a moderator deliberately generates or regenerates a recap.
+              The provider may derive queries from them for restricted authoritative-source research;
+              the documents remain the recap&apos;s primary focus.
+            </p>
           </div>
           <input
             id="session-document"

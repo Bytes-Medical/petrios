@@ -6,7 +6,37 @@ export interface TeacherFeedbackReport {
   version: number
   status: 'APPROVED' | 'RELEASED' | 'FAILED'
   response_count: number
+  analytics_snapshot: Record<string, unknown>
+  privacy_suppressed: boolean
   alreadyReleased: boolean
+}
+
+export function canonicalTeacherFeedbackReportJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalTeacherFeedbackReportJson).join(',')}]`
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalTeacherFeedbackReportJson(entry)}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
+function reportFromRow(row: Record<string, unknown>): TeacherFeedbackReport {
+  return {
+    id: String(row.id),
+    version: Number(row.version),
+    status: row.status as TeacherFeedbackReport['status'],
+    response_count: Number(row.response_count),
+    analytics_snapshot:
+      row.analytics_snapshot && typeof row.analytics_snapshot === 'object'
+        ? (row.analytics_snapshot as Record<string, unknown>)
+        : {},
+    privacy_suppressed: row.privacy_suppressed === true,
+    alreadyReleased: row.status === 'RELEASED',
+  }
 }
 
 /** Moderator-approved report snapshot; caller has already authorized session scope. */
@@ -18,25 +48,56 @@ export async function createApprovedTeacherFeedbackReport(input: {
   responseCount: number
   analyticsSnapshot: Record<string, unknown>
   privacySuppressed: boolean
+  preserveLatestReviewedSummary?: boolean
 }): Promise<TeacherFeedbackReport> {
   const db = await getServiceDb()
   const { data: latest, error: latestError } = await db
     .from('teacher_feedback_reports')
-    .select('id, version, status, response_count')
+    .select('id, version, status, response_count, analytics_snapshot, privacy_suppressed')
     .eq('session_id', input.sessionId)
     .order('version', { ascending: false })
     .limit(1)
     .maybeSingle()
   if (latestError) throw toDbError('Failed to read feedback report version', latestError)
 
-  if (latest && Number(latest.response_count) === input.responseCount) {
-    return {
-      id: latest.id,
-      version: Number(latest.version),
-      status: latest.status as TeacherFeedbackReport['status'],
-      response_count: Number(latest.response_count),
-      alreadyReleased: latest.status === 'RELEASED',
-    }
+  const analyticsSnapshot = { ...input.analyticsSnapshot }
+  if (
+    latest &&
+    Number(latest.response_count) === input.responseCount &&
+    input.preserveLatestReviewedSummary &&
+    typeof (latest.analytics_snapshot as Record<string, unknown> | null)?.reviewedSummary === 'string' &&
+    typeof analyticsSnapshot.reviewedSummary !== 'string'
+  ) {
+    analyticsSnapshot.reviewedSummary = (
+      latest.analytics_snapshot as Record<string, unknown>
+    ).reviewedSummary
+  }
+
+  if (input.privacySuppressed) {
+    delete analyticsSnapshot.reviewedSummary
+  }
+
+  if (
+    typeof analyticsSnapshot.reviewedSummary === 'string' &&
+    analyticsSnapshot.reviewedSummary.trim().length === 0
+  ) {
+    delete analyticsSnapshot.reviewedSummary
+  }
+
+  if (
+    typeof analyticsSnapshot.reviewedSummary === 'string' &&
+    analyticsSnapshot.reviewedSummary.length > 4000
+  ) {
+    throw new Error('Reviewed feedback narrative is limited to 4,000 characters')
+  }
+
+  if (
+    latest &&
+    Number(latest.response_count) === input.responseCount &&
+    canonicalTeacherFeedbackReportJson(latest.analytics_snapshot) ===
+      canonicalTeacherFeedbackReportJson(analyticsSnapshot)
+  ) {
+    return reportFromRow(latest as unknown as Record<string, unknown>)
   }
 
   const version = Number(latest?.version ?? 0) + 1
@@ -50,31 +111,31 @@ export async function createApprovedTeacherFeedbackReport(input: {
       version,
       status: 'APPROVED',
       response_count: input.responseCount,
-      analytics_snapshot: input.analyticsSnapshot,
+      analytics_snapshot: analyticsSnapshot,
       privacy_suppressed: input.privacySuppressed,
       created_by: input.actorUserId,
       approved_by: input.actorUserId,
       approved_at: now,
     })
-    .select('id, version, status, response_count')
+    .select('id, version, status, response_count, analytics_snapshot, privacy_suppressed')
     .single()
   if (error) {
     const { data: raced, error: racedError } = await db
       .from('teacher_feedback_reports')
-      .select('id, version, status, response_count')
+      .select('id, version, status, response_count, analytics_snapshot, privacy_suppressed')
       .eq('session_id', input.sessionId)
       .eq('version', version)
       .maybeSingle()
-    if (racedError || !raced || Number(raced.response_count) !== input.responseCount) {
+    if (
+      racedError ||
+      !raced ||
+      Number(raced.response_count) !== input.responseCount ||
+      canonicalTeacherFeedbackReportJson(raced.analytics_snapshot) !==
+        canonicalTeacherFeedbackReportJson(analyticsSnapshot)
+    ) {
       throw toDbError('Failed to create approved feedback report', error)
     }
-    return {
-      id: raced.id,
-      version: Number(raced.version),
-      status: raced.status as TeacherFeedbackReport['status'],
-      response_count: Number(raced.response_count),
-      alreadyReleased: raced.status === 'RELEASED',
-    }
+    return reportFromRow(raced as unknown as Record<string, unknown>)
   }
 
   const { error: activityError } = await db.from('session_activity_events').insert({
@@ -83,13 +144,15 @@ export async function createApprovedTeacherFeedbackReport(input: {
     session_id: input.sessionId,
     event_type: 'TEACHER_FEEDBACK_REPORT_APPROVED',
     actor_user_id: input.actorUserId,
-    details: { report_id: data.id, version, privacy_suppressed: input.privacySuppressed },
+    details: {
+      report_id: data.id,
+      version,
+      privacy_suppressed: input.privacySuppressed,
+      has_reviewed_summary: typeof analyticsSnapshot.reviewedSummary === 'string',
+    },
   })
   if (activityError) throw toDbError('Failed to record feedback report approval', activityError)
-  return {
-    ...(data as Omit<TeacherFeedbackReport, 'alreadyReleased'>),
-    alreadyReleased: false,
-  }
+  return reportFromRow(data as unknown as Record<string, unknown>)
 }
 
 export async function finishTeacherFeedbackReport(input: {

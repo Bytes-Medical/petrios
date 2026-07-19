@@ -131,9 +131,12 @@ never include prompt text, email bodies, feedback text, secrets, or unnecessary
 cross-organization personal data.
 
 On-demand non-Ops `summarizeSessionFeedback` does not use this gateway or run
-audit; it is specified in spec 05. Audio recap generation uses the gateway but
-does not currently pass an `OpsRun`, so it has purpose enforcement without a
-stored inference step.
+audit; it is specified in spec 05. It creates an editable draft from any
+non-empty feedback set. A separate authenticated moderator release
+snapshots the exact reviewed text before core email delivery, so inference alone
+has no outbound capability. Audio recap generation uses the gateway but does
+not currently pass an `OpsRun`, so it has purpose enforcement without a stored
+inference step.
 
 ## Safety-processed feedback synthesis
 
@@ -334,28 +337,91 @@ tool exists.
 ## Audio recaps
 
 Audio recap is a moderator-approved artifact, not an automatic email action.
+Its management card is colocated with Recall questions and retention analytics
+on the session manage **Recall** tab. When enabled, Audio Recap is the first
+card, ahead of Recall Questions and Retention Analytics; it is not part of the
+Feedback tab.
 
-1. A moderator requests a script for a session.
-2. `generateRecapScript` uses session title/description/tags and safe synthesis
-   themes/suggestions, fences feedback-derived data, and calls gateway purpose
-   `audio_recap`.
-3. The script is capped at 2,500 characters and upserted as `draft`. A regenerated
-   script clears old audio/approval.
-4. The moderator may edit only a draft. Editing clears audio so speech can never
-   be stale relative to text.
-5. `lib/ai/tts.ts` produces MP3 using configured model/voice. No key or an HTTP
-   404 returns unavailable; other provider errors throw.
-6. Audio bytes and byte count are stored in Postgres. Metadata reads exclude the
-   byte column.
-7. Approval uses a compare-and-set from `draft` and requires nonnull audio bytes,
-   recording approver/time.
-8. Any authenticated member of the session's organization can stream approved
-   audio; only department moderators can stream a draft preview.
+1. A moderator requests a script; no automatic job sends document content to AI
+   or starts research.
+2. The action requires at least one currently available private session
+   document, caps their combined decoded size at 50 MiB, downloads them through
+   the authorized service DAL, and verifies stored byte counts and SHA-256.
+3. `generateRecapScript` calls gateway purpose `audio_recap` with the session
+   title as context and PDF/DOCX/PPTX bytes as the primary learning evidence. It
+   does not use description, tags, or feedback synthesis. The prompt treats file
+   content as untrusted reference data, refuses meta-instructions, and prohibits
+   invented medical content, patient-specific advice, and patient/person
+   identifiers.
+4. The prompt targets 650–800 words—approximately five minutes at a normal
+   spoken pace. It asks for a natural sequence covering orientation, the
+   document-led teaching in depth, directly relevant researched context,
+   practical takeaways, and concise reinforcement. It prohibits padding,
+   headings, spoken URLs, citation markers, and a spoken bibliography.
+5. The same Responses request configures one hosted `web_search` tool with
+   `tool_choice: required`, medium search context, approximate country `GB`,
+   external web access, and an allowed-domain filter. The allow-list is:
+   `nice.org.uk`, `nhs.uk`, `england.nhs.uk`, `gov.uk`, `rcpch.ac.uk`,
+   `rcplondon.ac.uk`, `resus.org.uk`, `who.int`,
+   `pubmed.ncbi.nlm.nih.gov`, `ncbi.nlm.nih.gov`, `cochranelibrary.com`,
+   `bmj.com`, `thelancet.com`, `jamanetwork.com`, `ema.europa.eu`, and
+   `medicines.org.uk`. Changing that list is a clinical-quality and privacy
+   review decision, not a presentation-only change.
+6. Research is supplementary. Documents must determine the topic, structure,
+   and clear majority of the spoken material. Research may add current guidance,
+   definitions, safety context, or high-quality evidence. It must not silently
+   contradict or supersede the learning material; a material conflict is stated
+   neutrally for the moderator. The moderator approval gate remains the clinical
+   quality control and the output is not patient-specific medical advice.
+7. `lib/ai/llm.ts` uses `<OPENAI_BASE_URL>/responses`. PDFs use automatic
+   text/page-image processing; DOCX/PPTX yield text only. The request includes
+   `web_search_call.action.sources`; the adapter also reads message
+   `url_citation` annotations, accepts only HTTP(S), de-duplicates by normalized
+   URL, and keeps at most 20 URL/title pairs. Generation fails if required search
+   returns no verifiable source. A custom provider must support Responses file
+   inputs and hosted web search; Chat Completions or file-input compatibility
+   alone is insufficient.
+8. The script is capped at 7,000 characters and upserted as `draft` with the
+   exact sorted document metadata/digest, research URL/title list, and
+   `research_performed=true`. A regenerated script clears old audio/approval.
+   Legacy rows have no citations and `research_performed=false`.
+9. Research citations are visibly clickable in the moderator panel and beside
+   the approved attendee player. They are generation-time pointers for review,
+   not archived copies: public page bodies are not stored and external changes
+   do not automatically stale the recap. Document-source changes do stale it.
+10. The moderator may edit only a draft. Editing clears audio so speech can never
+    be stale relative to text.
+11. `lib/ai/tts.ts` produces MP3 using configured model/voice. The generated
+    650–800-word target fits the default speech model's 2,000-token input budget;
+    the 7,000-character UI/server cap also constrains moderator edits but is not
+    a tokenizer. No key or an HTTP 404 returns unavailable; other provider errors
+    throw.
+12. Audio bytes and byte count are stored in Postgres. Metadata reads exclude the
+    byte column.
+13. Audio creation and approval require the stored source digest to match the
+    current available document set. Approval uses a compare-and-set from `draft`,
+    requires nonnull audio bytes, and records approver/time.
+14. Any authenticated member of the session's organization can stream approved,
+    source-current audio; only department moderators can stream a current draft
+    preview. A changed document set or legacy null digest returns 404.
+
+Generation is one server action rather than a streamed provider job. The client
+therefore renders an explicitly **estimated** progress bar, not fabricated
+provider telemetry. It advances through document preparation, reading, research,
+drafting, and finalisation, stops at 94% while the request is unresolved, and
+sets 100% only after the action succeeds. Failure clears the busy state and shows
+the safe action error; navigating away cancels only the client view and is not a
+guarantee that the upstream provider stopped processing.
 
 Streaming is private-cacheable for one hour. There is no unapprove operation.
 Calling script regeneration can upsert an approved row back to draft, clearing
 audio and approval; that is the implemented revision path. The feature sends no
-email and does not use `ops_pending_actions`.
+email and does not use `ops_pending_actions`. Private document bytes leave
+Petrios only on the explicit generation/regeneration click and are subject to
+the configured AI provider's retention, region, contract, and transfer terms.
+Hosted search may issue queries derived from those private documents and returns
+public URLs. The generation warning, privacy notice, and external-service
+register must disclose that derived-query flow.
 
 ## Operational verification
 

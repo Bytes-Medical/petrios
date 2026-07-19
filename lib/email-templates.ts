@@ -10,6 +10,14 @@ interface TeacherFeedbackEmailParams {
   totalResponses: number
   averageRating: number
   ratingDistribution: Record<number, number>
+  questionSummaries: {
+    fieldId: string
+    label: string
+    averageRating: number
+    responseCount: number
+    commentsCount: number
+  }[]
+  reviewedSummary: string | null
   privacySuppressed: boolean
 }
 
@@ -22,6 +30,8 @@ export function buildTeacherFeedbackEmailHtml(params: TeacherFeedbackEmailParams
     totalResponses,
     averageRating,
     ratingDistribution,
+    questionSummaries,
+    reviewedSummary,
     privacySuppressed,
   } = params
 
@@ -38,7 +48,7 @@ export function buildTeacherFeedbackEmailHtml(params: TeacherFeedbackEmailParams
         <td style="padding:4px 8px 4px 0;font-weight:bold;white-space:nowrap;">${star} ★</td>
         <td style="padding:4px 0;width:100%;">
           <div style="background:#eee;height:16px;border:1px solid #ccc;">
-            <div style="background:#000;height:100%;width:${pct}%;"></div>
+            <div style="background:#A95134;height:100%;width:${pct}%;"></div>
           </div>
         </td>
         <td style="padding:4px 0 4px 8px;white-space:nowrap;">${count}</td>
@@ -46,57 +56,115 @@ export function buildTeacherFeedbackEmailHtml(params: TeacherFeedbackEmailParams
     `
   }).join('')
 
-  const privacyNotice = privacySuppressed
-    ? `<p style="margin:20px 0;padding:12px;border:1px solid #999;background:#fafafa;">
-        Detailed analytics are withheld because fewer than five responses were received.
-        This protects respondents from being identified in a small group.
-      </p>`
+  const questionRows = questionSummaries
+    .map((question) => {
+      const score = Math.max(0, Math.min(5, question.averageRating))
+      const width = Math.round((score / 5) * 100)
+      return `
+        <tr>
+          <td style="padding:12px 12px 12px 0;border-bottom:1px solid #D8D4C9;vertical-align:top;">
+            <div style="font-weight:bold;line-height:1.4;">${escapeHtml(question.label)}</div>
+            <div style="margin-top:4px;font-size:11px;color:#6B665E;">${question.responseCount} scored response${question.responseCount === 1 ? '' : 's'}</div>
+          </td>
+          <td style="padding:12px 0;border-bottom:1px solid #D8D4C9;width:150px;vertical-align:top;">
+            <div style="font-weight:bold;text-align:right;">${score.toFixed(1)} / 5</div>
+            <div style="height:7px;background:#E4E0D7;margin-top:7px;">
+              <div style="height:7px;width:${width}%;background:#A95134;"></div>
+            </div>
+          </td>
+        </tr>`
+    })
+    .join('')
+
+  const reviewedSummarySection = reviewedSummary
+    ? `
+      <div style="margin:28px 0;">
+        <p style="margin:0 0 8px;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#A95134;font-weight:bold;">Reviewed teaching summary</p>
+        <div style="border-left:4px solid #A95134;background:#FAF9F5;padding:16px 18px;line-height:1.7;white-space:pre-wrap;">${escapeHtml(reviewedSummary)}</div>
+        <p style="margin:8px 0 0;font-size:11px;color:#6B665E;">AI-assisted draft, reviewed and approved by a Petrios moderator before release.</p>
+      </div>`
+    : ''
+
+  const questionSection = questionRows
+    ? `
+      <div style="margin:28px 0;">
+        <p style="margin:0 0 8px;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#A95134;font-weight:bold;">Question-level performance</p>
+        <table style="width:100%;border-collapse:collapse;">${questionRows}</table>
+      </div>`
+    : ''
+
+  const noEvidenceNotice = `
+    <div style="margin:24px 0;border:2px solid #A95134;background:#FFF8F3;padding:18px;">
+      <p style="margin:0 0 8px;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#A95134;font-weight:bold;">No feedback evidence yet</p>
+      <p style="margin:0;line-height:1.6;">No responses were available when this report was approved, so Petrios cannot provide scores or a coaching narrative.</p>
+    </div>`
+
+  const smallCohortNotice = totalResponses > 0 && totalResponses < 5
+    ? `
+      <div style="margin:24px 0;border:1px solid #A95134;background:#FFF8F3;padding:14px;font-size:12px;line-height:1.6;">
+        <strong>Evidence note:</strong> This report is based on ${totalResponses} response${totalResponses === 1 ? '' : 's'}. Treat its scores and themes as limited, directional evidence rather than a representative conclusion, and do not use them to infer who submitted feedback.
+      </div>`
     : ''
 
   return `
-    <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
-      <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Session Feedback Summary</h2>
-      <p style="margin:20px 0;">Dear ${safeTeacherName},</p>
-      <p style="margin:20px 0;">Thank you for delivering <strong>${safeSessionTitle}</strong> on ${safeSessionDate} (${safeDepartmentName}). Below is a privacy-safe aggregate of the feedback collected.</p>
+    <div style="margin:0;background:#F0EEE6;padding:24px 12px;color:#1F1D1A;">
+      <div style="font-family:monospace;max-width:640px;margin:0 auto;background:#FFFFFF;border:1px solid #D8D4C9;">
+        <div style="background:#1F1D1A;color:#FFFFFF;padding:24px 28px;">
+          <p style="margin:0 0 8px;color:#E7B39F;font-size:11px;letter-spacing:2px;font-weight:bold;">PETRIOS · TEACHING QUALITY</p>
+          <h1 style="margin:0;font-size:26px;line-height:1.2;">Your session feedback</h1>
+        </div>
+        <div style="padding:28px;">
+          <p style="margin:0 0 20px;">Dear ${safeTeacherName},</p>
+          <p style="margin:0 0 24px;line-height:1.7;">Thank you for delivering <strong>${safeSessionTitle}</strong> on ${safeSessionDate} for ${safeDepartmentName}. This report turns the collected responses into practical information for your next teaching session.</p>
 
-      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
-        <tr>
-          <td style="padding:8px 0;font-weight:bold;">Total Responses:</td>
-          <td style="padding:8px 0;">${totalResponses}</td>
-        </tr>
-        <tr>
-          <td style="padding:8px 0;font-weight:bold;">Average Rating:</td>
-          <td style="padding:8px 0;">${privacySuppressed ? 'Withheld' : `${averageRating}/5`}</td>
-        </tr>
-      </table>
+          <table style="width:100%;border-collapse:separate;border-spacing:8px 0;margin:0 -8px 24px;">
+            <tr>
+              <td style="width:50%;background:#FAF9F5;border-top:4px solid #A95134;padding:14px;vertical-align:top;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6B665E;">Responses</div>
+                <div style="font-size:26px;font-weight:bold;margin-top:5px;">${totalResponses}</div>
+              </td>
+              <td style="width:50%;background:#FAF9F5;border-top:4px solid #A95134;padding:14px;vertical-align:top;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6B665E;">Overall score</div>
+                <div style="font-size:26px;font-weight:bold;margin-top:5px;">${privacySuppressed ? 'No data' : `${averageRating.toFixed(1)} / 5`}</div>
+              </td>
+            </tr>
+          </table>
 
-      ${privacySuppressed ? privacyNotice : `
-        <h3 style="font-size:14px;margin:20px 0 12px;">Rating Breakdown</h3>
-        <table style="width:100%;border-collapse:collapse;">
-          ${ratingBars}
-        </table>
-      `}
+          ${privacySuppressed ? noEvidenceNotice : `
+            ${smallCohortNotice}
+            ${reviewedSummarySection}
+            ${questionSection}
+            <div style="margin:28px 0;">
+              <p style="margin:0 0 12px;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#A95134;font-weight:bold;">Overall response distribution</p>
+              <table style="width:100%;border-collapse:collapse;">${ratingBars}</table>
+            </div>
+          `}
 
-      <p style="margin:24px 0 12px;">No respondent names, email addresses, or raw comments are included in this report.</p>
-
-      <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
-        This email was sent via Petrios.
-      </p>
+          <div style="margin-top:28px;padding:14px;background:#F0EEE6;font-size:12px;line-height:1.6;">Privacy note: no respondent names, email addresses, or raw comments are included. AI-assisted narrative is released only after moderator review. With a small cohort, the teacher may still be able to infer who participated, so the report must be interpreted cautiously.</div>
+        </div>
+        <div style="padding:16px 28px;background:#1F1D1A;color:#CFCBC1;font-size:11px;">Sent securely via Petrios.</div>
+      </div>
     </div>
   `
 }
 
 export function buildCertificateEmailHtml(
   sessionTitle: string,
-  recipientName: string
+  recipientName: string,
+  options: { role?: 'ATTENDEE' | 'TEACHER'; attached?: boolean } = {}
 ): string {
   const safeSessionTitle = escapeHtml(sessionTitle)
   const safeRecipientName = escapeHtml(recipientName)
+  const isTeacher = options.role === 'TEACHER'
+  const certificateLabel = isTeacher ? 'Teaching Certificate' : 'Attendance Certificate'
+  const deliveryText = options.attached
+    ? `Your ${certificateLabel.toLowerCase()} is attached to this email as a PDF. No Petrios account is required.`
+    : `Your ${certificateLabel.toLowerCase()} is now ready for download when you sign in to your dashboard.`
   return `
     <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
-      <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Your Attendance Certificate</h2>
+      <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Your ${certificateLabel}</h2>
       <p style="margin:20px 0;">Dear ${safeRecipientName},</p>
-      <p style="margin:20px 0;">Thank you for attending <strong>${safeSessionTitle}</strong>. Your attendance certificate is now ready for download when you sign in to your dashboard.</p>
+      <p style="margin:20px 0;">${isTeacher ? 'Thank you for teaching' : 'Thank you for attending'} <strong>${safeSessionTitle}</strong>. ${deliveryText}</p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
         This email was sent via Petrios.
       </p>

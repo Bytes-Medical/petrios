@@ -109,9 +109,9 @@ export function FeedbackForm({ sessionId, sessionTitle, feedbackFields }: Feedba
         </p>
         <p className="font-mono text-xs text-gray-500 italic leading-6">
           Your name and email are stored with this response and visible to authorised moderators.
-          Teacher release contains aggregate ratings only, omits identities and raw comments, and
-          withholds detailed analytics when fewer than five people respond. Feedback does not mark
-          attendance or issue a certificate.
+          Teacher release omits identities and raw comments, but may contain aggregate scores and a
+          moderator-reviewed AI summary from the first response. With a small response group, the
+          teacher may still infer who participated. Feedback does not mark attendance or issue a certificate.
         </p>
       </div>
 

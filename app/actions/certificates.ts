@@ -11,6 +11,114 @@ import * as onboardingDb from '@/lib/db/onboarding'
 import { DbConflictError, DbNotFoundError } from '@/lib/db'
 import { requireCertificateEligibility } from '@/lib/certificates/eligibility'
 import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
+import { getEmailClient, getFromAddress } from '@/lib/email'
+import { buildCertificateEmailHtml } from '@/lib/email-templates'
+import * as deliveriesDb from '@/lib/db/session-deliveries'
+import type {
+  ExternalTeacherCertificateCandidate,
+  SessionWithCertificateContext,
+} from '@/lib/db/certificates'
+
+async function generateAndDeliverExternalTeacherCertificate(input: {
+  session: SessionWithCertificateContext
+  teacher: ExternalTeacherCertificateCandidate
+  coordinatorNames: string[]
+  issuedBy: string
+  issuedByName: string | null
+}) {
+  const { session, teacher } = input
+  const eligibility = await requireCertificateEligibility({
+    sessionId: session.id,
+    role: 'TEACHER',
+    orgId: session.org_id,
+    externalEmail: teacher.email,
+    invitationId: teacher.invitationId,
+  })
+  const existing = await certificatesDb.findCertificateByExternalEmailAndSession(
+    teacher.email,
+    session.id,
+    { role: 'TEACHER', includeLegacy: false }
+  )
+
+  const certificate = existing ?? await certificatesDb.insertCertificateAsSystem({
+    orgId: session.org_id,
+    departmentId: session.department_id,
+    sessionId: session.id,
+    userId: null,
+    invitationId: teacher.invitationId,
+    role: 'TEACHER',
+    certificateCode: generateCertificateCode(),
+    recipientName: teacher.recipientName,
+    recipientEmail: teacher.email,
+    coordinatorNames: input.coordinatorNames,
+    attendanceRevision: eligibility.attendanceRevision,
+    issuanceSource: 'MODERATOR_BATCH',
+    issuedBy: input.issuedBy,
+    issuedByName: input.issuedByName,
+  })
+
+  const delivery = await deliveriesDb.getOrCreateSessionDelivery({
+    orgId: session.org_id,
+    departmentId: session.department_id,
+    sessionId: session.id,
+    recipientEmail: teacher.email,
+    deliveryType: 'TEACHING_CERTIFICATE',
+    relatedId: certificate.id,
+  })
+  if (delivery.status === 'SENT') {
+    return { certificate, pdfBuffer: null, existing: true }
+  }
+  if (!(await deliveriesDb.claimSessionDelivery(delivery.id))) {
+    throw new Error('The external teacher certificate is already being delivered')
+  }
+
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+      || process.env.NEXT_PUBLIC_BASE_URL
+      || 'http://localhost:3000'
+    const pdfBuffer = await generateCertificatePDF({
+      orgName: session.organizations?.name || 'Organization',
+      departmentName: session.departments?.name || 'Unknown',
+      sessionTitle: session.title,
+      sessionDate: new Date(session.date_start).toLocaleDateString('en-GB'),
+      recipientName: certificate.recipient_name || teacher.recipientName,
+      role: 'Teacher',
+      certificateCode: certificate.certificate_code,
+      issuedDate: new Date(certificate.issued_at).toLocaleDateString('en-GB'),
+      verifyUrl: `${baseUrl}/verify/${certificate.certificate_code}`,
+      coordinatorNames: certificate.coordinator_names ?? input.coordinatorNames,
+      issuerName: certificate.issued_by_name || input.issuedByName || undefined,
+    })
+    const sendResult = await getEmailClient().emails.send({
+      from: getFromAddress(),
+      to: teacher.email,
+      subject: `Your Teaching Certificate — ${session.title}`,
+      html: buildCertificateEmailHtml(session.title, teacher.recipientName, {
+        role: 'TEACHER',
+        attached: true,
+      }),
+      attachments: [{
+        filename: `teaching-certificate-${certificate.certificate_code}.pdf`,
+        content: pdfBuffer,
+      }],
+    })
+    if (sendResult.error) throw new Error(sendResult.error.message)
+    await deliveriesDb.recordDeliveryAttempt({
+      id: delivery.id,
+      success: true,
+      providerMessageId: sendResult.data?.id,
+    })
+  } catch (error) {
+    await deliveriesDb.recordDeliveryAttempt({
+      id: delivery.id,
+      success: false,
+      error: error instanceof Error ? error.message : 'External teacher certificate delivery failed',
+    }).catch(() => undefined)
+    throw error
+  }
+
+  return { certificate, pdfBuffer: null, existing: Boolean(existing) }
+}
 
 export async function generateCertificate(
   sessionId: string,
@@ -126,8 +234,23 @@ export async function generateCertificatesForSession(sessionId: string) {
     throw new Error('Finalize attendance before generating certificates')
   }
 
-  const teacherIds = await certificatesDb.listSessionTeacherIds(sessionId)
-  const attendeeIds = await certificatesDb.listSessionAttendeeUserIds(sessionId)
+  const [teacherIds, allAttendeeIds, externalTeachers] = await Promise.all([
+    certificatesDb.listSessionTeacherIds(sessionId),
+    certificatesDb.listSessionAttendeeUserIds(sessionId),
+    certificatesDb.listAcceptedExternalTeachersAsSystem(sessionId),
+  ])
+  const teacherIdSet = new Set(teacherIds)
+  const attendeeIds = allAttendeeIds.filter((attendeeId) => !teacherIdSet.has(attendeeId))
+
+  const supabase = await createSupabaseClient()
+  const { data: moderatorData } = await supabase.auth.getUser()
+  const issuedBy = moderatorData?.user?.id || await requireAuth()
+  const issuedByName =
+    moderatorData?.user?.user_metadata?.full_name || moderatorData?.user?.email || null
+  const coordinatorNames = resolveTeachingCoordinatorNames(
+    session.departments?.certificate_coordinator_names,
+    session.departments?.lead_name
+  )
 
   const results = []
   const failures: { userId: string; role: CertificateRole; message: string }[] = []
@@ -140,6 +263,26 @@ export async function generateCertificatesForSession(sessionId: string) {
       console.error(`Failed to generate certificate for teacher ${teacherId}:`, error)
       failures.push({
         userId: teacherId,
+        role: 'TEACHER',
+        message: error instanceof Error ? error.message : 'Certificate generation failed',
+      })
+    }
+  }
+
+  for (const externalTeacher of externalTeachers) {
+    try {
+      const result = await generateAndDeliverExternalTeacherCertificate({
+        session,
+        teacher: externalTeacher,
+        coordinatorNames,
+        issuedBy,
+        issuedByName,
+      })
+      results.push(result)
+    } catch (error) {
+      console.error(`Failed to generate certificate for external teacher ${externalTeacher.email}:`, error)
+      failures.push({
+        userId: `external:${externalTeacher.email}`,
         role: 'TEACHER',
         message: error instanceof Error ? error.message : 'Certificate generation failed',
       })

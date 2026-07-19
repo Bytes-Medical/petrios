@@ -10,18 +10,24 @@ interface CertificateGenerationPanelProps {
   sessionId: string
   attendance: any[]
   attendanceFinalized: boolean
+  registeredTeacherCount: number
+  externalTeacherCount: number
 }
 
 export function CertificateGenerationPanel({
   sessionId,
   attendance,
   attendanceFinalized,
+  registeredTeacherCount,
+  externalTeacherCount,
 }: CertificateGenerationPanelProps) {
   const router = useRouter()
   const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
 
   const presentAttendees = attendance.filter(a => a.status === 'PRESENT' || a.status === 'LATE')
+  const acceptedTeacherCount = registeredTeacherCount + externalTeacherCount
+  const hasEligibleRecipients = presentAttendees.length > 0 || acceptedTeacherCount > 0
 
   async function handleGenerateCertificates() {
     setLoading(true)
@@ -33,7 +39,7 @@ export function CertificateGenerationPanel({
           ? {
               variant: 'error',
               title: 'Some certificates could not be generated',
-              description: `${result.issuedCount} issued, ${result.existingCount} already existed, ${result.failures.length} failed. Attendance eligibility was not bypassed.`,
+              description: `${result.issuedCount} issued, ${result.existingCount} already existed, ${result.failures.length} failed. Certificate eligibility was not bypassed.`,
             }
           : {
               variant: 'success',
@@ -57,24 +63,33 @@ export function CertificateGenerationPanel({
     <div className="space-y-4">
       <div>
         <p className="font-mono text-sm mb-4">
-          Generate attendance certificates for all present attendees and teachers. Certificates will include QR codes for verification.
+          Generate teaching certificates for accepted teachers and attendance certificates for
+          finalized present/late attendees. Certificates include QR verification.
         </p>
         <p className="font-mono text-sm text-gray-600 mb-4">
-          Eligible recipients: <strong>{presentAttendees.length}</strong> finalized present/late attendees. Accepted teachers also require finalized attendance.
+          Present/late attendance records: <strong>{presentAttendees.length}</strong>. Accepted teachers:{' '}
+          <strong>{acceptedTeacherCount}</strong> ({registeredTeacherCount} registered,{' '}
+          {externalTeacherCount} external). Registered teachers receive a teaching certificate in
+          their account; external teachers receive it as a PDF email attachment.
         </p>
       </div>
 
       <Button
         type="button"
         onClick={handleGenerateCertificates}
-        disabled={loading || presentAttendees.length === 0 || !attendanceFinalized}
+        disabled={loading || !hasEligibleRecipients || !attendanceFinalized}
       >
-        {loading ? 'Generating...' : 'Generate Certificates'}
+        {loading ? 'Generating and delivering...' : 'Generate Certificates'}
       </Button>
 
-      {presentAttendees.length === 0 && (
+      {!hasEligibleRecipients && (
         <p className="font-mono text-sm text-gray-600">
-          No present attendees found. Certificates can only be generated for attendees who checked in.
+          No eligible recipients found. Accept a teacher assignment or mark an attendee present/late.
+        </p>
+      )}
+      {hasEligibleRecipients && presentAttendees.length === 0 && acceptedTeacherCount > 0 && (
+        <p className="font-mono text-sm text-gray-600">
+          No attendees are eligible, but accepted teachers can still receive teaching certificates.
         </p>
       )}
       {!attendanceFinalized && (

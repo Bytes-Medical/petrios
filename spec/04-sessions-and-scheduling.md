@@ -103,6 +103,10 @@ through 30 minutes after session end. Opening the room attempts best-effort self
 check-in, whose independent attendance window may reject it. A raw Jitsi URL can
 be joined outside the Petrios UI window if the meeting provider permits it.
 
+The session-management **Overview** tab contains the meeting control. Jitsi
+sessions show the derived guest URL; Teams/hybrid sessions use the editable
+stored URL form. There is no separate Meeting Link tab.
+
 ## Registered teacher assignments
 
 `session_teachers` links an auth user to a session. A moderator may assign only a
@@ -118,8 +122,9 @@ The invited user can respond once while status is `PENDING`:
 
 Notification failure does not revert the accepted/declined state. Assignment
 acceptance describes teaching responsibility and does not prove physical
-attendance. Accepted teachers must still have finalized `PRESENT`/`LATE`
-attendance before a teacher certificate can be issued; see specs 03 and 05.
+attendance. After the session ends and attendance governance is finalized, the
+accepted assignment is the recognition basis for a teaching certificate; it
+does not create an attendance result. See specs 03 and 05.
 
 Removing an assignment deletes the relationship; it does not remove previously
 created attendance evidence or certificates.
@@ -143,8 +148,10 @@ created attendance evidence or certificates.
 
 An accepted external teacher is included in session reminders and selected
 teacher-release flows. Acceptance does not create an internal user, department
-membership, or attendance evidence. External identities are primarily joined by
-normalized email.
+membership, or attendance evidence. After an ended session is finalized, the
+matching accepted invitation is sufficient teaching-certificate identity and
+assignment evidence. External identities are primarily joined by normalized
+email.
 
 ## Address book and contact groups
 
@@ -269,6 +276,54 @@ checks do not replace antivirus/content-disarm scanning. The UI tells users to
 treat downloaded Office content as untrusted. A deployment requiring malware
 assurance must add a quarantine/scanner transition before `AVAILABLE` and must
 not simply relabel this state.
+
+### Audio Recap learning-source use
+
+The Audio Recap generator uses every currently `AVAILABLE` session document as
+its learning material. It does not use the session description, tags, or
+feedback themes as substitute teaching content. Generation is an explicit
+moderator action and fails when there is no available document.
+
+The server reauthorizes session moderation, lists source metadata through the
+document DAL, enforces the provider's 50 MiB combined file-input limit, downloads
+the private objects, and verifies each byte count and SHA-256 before inference.
+PDF, DOCX, and PPTX bytes are then sent to the configured AI provider through an
+OpenAI Responses-compatible file-input call. PDFs contribute extracted text and
+page images; DOCX/PPTX contribute extracted text, so embedded Office-only charts
+or images may not inform the recap. Users are warned before upload/generation not
+to include patient-identifiable, confidential, or unnecessary special-category
+material.
+
+In the same provider request, generation requires hosted web search limited to
+the authoritative clinical/evidence domains specified in spec 06. Search queries
+may be derived from the private learning material. Research can add relevant
+current guidance, definitions, safety context, or evidence, but the uploaded
+documents must determine the recap topic, structure, and clear majority of its
+content. Research must not silently override a document; a material conflict is
+surfaced neutrally for moderator review. The generated target is 650–800 spoken
+words (about five minutes), with no spoken URLs or citation list.
+
+The recap row snapshots the sorted source document id, filename, MIME type,
+byte size, and SHA-256 list plus a canonical digest. Generation, audio creation,
+approval, attendee metadata visibility, and audio streaming compare that digest
+with the current available set. Uploading, archiving, deleting, replacing, or
+otherwise changing the available set makes the old recap stale and unavailable
+until a moderator regenerates, listens, and approves it. Legacy recaps without a
+source digest are stale by definition.
+
+The recap also stores de-duplicated HTTP(S) URL/title citations returned by the
+hosted search and shows them as external links beside both the moderator draft
+and the approved attendee player. These are review aids, not a frozen evidence
+snapshot: Petrios does not store the public page body and a later page change
+does not automatically mark a recap stale. Research provenance and document
+provenance therefore have deliberately different freshness semantics.
+
+Because one server action performs file ingestion, research, and drafting, the
+client cannot observe provider-native completion percentages. While generation
+is pending, the Recall UI shows an explicitly labelled **estimated** progress bar
+with stages for verification, reading, research, drafting, and finalisation. It
+advances toward (but not beyond) 94% until the server succeeds, then reaches 100%;
+an error replaces the pending state with the provider-safe failure message.
 
 ### Download, archive, and permanent delete
 

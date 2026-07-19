@@ -170,6 +170,17 @@ per session. It has two goals:
 It must never expose individual scores to organizers. The public respondent sees
 their own result through a bearer link.
 
+The session manage **Recall** tab composes three post-session learning surfaces:
+the separately approved Audio Recap workflow specified in spec 06, Recall
+question review, and aggregate retention analytics, in that display order.
+Colocation does not merge their lifecycle or delivery rules.
+Audio Recap targets about five minutes and is led by currently available
+uploaded session documents, with required domain-limited authoritative web
+research used only for relevant supporting context. The moderator sees an
+estimated generation bar and clickable research sources before approval. A
+document-set change makes the artifact unavailable; later public-source changes
+do not automatically stale it. It is not a summary of learner feedback.
+
 ## Question schema and drafting
 
 A set contains exactly three questions. Each question requires:

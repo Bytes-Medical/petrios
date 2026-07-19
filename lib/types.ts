@@ -287,8 +287,10 @@ export interface AppNotification {
 export interface Attendance {
   id: string
   org_id: string
+  department_id: string
   session_id: string
   user_id: string | null
+  invitation_id?: string | null
   external_email: string | null
   status: AttendanceStatus
   primary_source: 'SELF_CHECKIN' | 'GROUP_CODE' | 'FEEDBACK' | 'TEACHER' | 'TEAMS' | 'RECALL' | 'MODERATOR_CONFIRMATION' | null

@@ -9,12 +9,14 @@ interface ReleaseTeacherFeedbackPanelProps {
   sessionId: string
   invitations: TeacherInvitation[]
   registeredTeacherCount: number
+  reviewedSummary?: string
 }
 
 export function ReleaseTeacherFeedbackPanel({
   sessionId,
   invitations,
   registeredTeacherCount,
+  reviewedSummary,
 }: ReleaseTeacherFeedbackPanelProps) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{
@@ -24,6 +26,7 @@ export function ReleaseTeacherFeedbackPanel({
     failures: { email: string; message: string }[]
     providerReceipts: { email: string; id: string }[]
     privacySuppressed: boolean
+    includedReviewedSummary: boolean
     resend: boolean
     previouslyDeliveredCount: number
     inProgressCount: number
@@ -39,7 +42,7 @@ export function ReleaseTeacherFeedbackPanel({
     setResult(null)
 
     try {
-      const res = await releaseTeacherFeedback(sessionId)
+      const res = await releaseTeacherFeedback(sessionId, reviewedSummary)
       setResult(res)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to release feedback')
@@ -61,9 +64,10 @@ export function ReleaseTeacherFeedbackPanel({
       <p className="font-mono text-sm text-gray-600">
         Send each accepted teacher a privacy-safe aggregate report. Respondent
         names, email addresses, raw comments, attendance changes, and certificates
-        are never included in this action. Detailed analytics are withheld when
-        fewer than five people responded. After release, you can deliberately
-        resend the same report; concurrent clicks are still blocked.
+        are never included in this action. Reports can be released from one response,
+        with small cohorts clearly labelled as limited, directional evidence. After
+        release, you can deliberately resend the same approved snapshot; concurrent
+        clicks are still blocked.
       </p>
 
       <div className="font-mono text-sm">
@@ -133,6 +137,9 @@ export function ReleaseTeacherFeedbackPanel({
                 ))}
               </ul>
             </details>
+          )}
+          {result.includedReviewedSummary && (
+            <p className="mt-2">The moderator-reviewed teaching narrative was included.</p>
           )}
         </div>
       )}

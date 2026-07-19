@@ -401,10 +401,9 @@ export async function getSessionAttendanceGovernance(sessionId: string) {
   if (!session) throw new DbNotFoundError('Session not found')
   await requireDepartmentModerator(session.department_id)
 
-  const [participants, evidence, activity] = await Promise.all([
+  const [participants, evidence] = await Promise.all([
     attendanceDb.listSessionParticipantsAsSystem(sessionId),
     attendanceDb.listSessionEvidence(orgId, sessionId),
-    attendanceDb.listSessionActivityAsSystem(sessionId),
   ])
-  return { participants, evidence, activity }
+  return { participants, evidence }
 }

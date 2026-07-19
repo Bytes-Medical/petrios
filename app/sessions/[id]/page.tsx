@@ -90,7 +90,10 @@ export default async function SessionPage(
 
         {approvedRecap ? (
           <div className="mb-6">
-            <AudioRecapPlayer sessionId={params.id} />
+            <AudioRecapPlayer
+              sessionId={params.id}
+              researchSources={approvedRecap.researchSources}
+            />
           </div>
         ) : null}
 

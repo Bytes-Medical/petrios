@@ -357,17 +357,47 @@ spec 07.
 
 ### LLM
 
-`lib/ai/llm.ts` calls `<OPENAI_BASE_URL>/chat/completions`, defaulting to the
-OpenAI API, with Bearer `OPENAI_API_KEY`. `OPENAI_MODEL` defaults to `gpt-5.5`.
-It uses `max_completion_tokens`, optional `reasoning_effort`, and optional JSON
-object response format. No key returns null; HTTP failure/refusal throws for the
-caller/gateway to handle.
+`lib/ai/llm.ts` calls `<OPENAI_BASE_URL>/chat/completions` for ordinary text
+inference and `<OPENAI_BASE_URL>/responses` for Audio Recap document input plus
+hosted research, defaulting to the OpenAI API with Bearer `OPENAI_API_KEY`.
+`OPENAI_MODEL` defaults to `gpt-5.5`. Chat uses `max_completion_tokens`, optional
+`reasoning_effort`, and optional JSON object response format.
+
+The recap path uses `instructions`, `max_output_tokens`, Base64 data-URL
+`input_file` parts, and a final `input_text`. When research is requested it adds
+a `web_search` tool with `external_web_access: true`, `search_context_size`, an
+authoritative `filters.allowed_domains` list, and approximate GB user location.
+Because research is a product requirement rather than an optional model choice,
+the request sets `tool_choice: required`. It requests
+`web_search_call.action.sources` in `include` and collects sources from both that
+tool item and output-text `url_citation` annotations. Only HTTP(S) URLs survive;
+URLs are normalized/de-duplicated and capped at 20 before persistence.
+
+File fingerprints and the static research configuration contribute to the Ops
+prompt hash. Raw document bytes, prompt text, provider-generated search queries,
+and fetched public-page bodies are not written to the Ops audit. The provider may
+still process or retain those values according to its own service terms. No key
+returns null; HTTP failure, refusal, incomplete output, or missing required
+research sources fails generation safely. An OpenAI-compatible custom base URL
+must support both endpoint shapes plus Responses file inputs, the hosted
+`web_search` request fields, and source-bearing response items for the full
+feature set. Chat Completions or file-input compatibility alone is insufficient.
+The request shapes follow the official [file-input guide](https://developers.openai.com/api/docs/guides/file-inputs)
+and [web-search guide](https://developers.openai.com/api/docs/guides/tools-web-search);
+operators of custom endpoints must verify equivalent semantics rather than only
+matching the URL paths.
 
 ### Speech
 
 `lib/ai/tts.ts` calls `<OPENAI_BASE_URL>/audio/speech`, default model
 `gpt-4o-mini-tts`, voice `alloy`, MP3 output. No key or endpoint 404 returns null;
-other failures throw.
+other failures throw. The default model accepts at most 2,000 input tokens; the
+generated recap target (650–800 words) is chosen to fit comfortably, and the
+application separately caps stored script text at 7,000 characters. Characters
+are not an exact token count, so custom/manual text can still receive a provider
+validation error rather than being silently truncated by the TTS adapter.
+The input limit is documented in the official
+[`gpt-4o-mini-tts` model reference](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts).
 
 ### Meetings
 

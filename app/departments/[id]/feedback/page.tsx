@@ -4,8 +4,6 @@ import { FeedbackForm } from '@/components/FeedbackForm'
 import { normalizeDepartmentFeedbackFields } from '@/lib/feedback-form'
 import * as departmentsDb from '@/lib/db/departments'
 import * as sessionsDb from '@/lib/db/sessions'
-import * as feedbackActionsDb from '@/lib/db/feedback-actions'
-import { YouSaidWeDidList } from '@/components/YouSaidWeDidList'
 
 // Deliberately force-dynamic despite being public: the page computes the
 // "active session" from a minute-granularity time window, so revalidate
@@ -66,7 +64,6 @@ export default async function DepartmentFeedbackPage(
 
   const startDate = new Date(activeSession.date_start)
   const endDate = new Date(activeSession.date_end)
-  const feedbackActions = await feedbackActionsDb.listRecentActionsForDepartment(params.id)
 
   return (
     <div className="min-h-screen">
@@ -114,17 +111,6 @@ export default async function DepartmentFeedbackPage(
           />
         </Card>
 
-        {feedbackActions.length > 0 ? (
-          <div className="mt-6">
-            <Card>
-              <h2 className="mb-1 font-mono text-xl font-bold">You Said, We Did</h2>
-              <p className="mb-4 font-mono text-sm text-gray-600">
-                Recent changes this department made in response to feedback.
-              </p>
-              <YouSaidWeDidList actions={feedbackActions} />
-            </Card>
-          </div>
-        ) : null}
       </div>
     </div>
   )

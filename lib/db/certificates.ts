@@ -32,6 +32,7 @@ export async function insertCertificate(input: {
   departmentId: string
   sessionId: string
   userId: string | null
+  invitationId?: string | null
   role: CertificateRole
   certificateCode: string
   recipientName?: string
@@ -49,6 +50,7 @@ export async function insertCertificate(input: {
     department_id: input.departmentId,
     session_id: input.sessionId,
     user_id: input.userId,
+    invitation_id: input.invitationId ?? null,
     certificate_role: input.role,
     certificate_code: input.certificateCode,
   }
@@ -78,19 +80,21 @@ export async function insertCertificate(input: {
 }
 
 /**
- * Service-role: used by the post-session cron, which runs without a user
- * session (RLS would reject the insert). The caller is the CRON_SECRET-
- * authenticated route issuing attendee certificates.
+ * Service-role: used by the post-session cron and the explicitly authorized
+ * moderator batch. The database eligibility trigger remains authoritative.
  */
 export async function insertCertificateAsSystem(input: {
   orgId: string
   departmentId: string
   sessionId: string
-  userId: string
+  userId: string | null
+  invitationId?: string | null
   role: CertificateRole
   certificateCode: string
   recipientName: string
   recipientEmail?: string | null
+  issuedBy?: string | null
+  issuedByName?: string | null
   coordinatorNames?: string[]
   attendanceRevision?: number | null
   issuanceSource?: string
@@ -105,10 +109,13 @@ export async function insertCertificateAsSystem(input: {
       department_id: input.departmentId,
       session_id: input.sessionId,
       user_id: input.userId,
+      invitation_id: input.invitationId ?? null,
       certificate_role: input.role,
       certificate_code: input.certificateCode,
       recipient_name: input.recipientName,
       recipient_email: input.recipientEmail ?? null,
+      issued_by: input.issuedBy ?? null,
+      issued_by_name: input.issuedByName ?? null,
       coordinator_names: input.coordinatorNames ?? [],
       attendance_revision: input.attendanceRevision ?? null,
       issuance_source: input.issuanceSource ?? 'POST_SESSION_REPORT',
@@ -269,6 +276,56 @@ export async function listSessionTeacherIds(sessionId: string): Promise<string[]
   return ((data as { user_id: string }[] | null) ?? []).map((r) => r.user_id)
 }
 
+export async function listAcceptedRegisteredTeacherIdsAsSystem(
+  sessionId: string
+): Promise<string[]> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('session_teachers')
+    .select('user_id')
+    .eq('session_id', sessionId)
+    .eq('status', 'ACCEPTED')
+
+  if (error) throw toDbError('Failed to list accepted registered teachers', error)
+  return ((data as { user_id: string }[] | null) ?? []).map((row) => row.user_id)
+}
+
+export interface ExternalTeacherCertificateCandidate {
+  invitationId: string
+  email: string
+  recipientName: string
+}
+
+export async function listAcceptedExternalTeachersAsSystem(
+  sessionId: string
+): Promise<ExternalTeacherCertificateCandidate[]> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('teacher_invitations')
+    .select('id, email, first_name, last_name')
+    .eq('session_id', sessionId)
+    .eq('status', 'ACCEPTED')
+
+  if (error) throw toDbError('Failed to list accepted external teachers', error)
+  const candidates = ((data as {
+    id: string
+    email: string
+    first_name: string | null
+    last_name: string | null
+  }[] | null) ?? []).map((invitation) => {
+    const email = invitation.email.trim().toLowerCase()
+    return {
+      invitationId: invitation.id,
+      email,
+      recipientName:
+        [invitation.first_name, invitation.last_name].filter(Boolean).join(' ').trim() || email,
+    }
+  })
+  return [...new Map(candidates.map((candidate) => [candidate.email, candidate])).values()]
+}
+
 export async function listSessionAttendeeUserIds(
   sessionId: string,
   statuses: ('PRESENT' | 'LATE')[] = ['PRESENT', 'LATE']
@@ -337,6 +394,29 @@ export async function findCertificateByUserAndSession(
   return data as CertificateLookup | null
 }
 
+export async function findCertificateByExternalEmailAndSession(
+  externalEmail: string,
+  sessionId: string,
+  options: { role?: CertificateRole; includeLegacy?: boolean } = {}
+): Promise<CertificateLookup | null> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+  let query = db
+    .from('certificates')
+    .select('id, certificate_code, certificate_role, issued_at, recipient_name, recipient_email, issued_by_name, coordinator_names, status, attendance_revision')
+    .eq('session_id', sessionId)
+    .is('user_id', null)
+    .eq('recipient_email', externalEmail.trim().toLowerCase())
+    .in('status', options.includeLegacy === false ? ['VALID'] : ['VALID', 'LEGACY'])
+    .order('issued_at', { ascending: false })
+    .limit(1)
+  if (options.role) query = query.eq('certificate_role', options.role)
+  const { data, error } = await query.maybeSingle()
+
+  if (error) throw toDbError('Failed to find external teacher certificate', error)
+  return data as CertificateLookup | null
+}
+
 export async function findFinalizedAttendanceForUserAsSystem(
   sessionId: string,
   userId: string
@@ -369,6 +449,24 @@ export async function userIsAcceptedTeacherAsSystem(
     .maybeSingle()
   if (error) throw toDbError('Failed to verify accepted teacher', error)
   return !!data
+}
+
+export async function externalInvitationIsAcceptedAsSystem(input: {
+  sessionId: string
+  invitationId: string
+  externalEmail: string
+}): Promise<boolean> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('teacher_invitations')
+    .select('id, email')
+    .eq('id', input.invitationId)
+    .eq('session_id', input.sessionId)
+    .eq('status', 'ACCEPTED')
+    .maybeSingle()
+  if (error) throw toDbError('Failed to verify accepted external teacher', error)
+  return !!data && data.email.trim().toLowerCase() === input.externalEmail.trim().toLowerCase()
 }
 
 export async function revokeCertificateAsSystem(input: {

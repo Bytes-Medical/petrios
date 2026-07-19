@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getCurrentOrgId, getCurrentUser, isDepartmentModerator } from '@/lib/auth'
 import { opsEnabled } from '@/lib/ops/flags'
+import { getCurrentRecapSourceSnapshot, recapSourcesAreCurrent } from '@/lib/ops/recap-sources'
 import * as audioRecapsDb from '@/lib/db/audio-recaps'
 import * as sessionsDb from '@/lib/db/sessions'
 
@@ -31,8 +32,11 @@ export async function GET(
     return new NextResponse('Not found', { status: 404 })
   }
 
-  const recap = await audioRecapsDb.findRecapAudio(params.id)
-  if (!recap) {
+  const [recap, currentSources] = await Promise.all([
+    audioRecapsDb.findRecapAudio(params.id),
+    getCurrentRecapSourceSnapshot(params.id),
+  ])
+  if (!recap || !recapSourcesAreCurrent(recap.source_digest, currentSources)) {
     return new NextResponse('Not found', { status: 404 })
   }
 

@@ -2,15 +2,18 @@
 
 ## Scope
 
-Petrios has three related governance/reporting surfaces:
+Petrios has two related governance/reporting surfaces:
 
 1. `/audit` is an organization/department governance dashboard with aggregate
    cards, a recent-session table, certificate search, identified member
    attendance, grade-cohort equity, and PDF/CSV exports; and
 2. a managed session's **Attendance** tab exposes lifecycle, roster, materialized
-   results, evidence provenance, corrections, and finalization; and
-3. the session **Activity Log** shows governed session events. Identified raw
-   feedback remains a separate moderator-only Feedback/API path.
+   results, evidence provenance, corrections, and finalization.
+
+Identified raw feedback remains a separate moderator-only Feedback/API path.
+`session_activity_events` remains a durable operational projection, but the
+dedicated managed-session Activity Log tab is removed because its raw event/id
+presentation was not useful to moderators.
 
 These are operational views over live application tables. They are not signed
 statutory reports. Attendance evidence is append-only provenance, while
@@ -332,7 +335,7 @@ The CSV contains grade, members, sessions attended, sessions possible,
 attendance percentage, and small-cohort boolean. It inherits the combined-scope
 denominator flaw from member rows.
 
-## Session attendance and Activity Log
+## Session attendance and retained activity events
 
 The managed-session Attendance tab is the attendance governance surface. It
 shows policy version, phase, revision, roster count, present/late/absent/excused
@@ -340,23 +343,19 @@ counts, materialized results, evidence source/time, and correction reason. It
 supports moderator finalization/reopening and the formula-neutralized attendance
 CSV specified in spec 03. Feedback rows never appear as policy-v2 evidence.
 
-The Activity Log reads at most the 100 newest `session_activity_events`, newest
-first. The current component displays event type, locale-formatted time, raw
-actor user id or `system`, and raw subject user id/external email when present.
-It does not currently display the JSON `details`, resolve names, paginate, or
-export. Typical new events cover attendance evidence/finalization/reopening,
-certificate issuance/reconciliation, teacher feedback report lifecycle, and
-session document upload/archive. Teacher feedback attempts distinguish first
-release success/failure from explicit resend success/failure. Each completed
-attempt stores a unique attempt id, report id, resend flag, and aggregate
-sent/failed counts in event details; the current Activity Log displays the event
-type but still does not render those JSON details.
+The application still writes `session_activity_events` for attendance
+evidence/finalization/reopening, certificate issuance/reconciliation, teacher
+feedback report lifecycle, and session document upload/archive. Teacher
+feedback attempts distinguish first-release success/failure from explicit
+resend success/failure; each completed attempt stores a unique attempt id,
+report id, resend flag, and aggregate sent/failed counts in event details. No
+current managed-session component reads or presents this stream.
 
-The event table is deny-all RLS and read through the service DAL only after the
-session-management page establishes moderator authority. It is append-only by
-application convention but is not a general security audit: it omits reads,
-authentication, many legacy mutations, report downloads, provider dashboard
-events, and any action that has not explicitly adopted the event writer.
+The event table is deny-all RLS and retains a service-DAL read for future
+authorized reporting/support use. It is append-only by application convention
+but is not a general security audit: it omits reads, authentication, many legacy
+mutations, report downloads, provider dashboard events, and any action that has
+not explicitly adopted the event writer.
 
 ## Identified session-feedback endpoint
 
@@ -364,7 +363,13 @@ The moderator-only raw feedback action and
 `GET /api/sessions/:id/feedback/audit` return every feedback submission newest
 first, including first/last name, email, stored rating, normalized answers and
 comments, and submission time. This data is separate from Attendance and
-Activity Log and must never be described as a confirmed-attendee register.
+retained activity events and must never be described as a confirmed-attendee
+register.
+
+The managed-session Feedback tab consumes this complete authorized set through
+the paginated/collapsible response explorer specified in spec 05. Its search,
+filter, sort, and pagination are browser-side presentation controls, not a
+change to endpoint scope or a claim of database cursor pagination.
 
 The older `AuditPanel` browser component can flatten these rows into CSV, but it
 is no longer mounted as a managed-session “Attendance Audit” tab. If remounted or

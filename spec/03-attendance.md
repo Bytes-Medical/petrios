@@ -81,6 +81,8 @@ be rewritten to make a later outcome look like the original observation.
 The materialized row is unique per `(session_id, user_id)` or
 `(session_id, external_email)` and contains:
 
+- `org_id` and `department_id`, both enforced to match the authoritative
+  session scope;
 - `status`: `PRESENT`, `LATE`, `ABSENT`, or `EXCUSED`;
 - `primary_source` and `first_evidence_at` (the selected primary evidence time,
   despite the legacy field name);
@@ -92,6 +94,15 @@ While a session is open or under review, evidence-backed results can be
 materialized without being certificate-eligible. At finalization all rows are
 locked and stamped with the new revision.
 
+Migration 055 repairs a migration-045 schema omission: the v2 RPCs and DAL have
+always written `attendance.department_id`, but the column was not previously
+added. It backfills organization/department scope from each row's authoritative
+session, adds the department foreign key and nonnull requirement, and installs
+an insert/update trigger that rejects scope drift. It also drops the original
+`user_id NOT NULL` restriction so external-email attendance can use the intended
+exactly-one-subject model. The subject check is `NOT VALID` to preserve any
+malformed historical row for investigation while enforcing all new writes.
+
 ### `session_participants`
 
 This deny-all-RLS, service-DAL table is the session roster snapshot. It supports
@@ -102,19 +113,28 @@ an internal user or external email, display name, participant role
   rostered.
 - Finalization snapshots current department members as expected attendees.
 - Accepted registered session teachers are upserted as expected teachers.
+- Accepted external `teacher_invitations` are synchronized as expected teachers
+  under normalized `external_email`; accepting an invitation does not create
+  evidence or a present result.
 - A current department member already added by evidence is normalized to
   `EXPECTED`, unless their expectation is explicitly `EXCUSED`.
 
-The snapshot is taken at finalization time. It is not a historical claim about
-department membership at session start. A future pre-session roster feature
-must define its own snapshot time and change semantics explicitly.
+Department-member and registered-teacher snapshots are taken at finalization.
+External teachers enter the roster when their invitation becomes accepted so a
+moderator can record reasoned attendance before finalization; migration 056
+backfills existing accepted invitations. Declining a previously accepted
+invitation makes that participant optional without deleting evidence/history.
+These rows are not a historical claim about department membership at session
+start. A future general pre-session roster editor must define its own snapshot
+time and change semantics explicitly.
 
 ### `session_activity_events`
 
-This is the human-readable, append-only session operations log used by the
-management Activity Log tab. Attendance evidence, finalization, reopening,
-certificate reconciliation, feedback-report release, and document events are
-recorded here. It supplements rather than replaces the source tables.
+This is the human-readable, append-only session operations log. Attendance
+evidence, finalization, reopening, certificate reconciliation, feedback-report
+release, and document events are recorded here. It supplements rather than
+replaces the source tables. The dedicated management Activity Log tab has been
+removed; the records remain durable for governed backend/audit use.
 
 ## Lifecycle
 
@@ -269,6 +289,13 @@ The current app deliberately rejects attempts to create `FEEDBACK`, `RECALL`, or
 ordinary `TEACHER` evidence through `addEvidence`. Accepting a teaching
 assignment or slot changes teaching responsibility only.
 
+For an accepted external teacher, the Attendance management list displays the
+invitation name/email even before a computed row exists. A department moderator
+may append `MODERATOR_CONFIRMATION` evidence for that normalized email with a
+required reason and `PRESENT`, `LATE`, `ABSENT`, or `EXCUSED` override. External
+teachers cannot use authenticated self/group-code check-in without an account;
+their supported physical-attendance path is the reviewed moderator decision.
+
 ## Feedback and Recall separation
 
 Public feedback can resolve a stored `user_id` from the supplied email for
@@ -295,9 +322,24 @@ email subjects have no in-app inbox and are not emailed by this workflow.
 
 ## Certificates and the post-session job
 
-Attendance finalization is the only recognition gate. Feedback is not required
-and `require_feedback_for_certificate` is a legacy setting with no policy-v2
+An ended published session must have finalized attendance governance before any
+canonical certificate can be issued. Feedback is not required and
+`require_feedback_for_certificate` is a legacy setting with no policy-v2
 effect.
+
+Recognition then splits by role:
+
+- an attendee certificate requires the registered user to have current-revision
+  finalized `PRESENT` or `LATE` attendance;
+- a registered teaching certificate requires an `ACCEPTED` session assignment;
+  and
+- an external teaching certificate requires the matching `ACCEPTED` invitation
+  identity.
+
+Teacher recognition does not create, alter, or make a claim about physical
+attendance. The certificate stores the finalized session revision as its
+governance snapshot. Accepted teachers are rejected from the attendee role so
+one session cannot produce both certificate roles for the same teacher.
 
 The post-session job does not create evidence or recompute attendance. It skips
 sessions that are not finalized, reads current `PRESENT`/`LATE` internal users,
@@ -315,9 +357,10 @@ but cannot be downloaded as valid PDFs.
 
 - A participant reads only attendance allowed by RLS/application projection.
 - Department moderators can see the roster, computed results, evidence reasons,
-  lifecycle revision, and session activity.
+  and lifecycle revision. Activity events remain stored but have no dedicated
+  managed-session tab.
 - The former “Attendance Audit” feedback list is not an attendance audit. The
-  management UI now separates Attendance, Feedback, and Activity Log.
+  management UI keeps Attendance and Feedback as separate tabs.
 - Attendance CSV export is department-moderator gated. It includes subject id or
   external email, status, source, timestamps, and lock state. Every field is
   quoted and values beginning with spreadsheet formula sigils (`=`, `+`, `-`,
@@ -343,8 +386,9 @@ but cannot be downloaded as valid PDFs.
   reviewed source.
 - No pre-session roster editor is implemented. Expected membership is
   snapshotted from current department membership at finalization.
-- External-email subjects can be represented in evidence/results but the
-  canonical certificate workflow currently requires a registered user.
+- External-email subjects can be represented in evidence/results. External
+  teaching certificates use the accepted invitation identity and do not require
+  an auth account; external attendee certificates remain unsupported.
 - `attendance_mode` and strict-token fields are dormant. They must not be
   marketed as active security modes.
 - The rate-limit attempt table has no automated retention job yet. Operators

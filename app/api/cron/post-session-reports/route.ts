@@ -39,10 +39,15 @@ export async function GET(request: NextRequest) {
       })
 
       // 3. Attendees who were actually there (LATE still attended)
-      const attendeeIds = await attendanceDb.listAttendeeUserIdsByStatusAsSystem(
-        session.id,
-        ['PRESENT', 'LATE']
-      )
+      const [allAttendeeIds, acceptedTeacherIds] = await Promise.all([
+        attendanceDb.listAttendeeUserIdsByStatusAsSystem(session.id, ['PRESENT', 'LATE']),
+        certificatesDb.listAcceptedRegisteredTeacherIdsAsSystem(session.id),
+      ])
+      const teacherIdSet = new Set(acceptedTeacherIds)
+      // A person teaching this session receives the role-specific teaching
+      // certificate through the moderator batch, never a duplicate attendee
+      // certificate merely because their attendance was PRESENT/LATE.
+      const attendeeIds = allAttendeeIds.filter((userId) => !teacherIdSet.has(userId))
 
       if (attendeeIds.length === 0) {
         await sessionsDb.markSessionReportSent(session.id)

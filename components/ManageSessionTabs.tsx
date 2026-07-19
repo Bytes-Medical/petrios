@@ -11,35 +11,35 @@ import { FeedbackSummaryPanel } from './FeedbackSummaryPanel'
 import { DepartmentQRCodePanel } from './DepartmentQRCodePanel'
 import { FeedbackListPanel } from './FeedbackListPanel'
 import { EditSessionForm } from './EditSessionForm'
-import { ReleaseTeacherFeedbackPanel } from './ReleaseTeacherFeedbackPanel'
 import { RecallQuestionsPanel } from './RecallQuestionsPanel'
 import { RecallAnalyticsPanel } from './RecallAnalyticsPanel'
-import { FeedbackActionsPanel } from './FeedbackActionsPanel'
 import { AudioRecapPanel } from './AudioRecapPanel'
 import type { RecallQuestionSet } from '@/lib/db/recall'
-import type { FeedbackAction } from '@/lib/db/feedback-actions'
 import type { AudioRecapMeta } from '@/lib/db/audio-recaps'
 import { Button } from './Button'
-import { LOCATION_TYPE_LABELS, type Session, type TeacherInvitation } from '@/lib/types'
+import {
+  LOCATION_TYPE_LABELS,
+  type Session,
+  type SessionTeacher,
+  type TeacherInvitation,
+} from '@/lib/types'
 import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
 import { sessionMeetingUrl } from '@/lib/jitsi'
 import type { SessionDocument } from '@/lib/db/session-documents'
 import { SessionDocumentsPanel } from './SessionDocumentsPanel'
-import type { AttendanceEvidence, SessionActivityEvent, SessionParticipant } from '@/lib/db/attendance'
+import type { AttendanceEvidence, SessionParticipant } from '@/lib/db/attendance'
 import { SessionAttendanceManagementPanel } from './SessionAttendanceManagementPanel'
-import { SessionActivityPanel } from './SessionActivityPanel'
 
 interface ManageSessionTabsProps {
   session: Session
   department: { id: string; name: string }
-  teachers: { id: string; user_id: string }[]
+  teachers: SessionTeacher[]
   departmentMembers: { id: string; email: string | null }[]
   attendance: any[]
   emailHistory: { user_id: string; email_type: string; sent_at: string }[]
   invitations: TeacherInvitation[]
   isPersonal?: boolean
   recallSet?: RecallQuestionSet | null
-  feedbackActions?: FeedbackAction[]
   /** Server-computed opsEnabled() — OPS_ENABLED=false removes the surface. */
   showAudioRecap?: boolean
   audioRecap?: AudioRecapMeta | null
@@ -49,7 +49,6 @@ interface ManageSessionTabsProps {
   attendanceGovernance?: {
     participants: SessionParticipant[]
     evidence: AttendanceEvidence[]
-    activity: SessionActivityEvent[]
   }
 }
 
@@ -63,28 +62,31 @@ export function ManageSessionTabs({
   invitations,
   isPersonal,
   recallSet = null,
-  feedbackActions = [],
   showAudioRecap = false,
   audioRecap = null,
   documents = [],
   canUploadDocuments = false,
   currentUserId,
-  attendanceGovernance = { participants: [], evidence: [], activity: [] },
+  attendanceGovernance = { participants: [], evidence: [] },
 }: ManageSessionTabsProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'meeting' | 'teachers' | 'attendance' | 'feedback' | 'recall' | 'documents' | 'certificates' | 'activity'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'attendance' | 'feedback' | 'recall' | 'documents' | 'certificates'>('overview')
   const meetingUrl = sessionMeetingUrl(session)
   const [editMode, setEditMode] = useState(false)
+  const acceptedRegisteredTeacherCount = teachers.filter(
+    (teacher) => teacher.status === 'ACCEPTED'
+  ).length
+  const acceptedExternalTeacherCount = invitations.filter(
+    (invitation) => invitation.status === 'ACCEPTED'
+  ).length
 
   const tabs = [
     { id: 'overview' as const, label: 'Overview' },
-    { id: 'meeting' as const, label: 'Meeting Link' },
     { id: 'teachers' as const, label: 'Teachers' },
     { id: 'attendance' as const, label: 'Attendance' },
     { id: 'feedback' as const, label: 'Feedback' },
     { id: 'recall' as const, label: 'Recall' },
     { id: 'documents' as const, label: 'Documents' },
     { id: 'certificates' as const, label: 'Certificates' },
-    { id: 'activity' as const, label: 'Activity Log' },
   ]
 
   return (
@@ -159,6 +161,26 @@ export function ManageSessionTabs({
             </Card>
 
             <Card>
+              <h2 className="text-xl font-mono font-bold mb-4">
+                {session.location_type === 'JITSI' ? 'Petrios Meet Room' : 'Meeting Link'}
+              </h2>
+              {session.location_type === 'JITSI' ? (
+                <div className="space-y-3 font-mono text-sm">
+                  <p className="text-gray-600">
+                    This session uses a built-in Petrios Meet video room — no link to
+                    paste. Members join from the session page; share the link
+                    below with external guests who don&apos;t have an account.
+                  </p>
+                  <p className="break-all border border-black bg-gray-50 px-3 py-2">
+                    {meetingUrl}
+                  </p>
+                </div>
+              ) : (
+                <UpdateMeetingUrlForm sessionId={session.id} currentUrl={session.teams_meeting_url} />
+              )}
+            </Card>
+
+            <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Publish Session</h2>
               <PublishSessionPanel
                 sessionId={session.id}
@@ -168,28 +190,6 @@ export function ManageSessionTabs({
               />
             </Card>
           </div>
-        )}
-
-        {activeTab === 'meeting' && (
-          <Card>
-            <h2 className="text-xl font-mono font-bold mb-4">
-              {session.location_type === 'JITSI' ? 'Petrios Meet Room' : 'Update Meeting Link'}
-            </h2>
-            {session.location_type === 'JITSI' ? (
-              <div className="space-y-3 font-mono text-sm">
-                <p className="text-gray-600">
-                  This session uses a built-in Petrios Meet video room — no link to
-                  paste. Members join from the session page; share the link
-                  below with external guests who don&apos;t have an account.
-                </p>
-                <p className="break-all border border-black bg-gray-50 px-3 py-2">
-                  {meetingUrl}
-                </p>
-              </div>
-            ) : (
-              <UpdateMeetingUrlForm sessionId={session.id} currentUrl={session.teams_meeting_url} />
-            )}
-          </Card>
         )}
 
         {activeTab === 'teachers' && (
@@ -216,28 +216,32 @@ export function ManageSessionTabs({
               <FeedbackAnalysisPanel sessionId={session.id} />
             </Card>
             <Card>
-              <h2 className="text-xl font-mono font-bold mb-4">AI Summary</h2>
-              <FeedbackSummaryPanel sessionId={session.id} />
+              <h2 className="text-xl font-mono font-bold mb-4">AI-Guided Teacher Report</h2>
+              <FeedbackSummaryPanel
+                sessionId={session.id}
+                invitations={invitations}
+                registeredTeacherCount={teachers.length}
+              />
             </Card>
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Feedback Responses</h2>
               <FeedbackListPanel sessionId={session.id} />
             </Card>
-            <Card>
-              <h2 className="text-xl font-mono font-bold mb-4">You Said, We Did</h2>
-              <FeedbackActionsPanel sessionId={session.id} initialActions={feedbackActions} />
-            </Card>
-            {showAudioRecap && (
-              <Card>
-                <h2 className="text-xl font-mono font-bold mb-4">Audio Recap</h2>
-                <AudioRecapPanel sessionId={session.id} initialRecap={audioRecap} />
-              </Card>
-            )}
           </div>
         )}
 
         {activeTab === 'recall' && (
           <div className="space-y-6">
+            {showAudioRecap && (
+              <Card>
+                <h2 className="text-xl font-mono font-bold mb-4">Audio Recap</h2>
+                <AudioRecapPanel
+                  sessionId={session.id}
+                  initialRecap={audioRecap}
+                  sourceDocumentCount={documents.filter((document) => document.status === 'AVAILABLE').length}
+                />
+              </Card>
+            )}
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Recall Questions</h2>
               <RecallQuestionsPanel sessionId={session.id} initialSet={recallSet} />
@@ -257,6 +261,7 @@ export function ManageSessionTabs({
               attendance={attendance}
               participants={attendanceGovernance.participants}
               evidence={attendanceGovernance.evidence}
+              invitations={invitations}
             />
           </Card>
         )}
@@ -282,27 +287,11 @@ export function ManageSessionTabs({
                 sessionId={session.id}
                 attendance={attendance}
                 attendanceFinalized={session.attendance_phase === 'FINALIZED'}
-              />
-            </Card>
-            <Card>
-              <h2 className="text-xl font-mono font-bold mb-4">Release Feedback to Teachers</h2>
-              <ReleaseTeacherFeedbackPanel
-                sessionId={session.id}
-                invitations={invitations}
-                registeredTeacherCount={teachers.length}
+                registeredTeacherCount={acceptedRegisteredTeacherCount}
+                externalTeacherCount={acceptedExternalTeacherCount}
               />
             </Card>
           </div>
-        )}
-
-        {activeTab === 'activity' && (
-          <Card>
-            <h2 className="mb-4 font-mono text-xl font-bold">Session Activity Log</h2>
-            <p className="mb-4 font-mono text-sm text-gray-600">
-              Governed attendance, report, certificate, and document events. Raw feedback and secrets are never copied here.
-            </p>
-            <SessionActivityPanel events={attendanceGovernance.activity} />
-          </Card>
         )}
       </div>
     </div>

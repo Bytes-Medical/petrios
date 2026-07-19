@@ -33,6 +33,49 @@ export interface FeedbackData {
   answers: FeedbackAnswerInput[]
 }
 
+interface ApprovedQuestionSummary {
+  fieldId: string
+  label: string
+  averageRating: number
+  responseCount: number
+  commentsCount: number
+}
+
+function readApprovedQuestionSummaries(value: unknown): ApprovedQuestionSummary[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const row = entry as Record<string, unknown>
+    if (
+      typeof row.fieldId !== 'string' ||
+      typeof row.label !== 'string' ||
+      typeof row.averageRating !== 'number' ||
+      typeof row.responseCount !== 'number' ||
+      typeof row.commentsCount !== 'number'
+    ) {
+      return []
+    }
+    return [{
+      fieldId: row.fieldId,
+      label: row.label,
+      averageRating: row.averageRating,
+      responseCount: row.responseCount,
+      commentsCount: row.commentsCount,
+    }]
+  })
+}
+
+function readApprovedRatingDistribution(value: unknown): Record<number, number> {
+  if (!value || typeof value !== 'object') return {}
+  const distribution: Record<number, number> = {}
+  for (const [rating, count] of Object.entries(value as Record<string, unknown>)) {
+    if (/^[1-5]$/.test(rating) && typeof count === 'number') {
+      distribution[Number(rating)] = count
+    }
+  }
+  return distribution
+}
+
 function getFeedbackTextResponses(feedback: feedbackDb.StoredFeedbackRow) {
   const answers = normalizeSubmittedFeedbackAnswers(feedback.answers)
   const textResponses = extractTextResponses(answers)
@@ -321,7 +364,10 @@ export async function getSessionFeedbackAudit(sessionId: string) {
   }))
 }
 
-export async function releaseTeacherFeedback(sessionId: string) {
+export async function releaseTeacherFeedback(
+  sessionId: string,
+  reviewedSummaryInput?: string
+) {
   const actorUserId = await requireAuth()
   const orgId = await requireOrg()
 
@@ -394,7 +440,16 @@ export async function releaseTeacherFeedback(sessionId: string) {
   let inProgressCount = 0
   const failures: { email: string; message: string }[] = []
   const providerReceipts: { email: string; id: string }[] = []
-  const privacySuppressed = feedbackStats.total < 5
+  // A non-empty feedback set can be summarized and released. The snapshot is
+  // suppressed only when there is no evidence to report at all.
+  const privacySuppressed = feedbackStats.total === 0
+  const reviewedSummary = reviewedSummaryInput?.trim()
+  if (reviewedSummary && reviewedSummary.length > 4000) {
+    throw new Error('The reviewed teaching summary is limited to 4,000 characters.')
+  }
+  if (privacySuppressed && reviewedSummary) {
+    throw new Error('A reviewed teaching narrative requires at least one feedback response.')
+  }
   const report = await feedbackReportsDb.createApprovedTeacherFeedbackReport({
     orgId,
     departmentId: session.department_id,
@@ -407,10 +462,32 @@ export async function releaseTeacherFeedback(sessionId: string) {
       averageRating: privacySuppressed ? null : feedbackStats.averageRating,
       ratingDistribution: privacySuppressed ? null : feedbackStats.ratingDistribution,
       questionSummaries: privacySuppressed ? [] : feedbackStats.questionSummaries,
+      ...(reviewedSummary ? { reviewedSummary } : {}),
     },
+    preserveLatestReviewedSummary: reviewedSummaryInput === undefined,
   })
   const resend = report.alreadyReleased
   const attemptId = randomUUID()
+  const approvedSnapshot = report.analytics_snapshot
+  const approvedTotal =
+    typeof approvedSnapshot.total === 'number'
+      ? approvedSnapshot.total
+      : report.response_count
+  const approvedAverage =
+    typeof approvedSnapshot.averageRating === 'number'
+      ? approvedSnapshot.averageRating
+      : 0
+  const approvedDistribution = readApprovedRatingDistribution(
+    approvedSnapshot.ratingDistribution
+  )
+  const approvedQuestions = readApprovedQuestionSummaries(
+    approvedSnapshot.questionSummaries
+  )
+  const approvedSummary =
+    !report.privacy_suppressed &&
+    typeof approvedSnapshot.reviewedSummary === 'string'
+      ? approvedSnapshot.reviewedSummary
+      : null
 
   for (const teacher of allTeachers) {
     let deliveryId: string | null = null
@@ -422,10 +499,12 @@ export async function releaseTeacherFeedback(sessionId: string) {
         sessionTitle: session.title,
         sessionDate,
         departmentName: department.name,
-        totalResponses: feedbackStats.total,
-        averageRating: feedbackStats.averageRating,
-        ratingDistribution: feedbackStats.ratingDistribution,
-        privacySuppressed,
+        totalResponses: approvedTotal,
+        averageRating: approvedAverage,
+        ratingDistribution: approvedDistribution,
+        questionSummaries: approvedQuestions,
+        reviewedSummary: approvedSummary,
+        privacySuppressed: report.privacy_suppressed,
       })
 
       const delivery = await deliveriesDb.getOrCreateSessionDelivery({
@@ -501,7 +580,8 @@ export async function releaseTeacherFeedback(sessionId: string) {
       failedCount: failures.length,
       failures,
       providerReceipts,
-      privacySuppressed,
+      privacySuppressed: report.privacy_suppressed,
+      includedReviewedSummary: Boolean(approvedSummary),
       resend,
       previouslyDeliveredCount,
       inProgressCount,
@@ -529,7 +609,8 @@ export async function releaseTeacherFeedback(sessionId: string) {
     failedCount: failures.length,
     failures,
     providerReceipts,
-    privacySuppressed,
+    privacySuppressed: report.privacy_suppressed,
+    includedReviewedSummary: Boolean(approvedSummary),
     resend,
     previouslyDeliveredCount,
     inProgressCount: 0,
@@ -553,8 +634,11 @@ export async function summarizeSessionFeedback(
   }
   await requireDepartmentModerator(scope.department_id)
 
-  const session = await sessionsDb.getSessionOrThrow(sessionId, orgId)
-  const feedback = await feedbackDb.listSessionFeedback(orgId, sessionId)
+  const [session, feedback, feedbackStats] = await Promise.all([
+    sessionsDb.getSessionOrThrow(sessionId, orgId),
+    feedbackDb.listSessionFeedback(orgId, sessionId),
+    getSessionFeedbackStats(sessionId),
+  ])
 
   if (feedback.length === 0) {
     return { summary: null, error: 'No feedback has been submitted yet.' }
@@ -571,6 +655,7 @@ export async function summarizeSessionFeedback(
     const summary = await summarizeFeedback({
       sessionTitle: session.title,
       rows: feedback,
+      questionSummaries: feedbackStats.questionSummaries,
     })
     if (!summary) {
       return { summary: null, error: 'The AI returned an empty summary. Try again.' }

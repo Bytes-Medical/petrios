@@ -31,10 +31,12 @@ spec 11 for identity, and spec 12 for reports/exports.
    “not declared by this deployment” state until the operator configures one.
 2. **Feedback is not described as anonymous.** Public/accountless describes an
    authentication boundary only. Current submissions store name and email;
-   moderator audit exposes them. Teacher feedback release is now aggregate-only,
-   omits respondent identity/raw comments, and suppresses detailed analytics
-   below five responses. Those release controls still do not make the source
-   record anonymous.
+   moderator audit exposes them. Teacher feedback release omits respondent
+   identity/raw comments and requires moderator review before a privacy-processed
+   narrative can enter the approved snapshot. AI guidance and detailed analytics
+   are available from the first response; reports below five responses explicitly
+   warn that the evidence is limited and that participation may be inferred.
+   Those controls still do not make the source record anonymous.
 3. **No tracking banner without tracking.** The base application ships no
    advertising, behavioural tracking, or non-essential analytics storage, so it
    does not manufacture a consent banner. An operator or feature that introduces
@@ -135,10 +137,10 @@ The public privacy notice summarizes these active families:
 |---|---|---|
 | Identity/account | Name, email, grade, auth id, profile/status | Supabase Auth/database; server-rendered role UI; authentication email |
 | Authority | Org/department memberships, roles, invitations, assignments | Authorisation ladder, RLS/service DAL, moderator/admin surfaces |
-| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration, private session documents | Member pages, private storage/download, invite email, calendar/API/webhook/export paths |
+| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration, private session documents, Audio Recap document/research provenance | Member pages, private storage/download, invite email, calendar/API/webhook/export paths; explicit moderator Audio Recap generation sends current documents to the configured AI provider and may cause provider-hosted public-search queries derived from them |
 | Attendance | Evidence source/timestamp, roster, derived status, lifecycle revision, corrections | Moderator/teacher views, in-app notifications, certificates, reports, portable records, portfolio |
-| Feedback | First/last name, email, rating, answers, comment, aggregate report snapshots | Public submission; moderator raw audit; privacy-safe teacher release; stats; optional AI |
-| Learning evidence | Certificates, recipient/coordinator/issuer names, Recall answers, reflections, curriculum, snapshots | Personal dashboards, emails, PDFs, capability verification pages (certificate coordinator/issuer attribution is visible to a code bearer) |
+| Feedback | First/last name, email, rating, answers, comment, aggregate report snapshots, optional reviewed AI-assisted narrative | Public submission; moderator raw audit; privacy-safe teacher release; stats; optional AI draft and explicit review |
+| Learning evidence | Certificates, registered user or external invitation/email identity, recipient/coordinator/issuer names, Recall answers, reflections, curriculum, snapshots | Personal dashboards; external-teacher PDF email attachments; PDFs; capability verification pages (certificate coordinator/issuer attribution is visible to a code bearer) |
 | Communications | Recipient, content, attachment, send/status/claim/unsubscribe metadata | SMTP/Resend; delivery ledgers; in-app notifications; capability links |
 | Security/technical | Essential cookie, IP/network/provider logs, HMAC-pseudonymized group-code attempt data, API/audit/run metadata | App/database/provider logs, security monitoring and incident review |
 
@@ -165,8 +167,12 @@ can contain self-identifying text and deterministic removal is not a guarantee o
 anonymisation. The general on-demand summary now omits identity columns, strips
 known name-like tokens, fences untrusted text, and refuses configured welfare/
 safety signals, but it does not implement every heuristic/structured Ops control
-in spec 06. Teacher email is aggregate-only and threshold-suppressed; the raw
-source and moderator audit remain identified as specified in spec 05.
+in spec 06. Teacher email may include the exact privacy-processed narrative
+approved by a moderator from the first response;
+only a zero-response report suppresses analytics. It never includes raw comments
+or stored identity fields, and reports below five responses warn about weak
+evidence and inference risk. The raw source and moderator audit remain identified
+as specified in spec 05.
 
 Marketing, prompts, code comments, assistant knowledge, documentation, exports,
 and UI labels must use these terms consistently. Prompt wording matters because
@@ -211,7 +217,19 @@ Public disclosure adds these rules:
 - The default configured endpoint is labelled OpenAI API. A custom endpoint is
   labelled generically so an internal hostname is not disclosed.
 - The privacy notice names representative inputs: session metadata, assistant
-  messages, purpose-limited feedback and approved recap text.
+  messages, purpose-limited feedback, private uploaded learning documents sent
+  on an explicit Audio Recap generation click, provider-hosted search queries
+  that may be derived from those documents, public search results/citations, and
+  recap script/audio text.
+- Audio Recap search is restricted in code to an explicit authoritative-domain
+  list and supplements rather than replaces the private learning material. The
+  application stores URL/title citations and a research flag, not public page
+  bodies. These controls narrow the flow; they do not make a document-derived
+  search query non-confidential or remove the need for provider due diligence.
+- Moderator-visible citations are ordinary external links. Opening one contacts
+  that public site from the moderator's or attendee's browser and can disclose
+  normal request metadata such as IP address and browser details under that
+  site's policy. Petrios links use `noopener noreferrer`.
 - Ops prompt/run logging stores hashes and operational metadata rather than raw
   prompts. This describes Petrios storage only; it does not claim a provider
   retains nothing.

@@ -25,7 +25,7 @@ const FEATURES: Feature[] = [
       'Random, salted, rate-limited group codes for low-friction check-in',
       'Joining the built-in video room attempts the same windowed self check-in',
       'Missing evidence becomes an explicit absence when the roster is finalized',
-      'Append-only evidence, reasoned corrections, activity log, and safe CSV export',
+      'Append-only evidence, reasoned corrections, numbered revisions, and safe CSV export',
     ],
   },
   {
@@ -51,7 +51,7 @@ const FEATURES: Feature[] = [
   {
     eyebrow: 'Feedback',
     title: 'Accountless feedback, safely summarised',
-    body: 'Attendees scan a QR and answer your department’s custom form without needing an account. Submissions are identified, limited to the server-enforced window, and never create attendance or certificates. Moderators can request privacy-processed AI themes; teacher release contains aggregate ratings only and withholds detail below five responses.',
+    body: 'Attendees scan a QR and answer your department’s custom form without needing an account. Submissions are identified, limited to the server-enforced window, and never create attendance or certificates. Moderators can request privacy-processed AI themes from the first response; teacher release omits identities and raw comments and labels small cohorts as limited evidence.',
     points: [
       'Custom per-department forms with 1–5 scored questions',
       'Live stats, safety-screened AI summaries, privacy-safe teacher reports',
@@ -65,6 +65,7 @@ const FEATURES: Feature[] = [
     points: [
       'Portfolio packs are snapshotted and publicly verifiable by code',
       'Signed, portable teaching records survive rotating between trusts',
+      'Five-minute, document-led audio recaps add moderator-reviewed authoritative context',
       'Spaced recall questions (+3 and +14 days) measure retention without changing attendance',
     ],
   },

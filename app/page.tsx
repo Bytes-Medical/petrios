@@ -53,7 +53,7 @@ const AUDIENCES = [
     initial: 'F',
     title: 'For teachers & faculty',
     lead: 'Teaching should count for you too.',
-    body: 'Claim a teaching slot in one click — no account needed if you’re external. Teacher reports contain privacy-safe aggregate feedback, certificates follow finalized attendance, and every session you teach builds an appraisal-ready dossier: sessions, hours, reach, and improvement themes.',
+    body: 'Claim a teaching slot in one click — no account needed if you’re external. Teacher reports contain privacy-safe aggregate feedback, teaching certificates follow accepted assignments and finalized session governance, and every session you teach builds an appraisal-ready dossier: sessions, hours, reach, and improvement themes.',
   },
   {
     initial: 'O',

@@ -15,7 +15,7 @@ read exception in `lib/auth.ts`. See spec 01 for the import boundary.
 
 Migration filenames are `NNN_snake_case.sql`, with a unique monotonically
 increasing numeric prefix. The implemented baseline ends at
-`052_certificate_branding_and_coordinators.sql`.
+`057_teacher_certificate_assignment_eligibility.sql`.
 
 Rules for a schema change:
 
@@ -121,10 +121,10 @@ and increments/stamps the revision in one RPC transaction.
 | Table | Purpose | Important behavior |
 |---|---|---|
 | `session_feedback` | Submitted identity snapshot, configurable answer snapshot, derived rating/comment | Public/accountless submission path; moderator raw access |
-| `feedback_actions` | “You said, we did” public response | Moderator-authored, department scoped |
-| `teacher_feedback_reports` | Moderator-approved, versioned aggregate release snapshot | Deny-all; privacy-suppression and release/failure state |
+| `feedback_actions` | Legacy “You said, we did” records | Inactive historical storage; no current read, write, management, or public surface |
+| `teacher_feedback_reports` | Moderator-approved, versioned aggregate release snapshot | Deny-all; deterministic analytics plus optional exact reviewed AI-assisted narrative; content changes create a new version |
 | `session_deliveries` | Per-recipient/report-or-certificate delivery ledger and recoverable send claim | Deny-all; unique natural delivery identity, 15-minute stale-claim recovery; `SENT` is reclaimable only for an explicit moderator feedback resend |
-| `certificates` | Issued certificate metadata, public code, attendance revision, coordinator-name snapshot, and validity/revocation state | Database eligibility trigger; partial uniqueness for one current `VALID` subject/session/role row |
+| `certificates` | Issued certificate metadata, public code, finalized governance revision, coordinator-name snapshot, and validity/revocation state | Database eligibility trigger; attendee recognition requires current finalized attendance, while teacher recognition requires an accepted registered assignment or external invitation; partial uniqueness permits one current `VALID` subject/session/role row |
 
 Feedback stores the submitter's first name, last name, and email; “public form”
 does not mean anonymous storage. A per-session submission key limits one response
@@ -170,10 +170,19 @@ session.
 | `ops_memory` | Organization-scoped agent state/deduplication memory |
 | `ops_chat_threads` | Assistant conversation container |
 | `ops_chat_messages` | Assistant/user/tool message history and traces |
-| `audio_recaps` | Moderator-approved script and MP3 bytes for a session |
+| `audio_recaps` | Moderator-approved script and MP3 bytes; exact session-document source snapshot/digest; generation-time public research URL/title citations and research flag |
 
 `audio_recaps` belongs to the same product surface but intentionally is not an
-`ops_*` table. It uses its own draft/approved gate and never sends email.
+`ops_*` table. It uses its own draft/approved gate, never sends email, and treats
+legacy rows without a source digest as stale until regenerated from documents.
+Migration 053 added the document-source provenance fields; migration 054 adds
+`research_sources` as a JSON array and `research_performed` as a nonnull boolean.
+The list stores de-duplicated public URL/title pointers, not copies of the public
+pages. Legacy rows default to an empty list and `false`. Current generation sets
+the flag only after required hosted search returns at least one verifiable HTTP(S)
+source. SQL constrains the value to an array of at most 20 entries and forbids a
+nonempty list when the research flag is false. Application metadata reads
+deliberately exclude the MP3 byte column.
 
 ## RLS strategies
 

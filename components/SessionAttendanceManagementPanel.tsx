@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { generateGroupCode, lockAttendance, unlockAttendance } from '@/app/actions/attendance-evidence'
 import type { Attendance, Session } from '@/lib/types'
+import type { TeacherInvitation } from '@/lib/types'
 import type { AttendanceEvidence, SessionParticipant } from '@/lib/db/attendance'
 import { AttendanceList } from './AttendanceList'
 import { Button } from './Button'
@@ -13,11 +14,13 @@ export function SessionAttendanceManagementPanel({
   attendance,
   participants,
   evidence,
+  invitations,
 }: {
   session: Session
   attendance: Attendance[]
   participants: SessionParticipant[]
   evidence: AttendanceEvidence[]
+  invitations: TeacherInvitation[]
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -169,7 +172,20 @@ export function SessionAttendanceManagementPanel({
 
       <div>
         <h3 className="mb-2 font-mono text-sm font-bold">Computed results</h3>
-        <AttendanceList sessionId={session.id} attendance={attendance} teachers={[]} readOnly={finalized} />
+        <AttendanceList
+          sessionId={session.id}
+          attendance={attendance}
+          teachers={[]}
+          readOnly={finalized}
+          externalTeachers={invitations
+            .filter((invitation) => invitation.status === 'ACCEPTED')
+            .map((invitation) => ({
+              email: invitation.email.trim().toLowerCase(),
+              name:
+                [invitation.first_name, invitation.last_name].filter(Boolean).join(' ').trim()
+                || invitation.email,
+            }))}
+        />
       </div>
 
       <div>

@@ -41,10 +41,11 @@ departments; trainees need accounts, external teachers don't.
   certificate codes, publicly checkable at `/verify/pack/[code]`) and
   **appraisal/revalidation dossiers** for teachers (sessions, hours, reach,
   privacy-processed feedback themes without stored identity fields).
-- **Petrios Recall**: AI-drafted, moderator-approved recall questions emailed
-  after each session (spaced retrieval at +3 and +14 days) — and a
-  catch-up route: absentees who pass can have attendance recorded, honestly
-  labelled as recall-verified.
+- **Petrios Recall**: a moderator-approved, roughly five-minute audio recap led
+  by uploaded learning documents and supported by authoritative research, plus
+  AI-drafted recall questions emailed after each session (spaced retrieval at
+  +3 and +14 days). Catch-up completion is learning evidence only and never
+  rewrites physical attendance or creates a certificate.
 - **In-app notifications**: bell with read tracking for invitations,
   responses, claims, and ops alerts.
 - **Petrios Ops (AI agent layer)**: drafts speaker-chase emails, post-session

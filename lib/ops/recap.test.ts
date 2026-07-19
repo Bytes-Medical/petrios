@@ -1,69 +1,43 @@
 import { describe, expect, it } from 'vitest'
-import { AUDIO_RECAP_MAX_SCRIPT_CHARS, buildRecapPrompt } from './recap'
+import {
+  AUDIO_RECAP_MAX_SCRIPT_CHARS,
+  AUDIO_RECAP_RESEARCH_DOMAINS,
+  RECAP_SYSTEM,
+  buildRecapPrompt,
+} from './recap'
 
 describe('buildRecapPrompt', () => {
-  it('includes the session title, description, and tags', () => {
+  it('uses uploaded learning documents instead of metadata or feedback', () => {
     const prompt = buildRecapPrompt({
       sessionTitle: 'Managing acute asthma',
-      description: 'Stepwise approach to the acutely wheezy child.',
-      tags: ['respiratory', 'acute'],
-      synthesis: null,
+      documents: [{
+        id: 'document-1',
+        filename: 'asthma-teaching.pdf',
+        mimeType: 'application/pdf',
+        byteSize: 1234,
+        sha256: 'a'.repeat(64),
+      }],
     })
     expect(prompt).toContain('Managing acute asthma')
-    expect(prompt).toContain('Stepwise approach')
-    expect(prompt).toContain('respiratory, acute')
-  })
-
-  it('renders missing description and tags as (none)', () => {
-    const prompt = buildRecapPrompt({
-      sessionTitle: 'T',
-      description: null,
-      tags: null,
-      synthesis: null,
-    })
-    expect(prompt).toContain('Description: (none)')
-    expect(prompt).toContain('Tags: (none)')
-  })
-
-  it('fences synthesis content as untrusted data', () => {
-    const prompt = buildRecapPrompt({
-      sessionTitle: 'T',
-      description: null,
-      tags: null,
-      synthesis: {
-        themes: [{ title: 'Pacing', detail: 'Final section felt rushed' }],
-        suggestions: ['More case examples'],
-      },
-    })
-    expect(prompt).toContain('<feedback_themes>')
-    expect(prompt).toContain('</feedback_themes>')
-    expect(prompt).toContain('untrusted data')
-    expect(prompt).toContain('Pacing: Final section felt rushed')
-    expect(prompt).toContain('Suggestion: More case examples')
-    // fenced content comes before the closing tag
-    expect(prompt.indexOf('Pacing')).toBeGreaterThan(prompt.indexOf('<feedback_themes>'))
-    expect(prompt.indexOf('Pacing')).toBeLessThan(prompt.indexOf('</feedback_themes>'))
-  })
-
-  it('omits the fence entirely when there is no synthesis content', () => {
-    const empty = buildRecapPrompt({
-      sessionTitle: 'T',
-      description: null,
-      tags: null,
-      synthesis: { themes: [], suggestions: [] },
-    })
-    expect(empty).not.toContain('<feedback_themes>')
-    const none = buildRecapPrompt({
-      sessionTitle: 'T',
-      description: null,
-      tags: null,
-      synthesis: null,
-    })
-    expect(none).not.toContain('<feedback_themes>')
+    expect(prompt).toContain('asthma-teaching.pdf (application/pdf, 1234 bytes)')
+    expect(prompt).toContain('Attached learning documents')
+    expect(prompt).toContain('approximately five-minute')
+    expect(prompt).toContain('primary focus')
+    expect(prompt).not.toContain('Description:')
+    expect(prompt).not.toContain('feedback')
   })
 
   it('exports a sane script cap', () => {
     expect(AUDIO_RECAP_MAX_SCRIPT_CHARS).toBeGreaterThan(500)
-    expect(AUDIO_RECAP_MAX_SCRIPT_CHARS).toBeLessThanOrEqual(5000)
+    expect(AUDIO_RECAP_MAX_SCRIPT_CHARS).toBeLessThanOrEqual(10000)
+  })
+
+  it('keeps documents primary while requiring detailed, safe research context', () => {
+    expect(RECAP_SYSTEM).toContain('650 to 800 words')
+    expect(RECAP_SYSTEM).toContain('primary evidence')
+    expect(RECAP_SYSTEM).toContain('Use hosted web research only to supplement')
+    expect(RECAP_SYSTEM).toContain('Do not give patient-specific medical advice')
+    expect(AUDIO_RECAP_RESEARCH_DOMAINS).toContain('nice.org.uk')
+    expect(AUDIO_RECAP_RESEARCH_DOMAINS).toContain('nhs.uk')
   })
 })

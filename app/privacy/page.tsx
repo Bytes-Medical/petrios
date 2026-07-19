@@ -87,24 +87,31 @@ export default function PrivacyPolicyPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Feedback and AI processing">
+      <ComplianceSection title="Feedback, documents, and AI processing">
         <p>
           Raw feedback remains identifiable to authorised moderators. Teacher feedback-release
-          emails contain aggregate ratings only, omit respondent names, email addresses, and raw
-          comments, and withhold detailed analytics when fewer than five people respond. Optional
-          summary paths omit stored identity fields, remove known names where detectable, treat
-          comments as untrusted, and route configured welfare or conduct signals to human review.
-          These controls do not make the source record anonymous. Free text can itself identify a
-          person, so users should avoid unnecessary identifying details.
+          emails omit respondent names, email addresses, and raw comments, but may contain aggregate
+          ratings and a moderator-reviewed AI summary from the first response. Reports based on fewer
+          than five responses are labelled as limited, directional evidence; the teacher may still infer
+          who participated. Optional summary paths omit stored identity fields, remove known names where
+          detectable, treat comments as untrusted, and route configured welfare or conduct signals to
+          human review. These controls do not make the source record anonymous. Free text can itself
+          identify a person, so users should avoid unnecessary identifying details.
         </p>
         <p>
           Optional AI features are currently <strong>{config.aiEnabled ? `enabled through ${config.aiProvider}` : 'disabled'}</strong>.
           When enabled, a configured AI provider may receive session metadata, assistant messages,
-          and purpose-limited feedback content. Petrios stores model-run hashes and operational
-          metadata rather than prompt text in its Ops audit log, but the provider may retain request
-          content under its own terms. OpenAI states that API data is not used to train its models
-          by default, while standard abuse-monitoring logs may be retained for up to 30 days; see
-          its{' '}
+          purpose-limited feedback content, and private uploaded PDF/DOCX/PPTX learning documents
+          when a moderator deliberately generates an Audio Recap. PDFs may be processed as text and
+          page images; Office files are processed as extracted text. The provider&apos;s hosted search may
+          issue queries derived from that learning material to retrieve supporting information from a
+          restricted list of authoritative public clinical and evidence sources. Petrios records the
+          document identifiers and integrity hashes used for the recap plus returned public source
+          titles and URLs; it does not copy those public pages. Opening a source link contacts that
+          external website from your browser. The Ops audit log stores model-run hashes and operational
+          metadata rather than raw prompt text or search queries. The provider may retain request and
+          search content under its own terms. OpenAI states that API data is not used to train its models by
+          default, while standard abuse-monitoring logs may be retained for up to 30 days; see its{' '}
           <a
             className="underline hover:text-clay-700"
             href="https://developers.openai.com/api/docs/guides/your-data"

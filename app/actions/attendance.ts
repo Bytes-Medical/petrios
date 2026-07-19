@@ -52,6 +52,29 @@ export async function markAttendance(
   return { success: true }
 }
 
+export async function markExternalAttendance(
+  sessionId: string,
+  externalEmail: string,
+  status: AttendanceStatus,
+  reason: string
+) {
+  await requireAuth()
+
+  const normalizedEmail = externalEmail.trim().toLowerCase()
+  if (!normalizedEmail) throw new Error('External teacher email is required')
+  const { addEvidence } = await import('./attendance-evidence')
+
+  await addEvidence(sessionId, 'MODERATOR_CONFIRMATION', {
+    externalEmail: normalizedEmail,
+    metadata: { status_override: status },
+    correctionReason: reason,
+  })
+
+  revalidatePath(`/sessions/${sessionId}`)
+  revalidatePath(`/sessions/${sessionId}/manage`)
+  return { success: true }
+}
+
 export async function getAttendance(sessionId: string) {
   const orgId = await requireOrg()
   return attendanceDb.listAttendance(orgId, sessionId)

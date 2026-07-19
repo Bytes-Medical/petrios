@@ -11,7 +11,6 @@ import { getSessionInvitations } from '@/app/actions/teacher-invitations'
 import { getRecallSetForSession } from '@/app/actions/recall'
 import { getAudioRecap } from '@/app/actions/audio-recaps'
 import { opsEnabled } from '@/lib/ops/flags'
-import * as feedbackActionsDb from '@/lib/db/feedback-actions'
 import Link from 'next/link'
 import { ManageSessionTabs } from '@/components/ManageSessionTabs'
 import { canUploadSessionDocuments, getSessionDocuments } from '@/app/actions/session-documents'
@@ -52,7 +51,6 @@ export default async function ManageSessionPage(
     invitations,
     isPersonal,
     recallSet,
-    feedbackActions,
     audioRecap,
     documents,
     canUploadDocuments,
@@ -67,7 +65,6 @@ export default async function ManageSessionPage(
     getSessionInvitations(params.id),
     isPersonalWorkspace(orgId),
     getRecallSetForSession(params.id),
-    feedbackActionsDb.listActionsForSession(params.id),
     showAudioRecap ? getAudioRecap(params.id) : Promise.resolve(null),
     getSessionDocuments(params.id, true),
     canUploadSessionDocuments(params.id),
@@ -100,7 +97,6 @@ export default async function ManageSessionPage(
           invitations={invitations}
           isPersonal={isPersonal}
           recallSet={recallSet}
-          feedbackActions={feedbackActions}
           showAudioRecap={showAudioRecap}
           audioRecap={audioRecap}
           documents={documents}
