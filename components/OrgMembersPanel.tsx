@@ -11,6 +11,13 @@ interface OrgMembersPanelProps {
   members: ManagedOrgMember[]
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  org_admin: 'Admin',
+  department_admin: 'Moderator',
+  faculty: 'Faculty',
+  trainee: 'Trainee',
+}
+
 function formatMemberName(member: ManagedOrgMember) {
   if (member.full_name?.trim()) {
     return member.full_name
@@ -52,47 +59,46 @@ export function OrgMembersPanel({ members }: OrgMembersPanelProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        {members.map((member) => (
-          <div
-            key={member.user_id}
-            className="flex flex-col gap-4 border border-black bg-white p-4 lg:flex-row lg:items-start lg:justify-between"
-          >
-            <div className="min-w-0">
-              <h3 className="truncate font-mono text-lg font-bold">{formatMemberName(member)}</h3>
-              <p className="mt-1 break-all font-mono text-sm text-gray-600">{member.email}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="border border-black px-2 py-1 font-mono text-xs uppercase tracking-[0.2em]">
-                  {member.role}
-                </span>
-                <span className="border border-black px-2 py-1 font-mono text-xs uppercase tracking-[0.2em]">
-                  Joined {new Date(member.joined_at).toLocaleDateString('en-GB')}
-                </span>
-              </div>
-              <p className="mt-3 font-mono text-sm">
-                <span className="font-bold">Departments:</span>{' '}
-                {member.department_names.length > 0 ? member.department_names.join(', ') : 'No departments'}
-              </p>
-            </div>
-
-            {member.removable ? (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={loadingUserId === member.user_id}
-                onClick={() => handleRemove(member.user_id)}
-              >
-                {loadingUserId === member.user_id ? 'Removing...' : 'Remove Member'}
-              </Button>
-            ) : (
-              <span className="font-mono text-xs uppercase tracking-[0.2em] text-gray-500">
-                Protected role
+    <div className="divide-y divide-gray-200">
+      {members.map((member) => (
+        <div
+          key={member.user_id}
+          className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+        >
+          <div className="min-w-0">
+            <p className="truncate font-mono text-sm font-bold">
+              {formatMemberName(member)}
+              <span className="ml-2 bg-gray-100 px-1.5 py-0.5 text-xs font-normal">
+                {ROLE_LABELS[member.role] ?? member.role}
               </span>
-            )}
+            </p>
+            <p className="mt-0.5 truncate font-mono text-xs text-gray-600">
+              {member.email}
+              {member.department_names.length > 0
+                ? ` · ${member.department_names.join(', ')}`
+                : ''}
+              {' · joined '}
+              {new Date(member.joined_at).toLocaleDateString('en-GB')}
+            </p>
           </div>
-        ))}
-      </div>
+
+          {member.removable ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={loadingUserId === member.user_id}
+              onClick={() => handleRemove(member.user_id)}
+            >
+              {loadingUserId === member.user_id ? 'Removing…' : 'Remove'}
+            </Button>
+          ) : (
+            <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.18em] text-gray-400">
+              Protected
+            </span>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

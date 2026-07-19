@@ -93,18 +93,22 @@ export default async function SettingsPage() {
   }
 
   const departmentSettings = await Promise.all(
-    editableDepartments.map(async (department) => ({
-      department,
-      settings: await getDepartmentCertificateSettings(department.id),
-      members: await getDepartmentMembersWithProfiles(department.id),
-    }))
+    editableDepartments.map(async (department) => {
+      const [settings, members] = await Promise.all([
+        getDepartmentCertificateSettings(department.id),
+        // Org managers see the single Organization Members list instead of
+        // a per-department copy, so skip the redundant fetch for them.
+        orgManager ? Promise.resolve([]) : getDepartmentMembersWithProfiles(department.id),
+      ])
+      return { department, settings, members }
+    })
   )
   const hasSettingsContent = orgManager || departmentSettings.length > 0
 
   return (
     <div className="min-h-screen">
       <NavShell />
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
         <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl sm:text-3xl font-mono font-bold">Settings</h1>
@@ -140,7 +144,7 @@ export default async function SettingsPage() {
         ) : (
           <div className="space-y-6">
             {orgManager ? (
-              <div className="grid grid-cols-1 items-start gap-4 sm:gap-6 xl:grid-cols-2">
+              <div className="space-y-4">
                 <SettingsSection
                   title="Department Invite Links"
                   description="Reusable invite links and QR codes; invited users join this organization and department after the email flow."
@@ -204,30 +208,36 @@ export default async function SettingsPage() {
               </div>
             ) : null}
 
-            <div className="grid grid-cols-1 items-start gap-4 sm:gap-6 xl:grid-cols-2">
+            <div className="space-y-4">
               {departmentSettings.map(({ department, settings, members }) => (
                 <SettingsSection
                   key={department.id}
                   title={department.name}
-                  description="Members, the public feedback form, and certificate coordinators."
-                  count={members.length}
-                  defaultOpen={departmentSettings.length === 1}
+                  description={
+                    orgManager
+                      ? 'The public feedback form and certificate coordinators. Members are managed under Organization Members above.'
+                      : 'Members, the public feedback form, and certificate coordinators.'
+                  }
                 >
                   <div className="space-y-6">
-                    <div>
-                      <h3 className="mb-3 font-mono text-sm font-bold uppercase tracking-wider text-gray-500">
-                        Members
-                      </h3>
-                      <div className="max-h-80 overflow-y-auto pr-1">
-                        <DepartmentMembersPanel
-                          departmentId={department.id}
-                          departmentName={department.name}
-                          members={members}
-                        />
+                    {/* Org managers already have the full member list above —
+                        showing it again per department read as duplication. */}
+                    {!orgManager ? (
+                      <div>
+                        <h3 className="mb-3 font-mono text-sm font-bold uppercase tracking-wider text-gray-500">
+                          Members
+                        </h3>
+                        <div className="max-h-80 overflow-y-auto pr-1">
+                          <DepartmentMembersPanel
+                            departmentId={department.id}
+                            departmentName={department.name}
+                            members={members}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
 
-                    <div className="border-t border-black pt-6">
+                    <div className={orgManager ? '' : 'border-t border-black pt-6'}>
                       <FeedbackTemplatePanel
                         departmentId={department.id}
                         initialFields={settings.feedbackFormFields}

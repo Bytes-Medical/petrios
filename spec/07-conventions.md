@@ -316,9 +316,10 @@ Every mutation click is at least two server round trips (action, then
   from a page.
 - **Dense management pages use collapsible sections**
   (`components/SettingsSection.tsx` — a native <details> styled like Card,
-  server-renderable, counts in the header, optional internal scroll) laid
-  out in a two-column grid, so pages read as compact section lists instead
-  of one long scroll.
+  server-renderable, counts in the header, optional internal scroll)
+  stacked in a single column — side-by-side grids of collapsibles leave
+  dead zones when one section opens; prefer collapsed-by-default over
+  columns for page length.
 
 ## Test strategy
 
