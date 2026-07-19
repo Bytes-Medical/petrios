@@ -314,6 +314,11 @@ Every mutation click is at least two server round trips (action, then
 - **Heavy client-only libraries load via a dynamic client wrapper**
   (`SessionCalendarLazy`, `JitsiMeetingPanel` pattern), never statically
   from a page.
+- **Dense management pages use collapsible sections**
+  (`components/SettingsSection.tsx` — a native <details> styled like Card,
+  server-renderable, counts in the header, optional internal scroll) laid
+  out in a two-column grid, so pages read as compact section lists instead
+  of one long scroll.
 
 ## Test strategy
 

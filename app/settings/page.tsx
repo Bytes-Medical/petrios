@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentOrgId, getCurrentUser, isOrgAdmin, isOrgManager } from '@/lib/auth'
 import { NavShell } from '@/components/NavShell'
 import { Card } from '@/components/Card'
+import { SettingsSection } from '@/components/SettingsSection'
 import { CertificateSettingsPanel } from '@/components/CertificateSettingsPanel'
 import { FeedbackTemplatePanel } from '@/components/FeedbackTemplatePanel'
 import { DepartmentInviteLinksPanel } from '@/components/DepartmentInviteLinksPanel'
@@ -139,79 +140,91 @@ export default async function SettingsPage() {
         ) : (
           <div className="space-y-6">
             {orgManager ? (
-              <>
-                <Card>
-                  <h2 className="mb-2 text-xl font-mono font-bold">Department Invite Links</h2>
-                  <p className="mb-5 font-mono text-sm text-gray-600">
-                    Share reusable department invite links or QR codes with new members. Invited
-                    users are added directly to this organization and department after completing
-                    the email flow.
-                  </p>
+              <div className="grid grid-cols-1 items-start gap-4 sm:gap-6 xl:grid-cols-2">
+                <SettingsSection
+                  title="Department Invite Links"
+                  description="Reusable invite links and QR codes; invited users join this organization and department after the email flow."
+                  count={inviteLinks.length}
+                >
                   <DepartmentInviteLinksPanel links={inviteLinks} />
-                </Card>
+                </SettingsSection>
 
-                <Card>
-                  <h2 className="mb-2 text-xl font-mono font-bold">Organization Members</h2>
-                  <p className="mb-5 font-mono text-sm text-gray-600">
-                    Remove trainees or faculty from this organization. Protected roles stay managed
-                    separately.
-                  </p>
+                <SettingsSection
+                  title="Organization Members"
+                  description="Remove trainees or faculty. Protected roles stay managed separately."
+                  count={orgMembers.length}
+                  scroll
+                >
                   <OrgMembersPanel members={orgMembers} />
-                </Card>
+                </SettingsSection>
 
-                <Card>
-                  <h2 className="mb-2 text-xl font-mono font-bold">Address Book</h2>
+                <SettingsSection
+                  title="Address Book"
+                  description="External contacts captured from invitations and RSVPs."
+                  count={addressBook.contacts.length}
+                  scroll
+                >
                   <AddressBookPanel
                     contacts={addressBook.contacts}
                     groupsByContact={addressBook.groupsByContact}
                   />
-                  <div className="mt-6 border-t border-black pt-6">
-                    <h3 className="mb-3 font-mono text-sm font-bold uppercase tracking-wider text-gray-500">
-                      Contact Groups
-                    </h3>
-                    <ContactGroupsPanel groups={addressBook.groups} />
-                  </div>
-                </Card>
+                </SettingsSection>
+
+                <SettingsSection
+                  title="Contact Groups"
+                  description="The audience unit for publishing teaching slots."
+                  count={addressBook.groups.length}
+                >
+                  <ContactGroupsPanel groups={addressBook.groups} />
+                </SettingsSection>
 
                 {orgAdminAccess ? (
                   <>
-                    <Card>
-                      <h2 className="mb-2 text-xl font-mono font-bold">API Tokens</h2>
+                    <SettingsSection
+                      title="API Tokens"
+                      description="Org-scoped bearer tokens for the public API."
+                      count={apiTokens.length}
+                    >
                       <ApiTokensPanel tokens={apiTokens} />
-                    </Card>
+                    </SettingsSection>
 
-                    <Card>
-                      <h2 className="mb-2 text-xl font-mono font-bold">Webhooks</h2>
+                    <SettingsSection
+                      title="Webhooks"
+                      description="Signed event deliveries to your endpoints."
+                      count={webhookData.endpoints.length}
+                      scroll
+                    >
                       <WebhooksPanel
                         endpoints={webhookData.endpoints}
                         deliveries={webhookData.deliveries}
                       />
-                    </Card>
+                    </SettingsSection>
                   </>
                 ) : null}
-              </>
+              </div>
             ) : null}
 
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-4 sm:gap-6 xl:grid-cols-2">
               {departmentSettings.map(({ department, settings, members }) => (
-                <Card key={department.id}>
-                  <div className="mb-5">
-                    <h2 className="text-xl font-mono font-bold">{department.name}</h2>
-                    <p className="mt-2 font-mono text-sm text-gray-600">
-                      Edit the public feedback form and the certificate coordinators used for this
-                      department.
-                    </p>
-                  </div>
+                <SettingsSection
+                  key={department.id}
+                  title={department.name}
+                  description="Members, the public feedback form, and certificate coordinators."
+                  count={members.length}
+                  defaultOpen={departmentSettings.length === 1}
+                >
                   <div className="space-y-6">
                     <div>
                       <h3 className="mb-3 font-mono text-sm font-bold uppercase tracking-wider text-gray-500">
                         Members
                       </h3>
-                      <DepartmentMembersPanel
-                        departmentId={department.id}
-                        departmentName={department.name}
-                        members={members}
-                      />
+                      <div className="max-h-80 overflow-y-auto pr-1">
+                        <DepartmentMembersPanel
+                          departmentId={department.id}
+                          departmentName={department.name}
+                          members={members}
+                        />
+                      </div>
                     </div>
 
                     <div className="border-t border-black pt-6">
@@ -228,7 +241,7 @@ export default async function SettingsPage() {
                       />
                     </div>
                   </div>
-                </Card>
+                </SettingsSection>
               ))}
             </div>
           </div>
