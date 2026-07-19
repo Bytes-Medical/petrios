@@ -95,6 +95,7 @@ INSTANCE_SIGNING_KEY          # Optional: Ed25519 identity enabling signed teach
 NEXT_PUBLIC_JITSI_DOMAIN      # Jitsi domain for Petrios Meet rooms (optional, default meet.jit.si)
 OPS_ENABLED                   # Petrios Ops kill switch: unset/anything = on, "false" = every ops surface halts
 OPS_ASSISTANT_ENABLED         # Ops chat assistant opt-in: unset = OFF (default), "true" = enabled (still subject to OPS_ENABLED)
+GOOGLE_SITE_VERIFICATION      # Optional Search Console HTML-tag token (renders the site-wide meta tag)
 PRIVACY_CONTROLLER_NAME      # Public legal controller name (required production disclosure)
 PRIVACY_CONTROLLER_ADDRESS   # Public controller address (required production disclosure)
 PRIVACY_CONTACT_EMAIL        # Public monitored privacy/DPO inbox

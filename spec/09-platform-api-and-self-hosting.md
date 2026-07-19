@@ -509,8 +509,8 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `SMTP_USER`, `SMTP_PASS` | Optional relay auth | Server secrets |
 | `RESEND_API_KEY` | Required if Resend is selected | Server secret |
 | `MAIL_DEV_REDIRECT` | Optional | Redirect every recipient to one inbox |
-| `EMAIL_DEV_MODE` | Exact `true` logs | Development email diagnostics |
 | `CRON_SECRET` | Required to run jobs | Shared Bearer secret; no query fallback |
+| `ATTENDANCE_RATE_LIMIT_SECRET` | Optional HMAC key pseudonymizing check-in IPs for rate limiting; falls back to the service-role key |
 | `OPENAI_API_KEY` | Optional | Enables LLM and default OpenAI speech; server secret |
 | `OPENAI_BASE_URL` | Default OpenAI v1 | Compatible internal/gateway/provider base |
 | `OPENAI_MODEL` | Default `gpt-5.5` | Chat model |
@@ -524,7 +524,6 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `NEXT_PUBLIC_JITSI_DOMAIN` | Default `meet.jit.si` | Browser-visible meeting host |
 | `INSTANCE_SIGNING_KEY` | Optional | Ed25519 PKCS#8 DER base64 private key; critical secret |
 | `DATABASE_URL` | Migration runner only | Direct database credential |
-| `AUTH_DEV_LINKS` | Optional | Permit auth-link logging in configured development posture |
 | `GOOGLE_SITE_VERIFICATION` | Optional | Search Console meta content |
 | `PRIVACY_CONTROLLER_NAME` | Required production disclosure | Public controller legal name |
 | `PRIVACY_CONTROLLER_ADDRESS` | Required production disclosure | Public controller postal/service address |

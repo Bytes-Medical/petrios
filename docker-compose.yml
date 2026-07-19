@@ -5,11 +5,22 @@
 # running alongside — point the SUPABASE_* env vars at whichever you use.
 #
 #   cp .env.example .env.production   # fill in values
-#   docker compose up -d --build
+#   docker compose --env-file .env.production up -d --build
+#
+# NEXT_PUBLIC_* values are BUILD-time (inlined into the browser bundle), so
+# they are passed as build args below, read from .env.production by compose.
+# Changing them requires `docker compose up -d --build` again. Everything
+# else in .env.production is runtime-only via env_file.
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_JITSI_DOMAIN: ${NEXT_PUBLIC_JITSI_DOMAIN:-meet.jit.si}
     ports:
       - '3000:3000'
     env_file:

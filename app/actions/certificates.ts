@@ -1,5 +1,6 @@
 'use server'
 
+import { getAppUrl } from '@/lib/app-url'
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
 import type { CertificateRole } from '@/lib/types'
@@ -74,9 +75,9 @@ async function generateAndDeliverExternalTeacherCertificate(input: {
   }
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
-      || process.env.NEXT_PUBLIC_BASE_URL
-      || 'http://localhost:3000'
+    // getAppUrl throws in production when unset — a certificate PDF with a
+    // localhost verify link is unrecoverable once emailed.
+    const baseUrl = getAppUrl()
     const pdfBuffer = await generateCertificatePDF({
       orgName: session.organizations?.name || 'Organization',
       departmentName: session.departments?.name || 'Unknown',
@@ -165,7 +166,7 @@ export async function generateCertificate(
     session.departments?.lead_name
   )
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const baseUrl = getAppUrl()
   const verifyUrl = `${baseUrl}/verify/${certificateCode}`
 
   const pdfBuffer = await generateCertificatePDF({
@@ -349,7 +350,7 @@ export async function downloadMyCertificateForSession(sessionId: string) {
     userData?.user?.email ||
     userId
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const baseUrl = getAppUrl()
   const verifyUrl = `${baseUrl}/verify/${certificate.certificate_code}`
   const coordinatorNames = resolveTeachingCoordinatorNames(
     certificate.coordinator_names,

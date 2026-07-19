@@ -780,10 +780,10 @@ export async function sendPasswordlessLoginLink(
 
   // Resend's sandbox sender (onboarding@resend.dev) only delivers to the account
   // owner's address until a custom sending domain is verified, which blocks local
-  // testing. In development (or when AUTH_DEV_LINKS=true) print the link so
-  // sign-in works for any email regardless of email delivery.
-  const devLinksEnabled =
-    process.env.NODE_ENV !== 'production' || process.env.AUTH_DEV_LINKS === 'true'
+  // testing. Development ONLY: printing a live sign-in link to logs is an
+  // account takeover for anyone with log access, so there is deliberately no
+  // production escape hatch (the old AUTH_DEV_LINKS override is gone).
+  const devLinksEnabled = process.env.NODE_ENV !== 'production'
   if (devLinksEnabled) {
     console.log(`\n🔗 [auth] Sign-in link for ${email}:\n${inviteUrl}\n`)
   }

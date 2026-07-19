@@ -61,7 +61,7 @@ problem. IP is the first `x-forwarded-for` value, then `x-real-ip`; deployments
 must configure a trusted proxy or clients may spoof these headers.
 
 The action returns readable structured failure rather than throwing a masked
-server-action error. In nonproduction, or when `AUTH_DEV_LINKS=true`, the full
+server-action error. In nonproduction only (there is deliberately no production override), the full
 login URL is printed to server logs. Enabling that flag in production exposes a
 live account capability to anyone with log access and should be exceptional.
 

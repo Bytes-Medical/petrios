@@ -1,5 +1,6 @@
 'use server'
 
+import { getAppUrl } from '@/lib/app-url'
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
@@ -66,7 +67,8 @@ export async function inviteExternalTeacher(
   const departmentName =
     (await teacherInvitationsDb.findDepartmentName(session.department_id)) || ''
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  // getAppUrl throws in production when unset — RSVP links are emailed.
+  const baseUrl = getAppUrl()
   const rsvpUrl = `${baseUrl}/sessions/${sessionId}/teacher-rsvp/${inviteCode}`
 
   const mailer = getEmailClient()

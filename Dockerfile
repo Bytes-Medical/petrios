@@ -1,10 +1,16 @@
 # Petrios — production image (see docs/self-hosting.md)
 #
-# Build:  docker build -t petrios .
-# Run:    docker run --env-file .env.local -p 3000:3000 petrios
+# Build:  docker build -t petrios \
+#           --build-arg NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co \
+#           --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR-ANON-KEY \
+#           --build-arg NEXT_PUBLIC_APP_URL=https://teaching.example.org .
+# Run:    docker run --env-file .env.production -p 3000:3000 petrios
 #
-# The app talks to Supabase (hosted or self-hosted) over the network; this
-# image contains only the Next.js standalone server.
+# IMPORTANT: NEXT_PUBLIC_* values are inlined into the BROWSER bundle at
+# build time (and the CSP in next.config.js derives from them), so they must
+# be real at `docker build` — runtime env alone cannot change what the
+# browser sees. Changing any NEXT_PUBLIC_* value requires an image rebuild.
+# Server-only secrets (service role key, email, cron, AI) stay runtime-only.
 
 FROM node:22-alpine AS deps
 WORKDIR /app
@@ -16,12 +22,19 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-# Build-time env placeholders: nothing in the build talks to external
-# services (all env access in lib/ is lazy, inside request-time functions).
-ENV NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=build-placeholder \
-    SUPABASE_SERVICE_ROLE_KEY=build-placeholder \
-    NEXT_PUBLIC_APP_URL=https://build-placeholder.invalid
+
+# Browser-visible configuration — baked into the client bundle and the CSP.
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_JITSI_DOMAIN=meet.jit.si
+RUN test -n "$NEXT_PUBLIC_SUPABASE_URL" && test -n "$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+  || (echo "ERROR: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY build args are required — they are inlined into the browser bundle. See docs/self-hosting.md." && exit 1)
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
+    NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
+    NEXT_PUBLIC_JITSI_DOMAIN=$NEXT_PUBLIC_JITSI_DOMAIN \
+    SUPABASE_SERVICE_ROLE_KEY=build-placeholder
 RUN npm run build
 
 FROM node:22-alpine AS runner

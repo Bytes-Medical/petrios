@@ -18,8 +18,7 @@
  *
  * Other config:
  *   MAIL_FROM               — default sender "Name <email@your-domain>"
- *   MAIL_DEV_REDIRECT       — rewrite every recipient to one inbox you control
- *   EMAIL_DEV_MODE=true     — force console logging in a production-like build
+ *   MAIL_DEV_REDIRECT       — rewrite every recipient to one inbox (dev only; ignored in production)
  */
 
 import nodemailer from 'nodemailer'
@@ -164,11 +163,13 @@ export function getEmailClient() {
 
         // Optional dev redirect: funnel every recipient to one inbox you control
         // (e.g. to see rendered HTML/attachments) without spamming real users.
-        const redirect = process.env.MAIL_DEV_REDIRECT
+        // Dev-only by construction: a forgotten MAIL_DEV_REDIRECT in a
+        // production environment must never swallow real users' email.
+        const redirect = isDev ? process.env.MAIL_DEV_REDIRECT : undefined
         const originalTo = (Array.isArray(params.to) ? params.to : [params.to]).filter(Boolean)
         const effectiveTo = redirect ? [redirect] : originalTo
 
-        if (isDev || process.env.EMAIL_DEV_MODE === 'true') {
+        if (isDev) {
           const att = params.attachments?.length ? ` | ${params.attachments.length} attachment(s)` : ''
           const red = redirect ? ` (redirected → ${redirect})` : ''
           console.log(

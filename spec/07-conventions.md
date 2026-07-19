@@ -206,8 +206,9 @@ Transport selection is:
 4. otherwise production: structured “configure a transport” error.
 
 SMTP takes priority when both are configured. `MAIL_DEV_REDIRECT` replaces all
-recipients with one controlled address. `EMAIL_DEV_MODE=true` logs metadata even
-in production-like mode; it does not itself select a transport. Attachments are
+recipients with one controlled address — development only; both the
+redirect and email metadata logging are ignored in production builds.
+Neither selects a transport. Attachments are
 raw bytes/base64 adapted to each provider.
 
 `MAIL_FROM` is preferred, with legacy `RESEND_FROM_EMAIL` fallback. A bare

@@ -19,11 +19,17 @@ Two moving parts:
 
 ```bash
 git clone https://github.com/Bytes-Medical/petrios.git
-cd bytes-teaching
+cd petrios
 cp .env.example .env.production   # fill in values (see matrix below)
-docker compose up -d --build
+docker compose --env-file .env.production up -d --build
 curl http://localhost:3000/api/health   # → {"status":"ok","db":"ok"}
 ```
+
+> **NEXT_PUBLIC_\* values are build-time.** They are inlined into the
+> browser bundle (and the CSP) when the image builds — compose passes them
+> as build args from `.env.production`. Changing the Supabase URL/anon key,
+> app URL, or Jitsi domain requires rebuilding the image
+> (`docker compose --env-file .env.production up -d --build`); editing the env file alone is not enough.
 
 Apply database migrations (one of):
 
