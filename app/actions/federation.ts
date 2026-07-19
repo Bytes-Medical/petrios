@@ -52,7 +52,6 @@ export async function exportTeachingRecord(): Promise<{ json: string; filename: 
       source: entry.primary_source,
     })),
     certificates: passport.certificates.map((c) => c.certificate_code),
-    coverage: passport.coverage.map((c) => ({ domain: c.name, sessions: c.sessionCount })),
   }
 
   const record: TeachingRecord = { ...payload, signature: signPayload(payload) } as TeachingRecord

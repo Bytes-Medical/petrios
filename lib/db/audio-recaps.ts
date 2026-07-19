@@ -19,17 +19,21 @@ import type {
  */
 
 const META_COLUMNS =
-  'id, org_id, session_id, script, model, tts_model, tts_voice, audio_bytes, source_documents, source_digest, research_sources, research_performed, status, approved_by, approved_at, created_at, updated_at'
+  'id, org_id, session_id, script, script_digest, model, tts_provider, tts_model, tts_voice, audio_bytes, audio_revision, audio_duration_seconds, source_documents, source_digest, research_sources, research_performed, status, approved_by, approved_at, created_at, updated_at'
 
 export interface AudioRecapMeta {
   id: string
   org_id: string
   session_id: string
   script: string
+  script_digest: string | null
   model: string | null
+  tts_provider: 'openai' | 'elevenlabs' | null
   tts_model: string | null
   tts_voice: string | null
   audio_bytes: number | null
+  audio_revision: number
+  audio_duration_seconds: number | null
   source_documents: AudioRecapSourceDocument[]
   source_digest: string | null
   research_sources: AudioRecapResearchSource[]
@@ -61,6 +65,7 @@ export async function upsertDraftScript(input: {
   orgId: string
   sessionId: string
   script: string
+  scriptDigest: string
   model: string | null
   sourceDocuments: AudioRecapSourceDocument[]
   sourceDigest: string
@@ -75,6 +80,7 @@ export async function upsertDraftScript(input: {
         org_id: input.orgId,
         session_id: input.sessionId,
         script: input.script,
+        script_digest: input.scriptDigest,
         model: input.model,
         source_documents: input.sourceDocuments,
         source_digest: input.sourceDigest,
@@ -82,6 +88,10 @@ export async function upsertDraftScript(input: {
         research_performed: input.researchPerformed,
         audio: null,
         audio_bytes: null,
+        audio_duration_seconds: null,
+        tts_provider: null,
+        tts_model: null,
+        tts_voice: null,
         status: 'draft',
         approved_by: null,
         approved_at: null,
@@ -100,14 +110,20 @@ export async function upsertDraftScript(input: {
 export async function updateScript(input: {
   sessionId: string
   script: string
+  scriptDigest: string
 }): Promise<void> {
   const db = await getServiceDb()
   const { error } = await db
     .from('audio_recaps')
     .update({
       script: input.script,
+      script_digest: input.scriptDigest,
       audio: null,
       audio_bytes: null,
+      audio_duration_seconds: null,
+      tts_provider: null,
+      tts_model: null,
+      tts_voice: null,
       updated_at: new Date().toISOString(),
     })
     .eq('session_id', input.sessionId)
@@ -119,23 +135,41 @@ export async function updateScript(input: {
 export async function saveAudio(input: {
   sessionId: string
   audio: Buffer
+  ttsProvider: 'openai' | 'elevenlabs'
   ttsModel: string
   ttsVoice: string
+  durationSeconds: number
 }): Promise<void> {
   const db = await getServiceDb()
-  const { error } = await db
+  const { data: current, error: readError } = await db
+    .from('audio_recaps')
+    .select('audio_revision')
+    .eq('session_id', input.sessionId)
+    .eq('status', 'draft')
+    .single()
+  if (readError) throw toDbError('Failed to read recap audio revision', readError)
+
+  const currentRevision = Number((current as { audio_revision: number }).audio_revision)
+  const { data, error } = await db
     .from('audio_recaps')
     .update({
       audio: '\\x' + input.audio.toString('hex'),
       audio_bytes: input.audio.byteLength,
+      audio_revision: currentRevision + 1,
+      audio_duration_seconds: input.durationSeconds,
+      tts_provider: input.ttsProvider,
       tts_model: input.ttsModel,
       tts_voice: input.ttsVoice,
       updated_at: new Date().toISOString(),
     })
     .eq('session_id', input.sessionId)
     .eq('status', 'draft')
+    .eq('audio_revision', currentRevision)
+    .select('id')
+    .maybeSingle()
 
   if (error) throw toDbError('Failed to store recap audio', error)
+  if (!data) throw new Error('The recap changed while audio was being generated; try again')
 }
 
 /** Guarded approval: only a draft WITH audio can be approved. */
@@ -158,6 +192,31 @@ export async function approveRecap(input: {
     .select('id')
 
   if (error) throw toDbError('Failed to approve recap', error)
+  return ((data as { id: string }[] | null) ?? []).length > 0
+}
+
+/**
+ * Withdraw an approved recap back to moderator-only draft state. The current
+ * script and audio are deliberately preserved so the moderator can compare,
+ * edit, or re-synthesize before approving a replacement.
+ */
+export async function recallApprovedRecap(input: {
+  sessionId: string
+}): Promise<boolean> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('audio_recaps')
+    .update({
+      status: 'draft',
+      approved_by: null,
+      approved_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('session_id', input.sessionId)
+    .eq('status', 'approved')
+    .select('id')
+
+  if (error) throw toDbError('Failed to recall audio recap', error)
   return ((data as { id: string }[] | null) ?? []).length > 0
 }
 

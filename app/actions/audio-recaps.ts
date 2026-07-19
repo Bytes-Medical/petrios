@@ -3,8 +3,14 @@
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
 import { isLlmConfigured, LLM_MODEL } from '@/lib/ai/llm'
-import { synthesizeSpeech, TTS_MODEL, TTS_VOICE } from '@/lib/ai/tts'
+import { synthesizeSpeech } from '@/lib/ai/tts'
+import {
+  audioRecapScriptDigest,
+  estimateAudioDurationSeconds,
+  mp3DurationSeconds,
+} from '@/lib/audio-recap-provenance'
 import { generateRecapScript, AUDIO_RECAP_MAX_SCRIPT_CHARS } from '@/lib/ops/recap'
+import { draftRecallQuestionsFromRecap } from '@/lib/ops/recall'
 import {
   getCurrentRecapSourceSnapshot,
   loadRecapSourceFiles,
@@ -70,13 +76,27 @@ export async function generateAudioRecapScriptAction(
     orgId,
     sessionId,
     script: generated.script,
+    scriptDigest: audioRecapScriptDigest(generated.script),
     model: LLM_MODEL,
     sourceDocuments: snapshot.documents,
     sourceDigest: snapshot.digest,
     researchSources: generated.researchSources,
     researchPerformed: true,
   })
+
+  // Question drafting is downstream and independently retryable: a question
+  // provider failure must not discard a successfully researched recap script.
+  await draftRecallQuestionsFromRecap({
+    orgId,
+    sessionId,
+    sessionTitle: session.title,
+    recapScript: generated.script,
+    scriptDigest: recap.script_digest!,
+  }).catch((error) => {
+    console.error(`Failed to draft recap-bound Recall questions for ${sessionId}:`, error)
+  })
   revalidatePath(`/sessions/${sessionId}/manage`)
+  revalidatePath(`/sessions/${sessionId}`)
   return recap
 }
 
@@ -85,7 +105,7 @@ export async function saveAudioRecapScript(
   script: string
 ): Promise<void> {
   if (!opsEnabled()) throw new Error('Petrios Ops is disabled on this deployment')
-  await requireModeratedSession(sessionId)
+  const { session, orgId } = await requireModeratedSession(sessionId)
 
   const trimmed = script.trim()
   if (!trimmed) throw new Error('Script cannot be empty')
@@ -93,7 +113,25 @@ export async function saveAudioRecapScript(
     throw new Error(`Script must be ${AUDIO_RECAP_MAX_SCRIPT_CHARS} characters or fewer`)
   }
 
-  await audioRecapsDb.updateScript({ sessionId, script: trimmed })
+  const scriptDigest = audioRecapScriptDigest(trimmed)
+  await audioRecapsDb.updateScript({
+    sessionId,
+    script: trimmed,
+    scriptDigest,
+  })
+  try {
+    await draftRecallQuestionsFromRecap({
+      orgId,
+      sessionId,
+      sessionTitle: session.title,
+      recapScript: trimmed,
+      scriptDigest,
+    })
+  } catch (error) {
+    // Preserve the moderator's successful edit. The digest mismatch keeps any
+    // older questions unpublishable, and saving again safely retries drafting.
+    console.error(`Failed to refresh Recall questions for edited recap ${sessionId}:`, error)
+  }
   revalidatePath(`/sessions/${sessionId}/manage`)
 }
 
@@ -110,18 +148,21 @@ export async function createAudioRecapAudio(sessionId: string): Promise<void> {
     throw new Error('The learning documents changed. Regenerate the recap script before creating audio.')
   }
 
-  const audio = await synthesizeSpeech({ text: recap.script })
-  if (!audio) {
+  const speech = await synthesizeSpeech({ text: recap.script })
+  if (!speech) {
     throw new Error(
-      'Speech synthesis is not available on this deployment (no API key, or the configured endpoint has no speech support)'
+      'Speech synthesis is not configured on this deployment. Configure OpenAI speech or add the ElevenLabs API key and voice ID.'
     )
   }
 
   await audioRecapsDb.saveAudio({
     sessionId,
-    audio,
-    ttsModel: TTS_MODEL,
-    ttsVoice: TTS_VOICE,
+    audio: speech.audio,
+    ttsProvider: speech.provider,
+    ttsModel: speech.model,
+    ttsVoice: speech.voice,
+    durationSeconds: mp3DurationSeconds(speech.audio)
+      ?? estimateAudioDurationSeconds(recap.script),
   })
   revalidatePath(`/sessions/${sessionId}/manage`)
 }
@@ -142,6 +183,20 @@ export async function approveAudioRecap(sessionId: string): Promise<{ success: t
   const approved = await audioRecapsDb.approveRecap({ sessionId, userId })
   if (!approved) {
     throw new Error('Only a draft with audio can be approved — create the audio preview first')
+  }
+
+  revalidatePath(`/sessions/${sessionId}/manage`)
+  revalidatePath(`/sessions/${sessionId}`)
+  return { success: true }
+}
+
+export async function recallAudioRecap(sessionId: string): Promise<{ success: true }> {
+  if (!opsEnabled()) throw new Error('Petrios Ops is disabled on this deployment')
+  await requireModeratedSession(sessionId)
+
+  const recalled = await audioRecapsDb.recallApprovedRecap({ sessionId })
+  if (!recalled) {
+    throw new Error('Only an approved audio recap can be recalled')
   }
 
   revalidatePath(`/sessions/${sessionId}/manage`)

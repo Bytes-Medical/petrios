@@ -15,38 +15,40 @@ const q = (answer_index: number): RecallQuestion => ({
 })
 
 describe('scoreAnswers', () => {
-  it('passes at 2 of 3 and above', () => {
-    expect(scoreAnswers([q(0), q(1), q(2)], [0, 1, 3])).toEqual({
-      score: 2,
-      total: 3,
-      passed: true,
+  it('requires a perfect five-question result', () => {
+    const questions = [q(0), q(1), q(2), q(3), q(0)]
+    expect(scoreAnswers(questions, [0, 1, 2, 3, 1])).toEqual({
+      score: 4,
+      total: 5,
+      passed: false,
     })
-    expect(scoreAnswers([q(0), q(1), q(2)], [0, 1, 2]).passed).toBe(true)
+    expect(scoreAnswers(questions, [0, 1, 2, 3, 0]).passed).toBe(true)
   })
 
-  it('fails at 1 of 3 and treats missing answers as wrong', () => {
-    expect(scoreAnswers([q(0), q(1), q(2)], [0]).passed).toBe(false)
-    expect(scoreAnswers([q(0), q(1), q(2)], []).score).toBe(0)
+  it('treats missing answers as wrong', () => {
+    const questions = [q(0), q(1), q(2), q(3), q(0)]
+    expect(scoreAnswers(questions, [0]).passed).toBe(false)
+    expect(scoreAnswers(questions, []).score).toBe(0)
   })
 })
 
 describe('RecallQuestionSetSchema', () => {
-  const valid = { questions: [q(0), q(1), q(2)] }
+  const valid = { questions: [q(0), q(1), q(2), q(3), q(0)] }
 
-  it('accepts exactly three well-formed questions', () => {
+  it('accepts exactly five well-formed questions', () => {
     expect(RecallQuestionSetSchema.safeParse(valid).success).toBe(true)
   })
 
   it('rejects wrong counts, option counts, and out-of-range answers', () => {
-    expect(RecallQuestionSetSchema.safeParse({ questions: [q(0)] }).success).toBe(false)
+    expect(RecallQuestionSetSchema.safeParse({ questions: [q(0), q(1), q(2)] }).success).toBe(false)
     expect(
       RecallQuestionSetSchema.safeParse({
-        questions: [q(0), q(1), { ...q(2), options: ['a', 'b'] }],
+        questions: [q(0), q(1), q(2), q(3), { ...q(0), options: ['a', 'b'] }],
       }).success
     ).toBe(false)
     expect(
       RecallQuestionSetSchema.safeParse({
-        questions: [q(0), q(1), { ...q(2), answer_index: 4 }],
+        questions: [q(0), q(1), q(2), q(3), { ...q(0), answer_index: 4 }],
       }).success
     ).toBe(false)
   })

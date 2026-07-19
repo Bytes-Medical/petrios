@@ -1,4 +1,5 @@
 import 'server-only'
+import { getTtsConfiguration } from '@/lib/ai/tts'
 
 function optional(name: string): string | null {
   const value = process.env[name]?.trim()
@@ -15,6 +16,9 @@ export type ComplianceConfig = {
   emailProvider: string
   aiProvider: string
   aiEnabled: boolean
+  speechProvider: string
+  speechEnabled: boolean
+  speechConfigurationError: boolean
   meetingProvider: string
 }
 
@@ -29,6 +33,7 @@ export type ComplianceConfig = {
 export function getComplianceConfig(): ComplianceConfig {
   const aiEnabled = Boolean(optional('OPENAI_API_KEY'))
   const hasCustomAiEndpoint = Boolean(optional('OPENAI_BASE_URL'))
+  const speech = getTtsConfiguration()
   const jitsiDomain = optional('NEXT_PUBLIC_JITSI_DOMAIN') || 'meet.jit.si'
 
   return {
@@ -53,6 +58,15 @@ export function getComplianceConfig(): ComplianceConfig {
         ? 'Operator-configured OpenAI-compatible endpoint'
         : 'OpenAI API',
     aiEnabled,
+    speechProvider: speech.provider === 'elevenlabs'
+      ? 'ElevenLabs API'
+      : speech.provider === 'openai'
+        ? hasCustomAiEndpoint
+          ? 'Operator-configured OpenAI-compatible speech endpoint'
+          : 'OpenAI API'
+        : 'Invalid speech provider configuration',
+    speechEnabled: speech.configured,
+    speechConfigurationError: Boolean(speech.configurationError),
     meetingProvider: jitsiDomain === 'meet.jit.si'
       ? 'Jitsi Meet (meet.jit.si)'
       : `Operator-configured Jitsi service (${jitsiDomain})`,

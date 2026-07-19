@@ -10,8 +10,8 @@ import {
 } from '@/lib/recall-analytics'
 
 /**
- * Retention analytics for moderators: cohort recall scores by days since the
- * session. Everything shown here is aggregate-only — cohorts under
+ * Catch-up analytics for moderators: final outcomes by days since the session.
+ * Everything shown here is aggregate-only — cohorts under
  * RETENTION_MIN_COHORT arrive already suppressed from the server.
  */
 export function RecallAnalyticsPanel({ sessionId }: { sessionId: string }) {
@@ -40,7 +40,7 @@ export function RecallAnalyticsPanel({ sessionId }: { sessionId: string }) {
   }, [sessionId])
 
   if (loading) {
-    return <p className="font-mono text-sm">Loading retention analytics...</p>
+    return <p className="font-mono text-sm">Loading catch-up analytics...</p>
   }
 
   if (error) {
@@ -54,8 +54,8 @@ export function RecallAnalyticsPanel({ sessionId }: { sessionId: string }) {
   if (!analytics || analytics.totalResponses === 0) {
     return (
       <p className="font-mono text-sm text-gray-600">
-        No recall answers yet. Analytics appear here once attendees start
-        answering the recall questions (sent 3 days after the session).
+        No completed or exhausted catch-up outcomes yet. Individual attempts
+        are never shown here.
       </p>
     )
   }
@@ -66,28 +66,23 @@ export function RecallAnalyticsPanel({ sessionId }: { sessionId: string }) {
         <Card>
           <p className="mb-1 font-mono text-sm text-gray-600">Responses</p>
           <p className="font-mono text-3xl font-bold">{analytics.totalResponses}</p>
-          {analytics.attendeeResponseRatePct !== null ? (
-            <p className="mt-1 font-mono text-xs text-gray-600">
-              {analytics.attendeeResponseRatePct}% of attendees answered
-            </p>
-          ) : null}
+          <p className="mt-1 font-mono text-xs text-gray-600">final outcomes only</p>
         </Card>
         <Card>
-          <p className="mb-1 font-mono text-sm text-gray-600">Avg Score (attendees)</p>
-          <HeadlineStat stats={analytics.retention} unit="%" field="avgScorePct" />
+          <p className="mb-1 font-mono text-sm text-gray-600">Average final score</p>
+          <HeadlineStat stats={analytics.catchUp} unit="%" field="avgScorePct" />
         </Card>
         <Card>
-          <p className="mb-1 font-mono text-sm text-gray-600">Pass Rate (attendees)</p>
-          <HeadlineStat stats={analytics.retention} unit="%" field="passRatePct" />
+          <p className="mb-1 font-mono text-sm text-gray-600">5/5 completion rate</p>
+          <HeadlineStat stats={analytics.catchUp} unit="%" field="passRatePct" />
         </Card>
       </div>
 
       <Card>
-        <h3 className="mb-1 font-mono font-bold">Retention Over Time</h3>
+        <h3 className="mb-1 font-mono font-bold">Catch-up outcomes over time</h3>
         <p className="mb-4 font-mono text-xs text-gray-600">
-          Average score by days since the session —{' '}
-          <span className="text-black">■ attendees (retention)</span> ·{' '}
-          <span className="text-clay-600">■ absentees (catch-up)</span>
+          Average final score by days since the original session. Failed first
+          or second attempts are not included.
         </p>
         <div className="space-y-4">
           {analytics.buckets.map((bucket) => (
@@ -95,7 +90,6 @@ export function RecallAnalyticsPanel({ sessionId }: { sessionId: string }) {
               <p className="mb-1 font-mono text-xs uppercase tracking-[0.18em] text-gray-500">
                 {bucket.label}
               </p>
-              <BucketBar stats={bucket.retention} barClass="bg-black" />
               <BucketBar stats={bucket.catchUp} barClass="bg-clay-600" />
             </div>
           ))}
@@ -104,6 +98,15 @@ export function RecallAnalyticsPanel({ sessionId }: { sessionId: string }) {
           Aggregates only — cohorts under {RETENTION_MIN_COHORT} are never shown.
         </p>
       </Card>
+      {analytics.retention.n > 0 && (
+        <Card>
+          <h3 className="font-mono font-bold">Legacy attendee retention</h3>
+          <p className="mt-1 font-mono text-xs text-gray-600">
+            {analytics.retention.n} response{analytics.retention.n === 1 ? '' : 's'} from the
+            pre-catch-up Recall workflow are retained for historical reporting.
+          </p>
+        </Card>
+      )}
     </div>
   )
 }

@@ -47,7 +47,7 @@ const AUDIENCES = [
     initial: 'T',
     title: 'For trainees',
     lead: 'Turn up, and the evidence takes care of itself.',
-    body: 'Check in with your account or the secure session code; organisers review and finalize a complete attendance roster. Your curriculum passport shows which Progress+ domains you’ve covered, and a verifiable portfolio pack is one click when ARCP season arrives. Recall quizzes support learning after a missed session without rewriting physical attendance.',
+    body: 'Check in with your account or the secure session code; organisers review and finalize a complete attendance roster. Your progress view brings attendance, reflections, certificates, and a verifiable portfolio pack together. Recall quizzes support learning after a missed session without rewriting physical attendance.',
   },
   {
     initial: 'F',
@@ -59,7 +59,7 @@ const AUDIENCES = [
     initial: 'O',
     title: 'For organisers',
     lead: 'Run the programme, not the inbox.',
-    body: 'Publish availability and let teachers claim it. An AI assistant drafts your speaker chases, thank-yous, and weekly digest — nothing sends until you approve it. Audit, equity, and curriculum coverage dashboards make the DME report write itself.',
+    body: 'Publish availability and let teachers claim it. AI drafts speaker chases and thank-yous, while moderators can turn a full week of teaching and its materials into a polished departmental newsletter. Nothing sends until a human reviews and approves it.',
   },
 ]
 
@@ -104,7 +104,7 @@ const STEPS = [
   {
     step: '03',
     title: 'Evidence',
-    body: 'Attendance, coverage, reflections, and feedback compound into portfolio packs, dossiers, and audit reports — automatically.',
+    body: 'Attendance records, reflections, certificates, and feedback compound into portfolio packs, dossiers, and audit reports — automatically.',
   },
 ]
 

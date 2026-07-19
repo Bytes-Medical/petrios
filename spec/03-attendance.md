@@ -27,12 +27,16 @@ derivation contract.
 3. Policy-v2 evidence insertion and result recomputation occur in one database
    transaction through `record_attendance_evidence_v2`. A committed evidence row
    cannot be left with a stale derived row by that path.
-4. Feedback submission, Recall completion, teacher invitation acceptance, and
-   teaching-slot claim do not create policy-v2 attendance.
+4. Feedback submission, teacher invitation acceptance, and teaching-slot claim
+   do not create policy-v2 attendance. Recall is a narrow exception: only the
+   guarded Audio Recap completion RPC can append source `RECALL` and transition
+   a current finalized expected attendee from `ABSENT` to `PRESENT`.
 5. A certificate requires the current finalized revision and a `PRESENT` or
    `LATE` result. Both application code and a database trigger enforce this.
-6. Finalized attendance cannot be edited. A moderator must reopen it with a
-   reason, append corrections, and create a new final revision.
+6. Finalized attendance cannot be generally edited. A moderator correction must
+   reopen with a reason and create a new revision. The only same-revision
+   transition is the pre-authorized Audio Recap catch-up RPC, whose source and
+   completion record remain explicit.
 7. Tenant scope comes from the authenticated organization and the session row.
    The service-role RPC locks and matches `org_id`, `department_id`, and
    `session_id`; it does not trust client-supplied scope by itself.
@@ -193,12 +197,12 @@ database trigger, even if a client bypasses the disabled UI button.
 | `FEEDBACK` | 3 | None in v2 | Policy v1 only | Historical feedback-derived evidence |
 | `GROUP_CODE` | 2 | Authenticated subject after secure-code verification | Check-in window inclusive | Possession of the active session code |
 | `SELF_CHECKIN` | 1 | Authenticated subject for themself; Jitsi join attempts it | Check-in window inclusive | Participant self-attestation |
-| `RECALL` | 0 | None in v2 | Policy v1 only, end through end + 21 days | Historical catch-up learning completion |
+| `RECALL` | 0 | `complete_recall_catchup_v2` only | Policy v1: end through end + 21 days. Policy v2: published set deadline is enforced at insertion, then evidence stays valid for future recomputation | Approved Audio Recap catch-up; `PRESENT` recognition without a physical-presence claim |
 
 For a subject, derivation:
 
 1. revalidates every row using its stored `observed_at`;
-2. under policy v2 excludes `FEEDBACK`, `RECALL`, and `TEACHER` rows whose
+2. under policy v2 excludes `FEEDBACK` and `TEACHER` rows whose
    metadata says `assigned_as_teacher: true`;
 3. sorts valid evidence by priority descending and then observation time
    ascending;
@@ -221,7 +225,8 @@ Let `S` be start and `E` be end. Null settings use these defaults:
 | Check-in closes | `S + (checkin_close_mins_after ?? 45 minutes)` |
 | Historical feedback closes | `E + (feedback_valid_mins_after_end ?? 120 minutes)` |
 | Late threshold | `S + (late_after_mins ?? 10 minutes)` |
-| Historical Recall closes | `E + 21 days` |
+| Historical policy-v1 Recall closes | `E + 21 days` |
+| Policy-v2 Audio Recap catch-up closes | `recall_question_sets.catchup_closes_at` (currently publication + 21 days) |
 
 Endpoints are inclusive. Lateness is strict: evidence exactly at the late
 threshold is `PRESENT`; evidence after it is `LATE`. Zero is a meaningful
@@ -303,8 +308,13 @@ feedback-record association. That resolution does not prove the submitter is
 that user and is never used for attendance or certificate eligibility.
 
 Passing Recall questions records learning completion and can update the Recall
-answer state. Under policy v2 it does not change physical attendance. Policy-v1
-historical evidence remains interpretable so old records are not rewritten.
+attempt state. Under policy v2, only the full governed path in spec 08—matching
+account, expected finalized absentee, completed current audio, five published
+questions, and a perfect 5/5 attempt—creates append-only `RECALL` evidence and
+sets that same-revision result to `PRESENT`. The source is displayed as **Audio
+recap catch-up** and never as physical attendance. A quiz result alone has no
+attendance effect. Policy-v1 historical evidence remains interpretable so old
+records are not rewritten.
 
 ## Participant notifications
 
@@ -340,6 +350,12 @@ Teacher recognition does not create, alter, or make a claim about physical
 attendance. The certificate stores the finalized session revision as its
 governance snapshot. Accepted teachers are rejected from the attendee role so
 one session cannot produce both certificate roles for the same teacher.
+
+Attendee certificates additionally snapshot `recognition_basis`. Ordinary
+results use `LIVE_ATTENDANCE`; a RECALL-primary result must use
+`AUDIO_RECAP_CATCH_UP` and have the matching `recall_completions` row. The
+database rejects either basis being substituted for the other. The catch-up PDF,
+email, download, and public verification surface retain this distinction.
 
 The post-session job does not create evidence or recompute attendance. It skips
 sessions that are not finalized, reads current `PRESENT`/`LATE` internal users,
@@ -411,6 +427,8 @@ Attendance changes require at least:
   rate-limit boundary, finalization, reopening reason, notification failure,
   and moderator-only export;
 - confirmation that feedback, assignment/claim, Recall, feedback release, and
-  the post-session job do not create physical-attendance evidence; and
+  the post-session job do not create physical-attendance evidence, while only
+  the guarded Recall completion RPC creates transparent learning-path evidence;
+  and
 - lint, typecheck, unit tests, production build, and migration execution against
   a representative database before deployment.

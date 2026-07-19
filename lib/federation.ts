@@ -79,7 +79,8 @@ export interface TeachingRecord {
   subject: { name: string; grade: string | null }
   attendance: { session: string; date: string; status: string; source: string | null }[]
   certificates: string[]
-  coverage: { domain: string; sessions: number }[]
+  /** Legacy v1 exports may contain curriculum coverage; new exports omit it. */
+  coverage?: { domain: string; sessions: number }[]
   signature: string
 }
 

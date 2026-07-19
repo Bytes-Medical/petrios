@@ -85,7 +85,7 @@ export default async function VerifyPackPage(props: { params: Promise<{ code: st
                     </span>
                     <span className="shrink-0 font-mono text-xs text-gray-600">
                       {entry.status}
-                      {entry.source === 'RECALL' ? ' (caught up)' : ''}
+                      {entry.source === 'RECALL' ? ' (Audio recap catch-up)' : ''}
                     </span>
                   </div>
                 ))}

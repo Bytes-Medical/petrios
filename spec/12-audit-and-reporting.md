@@ -291,7 +291,8 @@ The PDF includes:
 - derived status plus `attendance.primary_source` when present.
 
 Known source-label mapping covers self check-in, group code, feedback, teacher,
-and Teams. Other sources, including Recall, render as their raw enum/string.
+Teams, moderator confirmation, and Recall. Recall renders as **Audio recap
+catch-up** so a PRESENT result cannot be mistaken for physical presence.
 
 **Authorization gap:** the action authorizes the caller's department scope but
 does not verify that the supplied target `userId` belongs to any authorized

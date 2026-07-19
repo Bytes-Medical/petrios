@@ -40,7 +40,9 @@ does not pass grade, so profile grade and department grade can differ.
 
 ### Passwordless email link
 
-The public login form calls `sendPasswordlessLoginLink(email)`.
+The public login form calls `sendPasswordlessLoginLink(email, nextPath)`. The
+continuation defaults to `/dashboard`; identity-bound Recall supplies its own
+local deep link.
 
 1. Lower-case/trim email and require nonblank.
 2. Read recent `login_link_requests` for a 15-minute window.
@@ -48,8 +50,9 @@ The public login form calls `sendPasswordlessLoginLink(email)`.
 4. Record the request, then opportunistically delete rows older than 24 hours.
 5. Ask GoTrue admin API for a magic link; if the account is reported missing,
    request an invite link, which creates the account.
-6. Build a Petrios `/join/callback` URL containing `token_hash`, link type,
-   `mode=login`, and `next=/dashboard`.
+6. Normalize `nextPath` through `safeNextPath`, then build a Petrios
+   `/join/callback` URL containing `token_hash`, link type, `mode=login`, and
+   that safe continuation.
 7. Send through the shared email adapter.
 
 The limiter table is deny-all/service accessed because the caller is not signed
@@ -79,8 +82,8 @@ A successfully created account without membership reaches the join wall.
 
 ### Microsoft Entra OAuth
 
-`getMicrosoftSignInUrl` asks Supabase for provider `azure`, scope `email`, PKCE
-callback `/join/callback?mode=login&next=/dashboard`. Provider configuration
+`getMicrosoftSignInUrl` asks Supabase for provider `azure`, scope `email`, and a
+PKCE callback whose `next` is the same normalized local continuation. Provider configuration
 lives in Entra and Supabase, not Petrios-specific secrets. An unavailable provider
 returns a readable message and users can fall back to email.
 
@@ -88,15 +91,17 @@ The callback exchanges an OAuth code or verifies a token hash client-side,
 waits briefly for cookie propagation, reloads the authenticated user, optionally
 finalizes an onboarding request, and redirects.
 
-Current redirect limitation: callback `next` is read from the query and passed to
-`window.location.replace` in login mode without enforcing a same-origin relative
-path. Generated links use `/dashboard`, but the public callback should validate
-the parameter before it is considered free of open-redirect behavior.
+`safeNextPath` requires a single-slash local URL, rejects absolute,
+protocol-relative, and backslash-host forms, parses it against a fixed internal
+origin, and falls back to `/dashboard`. Login entry, email/OAuth link generation,
+and the callback repeat this validation so editing the callback query cannot
+turn it into an open redirect.
 
 ### Sign-out and session refresh
 
-The request proxy invokes `auth.getUser()` to refresh expired browser sessions
-and copies resulting cookies. Unauthenticated nonpublic page requests redirect to
+The request proxy invokes local `auth.getClaims()` verification (with provider
+refresh behavior where needed) and copies resulting cookies. Authoritative page
+and action reads still call network-verified `getCurrentUser()`. Unauthenticated nonpublic page requests redirect to
 `/login`. API handlers are excluded from that redirect and must authenticate
 themselves. Supabase cookie options are preserved with `SameSite=Lax`; httpOnly
 uses the provider-supplied value.

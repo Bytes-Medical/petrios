@@ -3,8 +3,8 @@ import { z } from 'zod'
 
 /**
  * Petrios Recall pure logic: question-set schema, answer scoring, and the
- * HMAC capability tokens that let recipients answer from an email link
- * without logging in (same trick as newsletter unsubscribe links).
+ * HMAC capability tokens used as non-enumerable deep links. Attendance-awarding
+ * answers additionally require the matching authenticated registered user.
  */
 
 export const RecallQuestionSchema = z.object({
@@ -15,12 +15,12 @@ export const RecallQuestionSchema = z.object({
 })
 
 export const RecallQuestionSetSchema = z.object({
-  questions: z.array(RecallQuestionSchema).length(3),
+  questions: z.array(RecallQuestionSchema).length(5),
 })
 
 export type RecallQuestion = z.infer<typeof RecallQuestionSchema>
 
-/** Pass mark: at least 2 of 3 (ceil of two-thirds for other set sizes). */
+/** Catch-up mastery requires every published question to be correct. */
 export function scoreAnswers(
   questions: RecallQuestion[],
   answers: number[]
@@ -30,7 +30,7 @@ export function scoreAnswers(
   questions.forEach((q, i) => {
     if (answers[i] === q.answer_index) score++
   })
-  return { score, total, passed: score >= Math.ceil((total * 2) / 3) }
+  return { score, total, passed: total === 5 && score === total }
 }
 
 // ---------------------------------------------------------------------------

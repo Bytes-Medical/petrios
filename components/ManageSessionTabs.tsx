@@ -244,10 +244,14 @@ export function ManageSessionTabs({
             )}
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Recall Questions</h2>
-              <RecallQuestionsPanel sessionId={session.id} initialSet={recallSet} />
+              <RecallQuestionsPanel
+                sessionId={session.id}
+                initialSet={recallSet}
+                recapScriptDigest={audioRecap?.script_digest}
+              />
             </Card>
             <Card>
-              <h2 className="text-xl font-mono font-bold mb-4">Retention Analytics</h2>
+              <h2 className="text-xl font-mono font-bold mb-4">Catch-up Analytics</h2>
               <RecallAnalyticsPanel sessionId={session.id} />
             </Card>
           </div>

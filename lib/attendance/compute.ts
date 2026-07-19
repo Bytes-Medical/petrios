@@ -15,8 +15,9 @@ export const EVIDENCE_PRIORITY: Record<EvidenceSource, number> = {
   FEEDBACK: 3,
   GROUP_CODE: 2,
   SELF_CHECKIN: 1,
-  // Historical policy-v1 Recall evidence. Policy v2 filters it out and the
-  // current Recall action does not create new physical-attendance evidence.
+  // Governed audio-recap catch-up. It stays below every live-attendance source
+  // so recomputation preserves the transparent basis without masking stronger
+  // evidence that the learner was physically present.
   RECALL: 0,
 }
 
@@ -99,6 +100,12 @@ export function isWithinEvidenceWindow(
       return true
     case 'RECALL': {
       const end = new Date(session.date_end).getTime()
+      // Policy-v2 RECALL rows can only be created by the guarded completion
+      // RPC, which checks the published question-set deadline. Once accepted,
+      // keep that evidence valid during any later governed recomputation.
+      if ((session.attendance_policy_version ?? 1) >= 2) {
+        return at.getTime() >= end
+      }
       return (
         at.getTime() >= end &&
         at.getTime() <= end + RECALL_VALID_DAYS_AFTER_END * 24 * 60 * 60 * 1000
@@ -126,7 +133,7 @@ export function computeAttendanceFromEvidence(
     }
 
     if ((session.attendance_policy_version ?? 1) >= 2) {
-      if (ev.source === 'FEEDBACK' || ev.source === 'RECALL') return false
+      if (ev.source === 'FEEDBACK') return false
       if (ev.source === 'TEACHER' && ev.metadata?.assigned_as_teacher === true) {
         return false
       }

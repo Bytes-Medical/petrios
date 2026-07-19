@@ -3,7 +3,7 @@
 ## Session aggregate
 
 A `sessions` row is the anchor for scheduling, attendance, feedback, teachers,
-Recall, certificates, curriculum mapping, communications, and reporting. It
+Recall, certificates, communications, newsletters, and reporting. It
 belongs to one organization and one department and records a creator, title,
 description, start/end, location, optional session type, lifecycle status, and
 subsystem settings/watermarks.
@@ -19,7 +19,7 @@ The implemented location values are:
 
 The optional session-type vocabulary is `STEPP`, `CLINICAL_SKILLS`,
 `SIMULATION`, and `ACADEMIC`. It is classification metadata, not authorization
-or curriculum coverage by itself.
+or learning-outcome evidence by itself.
 
 ## Status and lifecycle
 
@@ -469,6 +469,13 @@ row was already created before a later failure, compensation does not delete
 that orphaned side effect. Operators and future changes must not call the flow
 fully atomic.
 
+Deleting a session with ISSUED CERTIFICATES is blocked entirely
+(`countCertificatesForSession` guard in `deleteSession`) — certificates are
+durable, publicly verifiable records and `certificates.session_id` is ON
+DELETE CASCADE; the moderator is told to cancel the session instead.
+Deleting an ACCEPTED external invitation that belongs to the session's
+slot claimer is likewise blocked ("cancel or delete the session instead")
+— that invitation is the external's only attachment to the session.
 Deleting the generated session **closes** its claimed slot
 (`closeSlotForSession`, run before the delete while `session_id` still
 points at it) — never reopens it, since silently re-advertising a date the

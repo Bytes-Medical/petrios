@@ -19,7 +19,7 @@ interface OpsChatPanelProps {
 const STARTER_PROMPTS = [
   'Which upcoming sessions still have no confirmed speaker?',
   'Summarise the feedback themes from recent sessions.',
-  'Which curriculum domains have no coverage this term?',
+  'Which sessions have the lowest aggregate feedback this term?',
   'How do teaching slots and claiming work?',
 ]
 
@@ -136,7 +136,7 @@ export function OpsChatPanel({ threads: initialThreads }: OpsChatPanelProps) {
           {messages.length === 0 && !busy ? (
             <div>
               <p className="mb-3 font-mono text-sm text-gray-600">
-                Ask about your sessions, speakers, feedback themes, curriculum
+                Ask about your sessions, speakers, feedback themes, attendance
                 coverage — or how anything on the platform works. Any email it
                 drafts waits for your approval.
               </p>

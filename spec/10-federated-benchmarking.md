@@ -154,7 +154,7 @@ sessions.
 This cannot be implemented from current raw `attendance` rows alone because
 missing rows are not materialized absences and expected audience is not stored as
 a session-time snapshot. Using current department membership would reproduce the
-live passport but can rewrite history. The RFC must choose and migrate a stable
+live progress record but can rewrite history. The RFC must choose and migrate a stable
 expected-attendee definition before this metric is comparable.
 
 `attendance_n` is the expected-subject outcome denominator, not number of unique

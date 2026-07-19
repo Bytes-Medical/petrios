@@ -3,7 +3,6 @@
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireOrg } from '@/lib/auth'
-import { buildCoverage, type DomainCoverage } from '@/lib/ops/curriculum'
 import { generatePortfolioPackPDF } from '@/lib/portfolio/pack-pdf'
 import { generateDossierPDF } from '@/lib/portfolio/dossier-pdf'
 import { averageRating } from '@/lib/ops/format'
@@ -23,8 +22,8 @@ import type { SessionReflection } from '@/lib/db/reflections'
 import type { OpsSynthesisTheme } from '@/lib/types'
 
 /**
- * Evidence Engine: the trainee "curriculum passport" + ARCP portfolio pack,
- * and the teacher appraisal/revalidation dossier. Everything here is
+ * Evidence Engine: the trainee attendance/reflection/certificate portfolio
+ * pack and the teacher appraisal/revalidation dossier. Everything here is
  * self-scoped — a user can only ever assemble evidence about themselves
  * (requireAuth + own userId throughout).
  */
@@ -35,7 +34,6 @@ export interface Passport {
     attended: number
     total: number
   }
-  coverage: DomainCoverage[]
   reflections: SessionReflection[]
   certificates: { id: string; certificate_code: string; role: string; session_title: string }[]
 }
@@ -44,19 +42,11 @@ export async function getMyPassport(): Promise<Passport> {
   const userId = await requireAuth()
   const orgId = await requireOrg()
 
-  const [summary, reflections, certificates, domains, mappings] = await Promise.all([
+  const [summary, reflections, certificates] = await Promise.all([
     traineeDashboardDb.getAttendanceSummaryForUser(userId, orgId),
     reflectionsDb.listMyReflections(userId),
     certificatesDb.listMyCertificates(orgId, userId),
-    opsDb.listCurriculumDomains(),
-    opsDb.listMappingsForOrg(orgId),
   ])
-
-  const attendedIds = new Set(
-    summary.sessions
-      .filter((s) => s.status === 'PRESENT' || s.status === 'LATE')
-      .map((s) => s.session_id)
-  )
 
   return {
     attendance: {
@@ -64,7 +54,6 @@ export async function getMyPassport(): Promise<Passport> {
       attended: summary.attended,
       total: summary.total_sessions,
     },
-    coverage: buildCoverage(domains, mappings, attendedIds),
     reflections,
     certificates: certificates.map((c) => ({
       id: c.id,
@@ -117,11 +106,6 @@ export async function generatePortfolioPack(
   const attendedIds = new Set(
     entries.filter((e) => e.status === 'PRESENT' || e.status === 'LATE').map((e) => e.session_id)
   )
-  const [domains, mappings] = await Promise.all([
-    opsDb.listCurriculumDomains(),
-    opsDb.listMappingsForOrg(orgId),
-  ])
-  const coverage = buildCoverage(domains, mappings, attendedIds)
   const reflections = passport.reflections.filter((r) =>
     entries.some((e) => e.session_id === r.session_id)
   )
@@ -143,7 +127,6 @@ export async function generatePortfolioPack(
     })),
     attended: attendedIds.size,
     total: entries.length,
-    coverage: coverage.map((c) => ({ domain: c.name, sessions: c.sessionCount })),
     reflections: reflections.map((r) => ({
       session_id: r.session_id,
       body: r.body,
@@ -168,7 +151,6 @@ export async function generatePortfolioPack(
     periodStart,
     periodEnd,
     entries,
-    coverage,
     reflections: reflections.map((r) => ({
       sessionTitle:
         entries.find((e) => e.session_id === r.session_id)?.session_title ?? 'Session',

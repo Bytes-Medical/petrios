@@ -98,6 +98,22 @@ async function insertContact(input: {
   return data as ExternalContact
 }
 
+export async function findContactEmail(
+  contactId: string,
+  orgId: string
+): Promise<string | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('external_contacts')
+    .select('email')
+    .eq('id', contactId)
+    .eq('org_id', orgId)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to look up contact', error)
+  return (data as { email: string } | null)?.email ?? null
+}
+
 export async function updateContact(input: {
   orgId: string
   contactId: string

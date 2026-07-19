@@ -15,7 +15,7 @@ read exception in `lib/auth.ts`. See spec 01 for the import boundary.
 
 Migration filenames are `NNN_snake_case.sql`, with a unique monotonically
 increasing numeric prefix. The implemented baseline ends at
-`057_teacher_certificate_assignment_eligibility.sql`.
+`058_audio_recap_tts_provider.sql`.
 
 Rules for a schema change:
 
@@ -106,8 +106,11 @@ claim compare-and-set and audience snapshot.
 | `session_attendance_secrets` | Salted scrypt verifier for the active group code | Deny-all server secret; never selected with ordinary session rows |
 | `session_reflections` | User's written learning reflection | Self-owned upsert per session/user |
 | `portfolio_packs` | Immutable serialized ARCP/portfolio snapshot and verification code | Insert/read through service DAL; no update/revoke path |
-| `recall_question_sets` | Three-question Recall artifact and send watermarks | Draft/edit/approve lifecycle |
-| `recall_answers` | One answer set per session/user | Insert-once result with kind, score, answers, and timestamps |
+| `recall_question_sets` | Script-bound five-question artifact, immutable publication revision, 21-day window, and send watermarks | Current draft may be replaced; publication is immutable and recall clones a higher revision while retiring the old row |
+| `recall_playback_progress` | Per-user/current-audio listening telemetry | Deny-all; guarded heartbeat RPC, reset when audio revision changes |
+| `recall_attempts` | Up to three immutable five-answer attempts per set/user | Deny-all; unique numbered attempts tied to exact playback and question revision |
+| `recall_completions` | Transactional mastery/attendance recognition and asynchronous certificate state | One per session/user; `PENDING`/`ISSUED`/`DELIVERED`/`FAILED` award lifecycle |
+| `recall_answers` | Legacy aggregate/final-outcome compatibility row per session/user | Insert-once result with kind, score, answers, and timestamps; not attendance authority |
 
 `attendance_evidence` has a unique per-session `source_event_key` when present.
 `attendance` has separate partial uniqueness for internal subjects
@@ -116,6 +119,13 @@ email). A row is a cache of the derivation, not primary evidence. Policy-v2
 finalization row-locks the session, snapshots the roster, materializes absences,
 and increments/stamps the revision in one RPC transaction.
 
+Migration 059 adds a narrow post-finalization transition. The only producer is
+`complete_recall_catchup_v2`, which locks and verifies the immutable question
+revision, current audio revision, complete playback, perfect attempt, expected
+registered absentee, and current session revision before atomically appending
+`RECALL` evidence, inserting completion, and changing that row to `PRESENT`.
+Generic evidence writers cannot invoke this source.
+
 ## Feedback and recognition tables
 
 | Table | Purpose | Important behavior |
@@ -123,8 +133,8 @@ and increments/stamps the revision in one RPC transaction.
 | `session_feedback` | Submitted identity snapshot, configurable answer snapshot, derived rating/comment | Public/accountless submission path; moderator raw access |
 | `feedback_actions` | Legacy “You said, we did” records | Inactive historical storage; no current read, write, management, or public surface |
 | `teacher_feedback_reports` | Moderator-approved, versioned aggregate release snapshot | Deny-all; deterministic analytics plus optional exact reviewed AI-assisted narrative; content changes create a new version |
-| `session_deliveries` | Per-recipient/report-or-certificate delivery ledger and recoverable send claim | Deny-all; unique natural delivery identity, 15-minute stale-claim recovery; `SENT` is reclaimable only for an explicit moderator feedback resend |
-| `certificates` | Issued certificate metadata, public code, finalized governance revision, coordinator-name snapshot, and validity/revocation state | Database eligibility trigger; attendee recognition requires current finalized attendance, while teacher recognition requires an accepted registered assignment or external invitation; partial uniqueness permits one current `VALID` subject/session/role row |
+| `session_deliveries` | Per-recipient report, invitation, or certificate delivery ledger and recoverable send claim | Deny-all; unique natural delivery identity, 15-minute stale-claim recovery; `SENT` is reclaimable only for an explicit moderator feedback resend |
+| `certificates` | Issued metadata, public code, finalized revision, recognition basis, coordinator snapshot, and validity/revocation state | Database eligibility trigger; attendee recognition requires current finalized attendance and correct live/catch-up basis, while teacher recognition requires an accepted assignment/invitation; partial uniqueness permits one current `VALID` subject/session/role row |
 
 Feedback stores the submitter's first name, last name, and email; “public form”
 does not mean anonymous storage. A per-session submission key limits one response
@@ -163,14 +173,15 @@ session.
 | `ops_pending_actions` | Approval-gated outbound action with exact payload and state |
 | `ops_speaker_chases` | Chase count/timing per target |
 | `ops_feedback_syntheses` | Safety-processed synthesis, themes, strengths, actions, quotes |
-| `ops_curriculum_domains` | Organization curriculum taxonomy |
-| `ops_curriculum_map` | Session-to-domain mapping and confidence/source |
-| `ops_newsletter_issues` | Weekly draft/execution state and counts |
+| `ops_curriculum_domains` | Retired historical organization curriculum taxonomy; no active reader/writer |
+| `ops_curriculum_map` | Retired historical session mapping; no active reader/writer |
+| `ops_newsletter_issues` | Department/week draft, exact content + source snapshot, revision, execution state, and counts |
 | `ops_newsletter_optouts` | Recipient unsubscribe state |
+| `ops_newsletter_deliveries` | Per-issue/member revision-bound send claim, retry, provider id, and error state |
 | `ops_memory` | Organization-scoped agent state/deduplication memory |
 | `ops_chat_threads` | Assistant conversation container |
 | `ops_chat_messages` | Assistant/user/tool message history and traces |
-| `audio_recaps` | Moderator-approved script and MP3 bytes; exact session-document source snapshot/digest; generation-time public research URL/title citations and research flag |
+| `audio_recaps` | Moderator-approved script and MP3 bytes; exact session-document source snapshot/digest; generation-time public research URL/title citations/research flag; speech provider/model/voice snapshot |
 
 `audio_recaps` belongs to the same product surface but intentionally is not an
 `ops_*` table. It uses its own draft/approved gate, never sends email, and treats
@@ -183,6 +194,30 @@ the flag only after required hosted search returns at least one verifiable HTTP(
 source. SQL constrains the value to an array of at most 20 entries and forbids a
 nonempty list when the research flag is false. Application metadata reads
 deliberately exclude the MP3 byte column.
+
+Migration 058 adds nullable `tts_provider`, constrained to `openai` or
+`elevenlabs`. Existing audio remains `NULL` because a historical custom
+OpenAI-compatible base URL does not prove the underlying provider. New audio
+creation snapshots provider, model, and voice together. Script regeneration or
+editing clears the MP3, byte count, and all three speech metadata fields so a
+draft never describes audio that no longer exists.
+
+Migration 060 changes newsletters from legacy organization-wide cron artifacts
+to moderator-triggered department/week issues. New rows require `department_id`;
+legacy null-department rows remain readable for migration history but cannot be
+delivered by the current executor. `content` stores the validated editable JSON,
+`source_session_ids` and `source_documents` store provenance metadata,
+`content_revision` supports compare-and-swap review, and `generated_by` records
+the initiating moderator. The partial unique index is
+`(org_id, department_id, week_start) WHERE department_id IS NOT NULL`; a separate
+legacy partial index preserves organization/week uniqueness for null rows.
+
+`ops_newsletter_deliveries` is deny-all RLS and unique by `(issue_id,
+recipient_user_id)`. Its organization and department columns duplicate scope for
+auditing; `content_revision` binds the attempt to reviewed content. The claim RPC
+is service-role-only and can reacquire `FAILED` rows or a `SENDING` lease older
+than ten minutes. Delivery status is constrained to `PENDING`, `SENDING`, `SENT`,
+or `FAILED`.
 
 ## RLS strategies
 
@@ -251,6 +286,8 @@ Important guarantees live at different layers:
   organization to `faculty` whenever a new organization wins;
 - partial unique indexes distinguish internal/external attendance subjects and
   current valid certificate roles;
+- Recall uniqueness freezes `(session, revision)`, numbered attempts, one
+  playback row per set/user, and one completion per session/user;
 - attendance source-event keys, feedback submission keys, notification dedupe
   keys, report versions, and delivery natural keys suppress replay;
 - session row locks serialize evidence and attendance finalization;
@@ -258,7 +295,8 @@ Important guarantees live at different layers:
   attendance is reopened, and reject ineligible `VALID` certificate inserts;
 - update predicates implement transitions such as claiming an `OPEN`, future
   slot, claiming a `pending` Ops action, or claiming a delivery lease;
-- watermarks keep reminder/report/Recall jobs from repeating completed work;
+- watermarks plus per-recipient delivery rows keep reminder/report/Recall jobs
+  from repeating completed work while leaving failures retryable;
 - email and webhook effects are usually not in the same transaction as the
   durable state that triggered them.
 

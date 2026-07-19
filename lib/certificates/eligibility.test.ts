@@ -31,7 +31,10 @@ describe('canonical external teacher certificate eligibility', () => {
       role: 'TEACHER',
       externalEmail: ' External@Example.com ',
       invitationId: 'invitation-1',
-    })).resolves.toEqual({ attendanceRevision: 3 })
+    })).resolves.toEqual({
+      attendanceRevision: 3,
+      recognitionBasis: 'TEACHING_ASSIGNMENT',
+    })
     expect(db.externalInvitationIsAcceptedAsSystem).toHaveBeenCalledWith({
       sessionId: 'session-1',
       invitationId: 'invitation-1',
@@ -69,7 +72,10 @@ describe('canonical external teacher certificate eligibility', () => {
       orgId: 'org-1',
       role: 'TEACHER',
       userId: 'teacher-1',
-    })).resolves.toEqual({ attendanceRevision: 3 })
+    })).resolves.toEqual({
+      attendanceRevision: 3,
+      recognitionBasis: 'TEACHING_ASSIGNMENT',
+    })
     expect(db.findFinalizedAttendanceForUserAsSystem).not.toHaveBeenCalled()
   })
 
@@ -78,6 +84,7 @@ describe('canonical external teacher certificate eligibility', () => {
     db.findFinalizedAttendanceForUserAsSystem.mockResolvedValue({
       status: 'PRESENT',
       revision: 3,
+      primary_source: 'SELF_CHECKIN',
     })
 
     await expect(requireCertificateEligibility({
@@ -85,7 +92,29 @@ describe('canonical external teacher certificate eligibility', () => {
       orgId: 'org-1',
       role: 'ATTENDEE',
       userId: 'attendee-1',
-    })).resolves.toEqual({ attendanceRevision: 3 })
+    })).resolves.toEqual({
+      attendanceRevision: 3,
+      recognitionBasis: 'LIVE_ATTENDANCE',
+    })
+  })
+
+  it('preserves the catch-up recognition basis for a RECALL-primary attendee', async () => {
+    db.userIsAcceptedTeacherAsSystem.mockResolvedValue(false)
+    db.findFinalizedAttendanceForUserAsSystem.mockResolvedValue({
+      status: 'PRESENT',
+      revision: 3,
+      primary_source: 'RECALL',
+    })
+
+    await expect(requireCertificateEligibility({
+      sessionId: 'session-1',
+      orgId: 'org-1',
+      role: 'ATTENDEE',
+      userId: 'attendee-1',
+    })).resolves.toEqual({
+      attendanceRevision: 3,
+      recognitionBasis: 'AUDIO_RECAP_CATCH_UP',
+    })
   })
 
   it('prevents an accepted teacher receiving a duplicate attendee certificate', async () => {

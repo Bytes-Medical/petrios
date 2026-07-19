@@ -8,7 +8,7 @@ import { getMicrosoftSignInUrl } from '@/app/actions/auth'
  * The server action returns the provider redirect URL (or an error when the
  * Azure provider isn't configured on this deployment); we navigate to it.
  */
-export function MicrosoftSignInButton() {
+export function MicrosoftSignInButton({ nextPath = '/dashboard' }: { nextPath?: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -16,7 +16,7 @@ export function MicrosoftSignInButton() {
     setLoading(true)
     setError(null)
     try {
-      const result = await getMicrosoftSignInUrl()
+      const result = await getMicrosoftSignInUrl(nextPath)
       if (result.url) {
         window.location.href = result.url
         return

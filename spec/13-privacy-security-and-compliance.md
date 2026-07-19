@@ -100,9 +100,14 @@ Provider status is derived without exposing secrets:
   says operator-managed host.
 - `SMTP_HOST` selects an operator SMTP description; otherwise a configured
   `RESEND_API_KEY` selects Resend; absence is declared.
-- `OPENAI_API_KEY` determines whether AI is enabled. `OPENAI_BASE_URL` changes
-  the label to operator-configured compatible endpoint without printing a
-  potentially internal URL.
+- `OPENAI_API_KEY` determines whether LLM/document/research AI is enabled.
+  `OPENAI_BASE_URL` changes the label to operator-configured compatible endpoint
+  without printing a potentially internal URL.
+- Speech status is independently derived from `TTS_PROVIDER` and the selected
+  provider's required credentials. The page names OpenAI API, an
+  operator-configured compatible speech endpoint, or ElevenLabs API without
+  printing a credential, internal base URL, or request content. Partial or
+  invalid speech configuration is labelled incomplete rather than enabled.
 - `NEXT_PUBLIC_JITSI_DOMAIN` selects the meeting-service label, defaulting to
   `meet.jit.si`.
 
@@ -137,11 +142,11 @@ The public privacy notice summarizes these active families:
 |---|---|---|
 | Identity/account | Name, email, grade, auth id, profile/status | Supabase Auth/database; server-rendered role UI; authentication email |
 | Authority | Org/department memberships, roles, invitations, assignments | Authorisation ladder, RLS/service DAL, moderator/admin surfaces |
-| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration, private session documents, Audio Recap document/research provenance | Member pages, private storage/download, invite email, calendar/API/webhook/export paths; explicit moderator Audio Recap generation sends current documents to the configured AI provider and may cause provider-hosted public-search queries derived from them |
-| Attendance | Evidence source/timestamp, roster, derived status, lifecycle revision, corrections | Moderator/teacher views, in-app notifications, certificates, reports, portable records, portfolio |
+| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration, private session documents, Audio Recap and newsletter document/research/speech provenance | Member pages, private storage/download, invite email, calendar/API/webhook/export paths; explicit moderator Audio Recap generation sends current session documents to the configured LLM provider and may cause provider-hosted public-search queries derived from them; explicit newsletter generation sends every available document for the selected department/week but does not use web search; later audio creation sends only the stored draft script to the separately selected speech provider |
+| Attendance | Evidence source/timestamp, roster, derived status, lifecycle revision, corrections, transparent Audio Recap catch-up source | Moderator/teacher views, in-app notifications, certificates, reports, portable records, portfolio |
 | Feedback | First/last name, email, rating, answers, comment, aggregate report snapshots, optional reviewed AI-assisted narrative | Public submission; moderator raw audit; privacy-safe teacher release; stats; optional AI draft and explicit review |
-| Learning evidence | Certificates, registered user or external invitation/email identity, recipient/coordinator/issuer names, Recall answers, reflections, curriculum, snapshots | Personal dashboards; external-teacher PDF email attachments; PDFs; capability verification pages (certificate coordinator/issuer attribution is visible to a code bearer) |
-| Communications | Recipient, content, attachment, send/status/claim/unsubscribe metadata | SMTP/Resend; delivery ledgers; in-app notifications; capability links |
+| Learning evidence | Certificates and recognition basis, registered user or external invitation/email identity, recipient/coordinator/issuer names, Recall playback progress/attempts/answers/completion, reflections, snapshots | Identity-bound catch-up page; personal dashboards; certificate PDF email attachments; PDFs; capability verification pages (certificate coordinator/issuer and catch-up attribution are visible to a code bearer) |
+| Communications | Recipient, reviewed content, newsletter source-document metadata, attachment, send/status/claim/unsubscribe metadata | SMTP/Resend; delivery ledgers; in-app notifications; capability links |
 | Security/technical | Essential cookie, IP/network/provider logs, HMAC-pseudonymized group-code attempt data, API/audit/run metadata | App/database/provider logs, security monitoring and incident review |
 
 Petrios is not designed for patient data. That design intention does not
@@ -213,14 +218,25 @@ footer text or an after-the-fact banner is insufficient.
 The provider adapter and per-purpose data boundaries remain in specs 06 and 09.
 Public disclosure adds these rules:
 
-- An absent `OPENAI_API_KEY` is truthfully shown as AI disabled.
+- An absent `OPENAI_API_KEY` is truthfully shown as LLM/document/research AI
+  disabled. Speech is reported separately because ElevenLabs can be enabled
+  without an OpenAI key and OpenAI speech can share the LLM key.
 - The default configured endpoint is labelled OpenAI API. A custom endpoint is
   labelled generically so an internal hostname is not disclosed.
 - The privacy notice names representative inputs: session metadata, assistant
   messages, purpose-limited feedback, private uploaded learning documents sent
-  on an explicit Audio Recap generation click, provider-hosted search queries
-  that may be derived from those documents, public search results/citations, and
-  recap script/audio text.
+  on an explicit Audio Recap or department/week newsletter generation click,
+  Audio-Recap-only provider-hosted search queries that may be derived from those
+  documents, public search results/citations, and recap script/audio text.
+- The speech-provider request is a distinct purpose-limited flow. It receives
+  only the current stored draft script and speech request metadata—not uploaded
+  documents, extracted text, hosted-search queries, public page bodies, research
+  citations, or raw feedback. Every re-creation is a new provider request and can
+  consume provider credits.
+- New audio stores `tts_provider`, model, and voice beside the MP3 so a moderator
+  can identify how the artifact was made. Provider credentials and endpoints are
+  never stored in the recap row. Editing/regenerating the script clears this
+  provenance with the stale audio.
 - Audio Recap search is restricted in code to an explicit authoritative-domain
   list and supplements rather than replaces the private learning material. The
   application stores URL/title citations and a research flag, not public page
@@ -237,6 +253,14 @@ Public disclosure adds these rules:
   is not used for model training unless the customer opts in, while abuse-
   monitoring logs may retain inputs/outputs for up to 30 days. Provider settings,
   eligibility, exceptions, and policy changes must be reviewed at deployment.
+- When ElevenLabs is selected, the notice names ElevenLabs and directs the
+  operator to reconcile its account's logging/history setting, retention,
+  region, contract, subprocessors, deletion, and transfer posture. The product
+  does not claim zero retention: availability depends on provider plan/account
+  configuration and must be verified by the operator.
+- Attendee playback labels the narration as AI-generated, and moderator audio
+  creation remains subject to the same explicit review/approval gate as other
+  recap content.
 - Custom endpoints require their own training, retention, region, subprocessor,
   security, deletion, and transfer disclosure.
 
@@ -271,8 +295,11 @@ are new reasoned rows. Parent deletion can still cascade according to schema, so
 controllers must define whether retention ends in parent deletion, restriction,
 or continued preservation. Public/signed records already exported cannot
 necessarily be recalled. Email already delivered cannot be erased from a
-recipient mailbox by Petrios. Archived private session documents remain stored
-until a separate deletion/retention operation removes the object.
+recipient mailbox by Petrios. Newsletter issue content, source-document metadata,
+and delivery rows have no automated expiry. Archived private session documents
+remain stored until a separate deletion/retention operation removes the object;
+deleting an object does not rewrite a newsletter provenance snapshot or an email
+already sent.
 
 ## Browser security baseline
 

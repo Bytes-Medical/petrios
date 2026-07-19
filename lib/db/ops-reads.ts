@@ -96,6 +96,30 @@ export async function listSessionsEndedInWindow(
   return (data as OpsSessionRow[] | null) ?? []
 }
 
+/** Published teaching delivered by one department in a completed week. */
+export async function listDepartmentSessionsEndedInWindow(
+  orgId: string,
+  departmentId: string,
+  startIso: string,
+  endIso: string,
+  limit = 50
+): Promise<OpsSessionRow[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('sessions')
+    .select(SESSION_COLUMNS)
+    .eq('org_id', orgId)
+    .eq('department_id', departmentId)
+    .eq('status', 'PUBLISHED')
+    .gte('date_end', startIso)
+    .lt('date_end', endIso)
+    .order('date_start', { ascending: true })
+    .limit(limit)
+
+  if (error) throw toDbError('Failed to list department teaching for newsletter', error)
+  return (data as OpsSessionRow[] | null) ?? []
+}
+
 /** Published sessions for an org starting inside [startIso, endIso). */
 export async function listSessionsStartingInWindow(
   orgId: string,
@@ -246,24 +270,4 @@ export async function listOrgAdminUserIds(orgId: string): Promise<string[]> {
 
   if (error) throw toDbError('Failed to list org admins', error)
   return ((data as { user_id: string }[] | null) ?? []).map((r) => r.user_id)
-}
-
-/** Published sessions for an org since a given date — curriculum mapping pool. */
-export async function listPublishedSessionsForOrgSince(
-  orgId: string,
-  sinceIso: string,
-  limit = 100
-): Promise<OpsSessionRow[]> {
-  const db = await getServiceDb()
-  const { data, error } = await db
-    .from('sessions')
-    .select(SESSION_COLUMNS)
-    .eq('org_id', orgId)
-    .eq('status', 'PUBLISHED')
-    .gte('date_start', sinceIso)
-    .order('date_start', { ascending: false })
-    .limit(limit)
-
-  if (error) throw toDbError('Failed to list org sessions', error)
-  return (data as OpsSessionRow[] | null) ?? []
 }

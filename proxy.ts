@@ -70,7 +70,8 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.match(/^\/claim\/[^/]+$/) ||
     // Newsletter unsubscribe: must work from an email link without a session.
     request.nextUrl.pathname.match(/^\/ops\/unsubscribe\/[^/]+$/) ||
-    // Recall answer page: HMAC capability link from the recall email.
+    // Recall landing page: HMAC email link; content/mutations still require
+    // the exact authenticated account inside the page/actions.
     request.nextUrl.pathname.match(/^\/recall\/[^/]+$/) ||
     // Federation instance identity (public key discovery).
     request.nextUrl.pathname.startsWith('/.well-known/') ||

@@ -49,6 +49,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         certificate.departments?.lead_name
       ),
       issuerName: certificate.issued_by_name || undefined,
+      recognitionBasis: certificate.recognition_basis,
     })
 
     return new NextResponse(pdfBuffer as unknown as BodyInit, {

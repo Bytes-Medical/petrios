@@ -17,6 +17,8 @@ const SOURCE_LABELS: Record<string, string> = {
   FEEDBACK: 'Feedback',
   TEACHER: 'Teacher',
   TEAMS: 'Teams',
+  RECALL: 'Audio recap catch-up',
+  MODERATOR_CONFIRMATION: 'Moderator',
 }
 
 export function AttendancePanel({ summary }: AttendancePanelProps) {

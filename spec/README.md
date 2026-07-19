@@ -2,9 +2,9 @@
 
 This directory is the detailed, implementation-facing specification for
 Petrios. It describes the application represented by the source tree and by
-database migrations through `052_certificate_branding_and_coordinators.sql`. `CLAUDE.md` is the short
-architecture briefing; these documents are the durable contract for maintainers,
-reviewers, operators, and coding agents.
+database migrations through `060_department_weekly_newsletters.sql`. `CLAUDE.md` is
+the short architecture briefing; these documents are the durable contract for
+maintainers, reviewers, operators, and coding agents.
 
 The source code remains authoritative when investigating an incident. A
 contradiction between source and spec is nevertheless a defect: either the code
@@ -46,7 +46,7 @@ data to whoever possesses it.
 | [05 — Feedback and certificates](./05-feedback-and-certificates.md) | Identified feedback, privacy-processed analytics/report release, delivery claims, canonical certificate eligibility/revocation, and branded coordinator snapshots |
 | [06 — Petrios Ops](./06-petrios-ops.md) | AI operations layer, inference audit, approval gate, assistant tools, jobs, and audio recap approval |
 | [07 — Engineering conventions](./07-conventions.md) | Code boundaries, validation, errors, email, jobs, testing, CI, and change procedure |
-| [08 — Portfolio and Recall](./08-portfolio-and-recall.md) | Passport, durable portfolio snapshots, teacher dossier, recall questions, analytics, and catch-up learning completion |
+| [08 — Portfolio and Recall](./08-portfolio-and-recall.md) | Personal attendance/reflection/certificate record, durable portfolio snapshots, teacher dossier, recall questions, analytics, and catch-up learning completion |
 | [09 — API, federation, and self-hosting](./09-platform-api-and-self-hosting.md) | Bearer API, webhooks, portable signed records, provider adapters, deployment, health, and environment variables |
 | [10 — Federated benchmarking](./10-federated-benchmarking.md) | **RFC, not implemented:** opt-in, signed, aggregate-only cross-instance comparison |
 | [11 — Identity and administration](./11-identity-and-administration.md) | Login methods, signup posture, join workflow, profiles, memberships, roles, and administrator surfaces |
@@ -70,7 +70,9 @@ must not be used to erase those details.
 3. **Finalized attendance is revisioned recognition input.** Evidence cannot be
    added while finalized. A moderator must reopen with a reason, which revokes
    canonical certificates, then re-finalize a complete roster as a new revision.
-   Feedback, Recall, and teaching assignment are not policy-v2 attendance.
+   Feedback and teaching assignment are not policy-v2 attendance. The sole
+   Recall exception is the guarded, source-transparent Audio Recap catch-up
+   completion described in specs 03 and 08.
 4. **Petrios Ops cannot send unapproved email.** Every Ops-originated outbound
    email must be represented by an approved `ops_pending_actions` row and sent
    through `lib/ops/executors.ts`. Core deterministic mail such as authentication,

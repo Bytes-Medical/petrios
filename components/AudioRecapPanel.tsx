@@ -8,6 +8,7 @@ import {
   approveAudioRecap,
   createAudioRecapAudio,
   generateAudioRecapScriptAction,
+  recallAudioRecap,
   saveAudioRecapScript,
 } from '@/app/actions/audio-recaps'
 import { AUDIO_RECAP_MAX_SCRIPT_CHARS } from '@/lib/audio-recap-types'
@@ -91,6 +92,14 @@ export function AudioRecapPanel({
     }
   }
 
+  async function recallForChanges() {
+    const confirmed = window.confirm(
+      'Recall this recap from attendees? The current script and audio will remain available to you as a draft, and you must approve it again before attendees can listen.'
+    )
+    if (!confirmed) return
+    await run('recall', () => recallAudioRecap(sessionId))
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -114,6 +123,17 @@ export function AudioRecapPanel({
         Its hosted search may issue queries derived from that material to retrieve public sources.
         Do not use patient-identifiable, confidential, or unnecessary special-category material.
       </p>
+
+      {hasAudio ? (
+        <p className="font-mono text-xs text-gray-600">
+          AI-generated audio
+          {recap?.tts_provider
+            ? ` via ${recap.tts_provider === 'elevenlabs' ? 'ElevenLabs' : 'OpenAI'}`
+            : ''}
+          {recap?.tts_model ? ` · ${recap.tts_model}` : ''}
+          {recap?.tts_voice ? ` · voice ${recap.tts_voice}` : ''}.
+        </p>
+      ) : null}
 
       {sourceDocumentCount === 0 && (
         <p className="border border-red-700 bg-red-50 px-3 py-2 font-mono text-sm text-red-800">
@@ -160,29 +180,31 @@ export function AudioRecapPanel({
       )}
 
       {researchSources.length > 0 && (
-        <section className="border border-gray-300 bg-gray-50 p-3" aria-labelledby="recap-research-sources">
-          <h3 id="recap-research-sources" className="font-mono text-xs font-bold uppercase tracking-wide">
-            Research sources consulted
-          </h3>
-          <p className="mt-1 font-mono text-xs leading-5 text-gray-600">
-            Public supporting context only; the uploaded learning documents remain the primary source.
-            Check researched additions before approval.
-          </p>
-          <ul className="mt-2 space-y-1.5 font-mono text-xs">
-            {researchSources.map((source) => (
-              <li key={source.url}>
-                <a
-                  href={source.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="break-words underline decoration-1 underline-offset-2 hover:no-underline"
-                >
-                  {source.title || source.url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <details className="border border-gray-300 bg-gray-50 p-3">
+          <summary className="cursor-pointer select-none font-mono text-xs font-bold uppercase tracking-wide marker:text-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+            Research sources consulted ({researchSources.length})
+          </summary>
+          <div className="pt-2">
+            <p className="font-mono text-xs leading-5 text-gray-600">
+              Public supporting context only; the uploaded learning documents remain the primary source.
+              Check researched additions before approval.
+            </p>
+            <ul className="mt-2 space-y-1.5 font-mono text-xs">
+              {researchSources.map((source) => (
+                <li key={source.url}>
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="break-words underline decoration-1 underline-offset-2 hover:no-underline"
+                  >
+                    {source.title || source.url}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
       )}
 
       {!recap ? (
@@ -209,6 +231,19 @@ export function AudioRecapPanel({
                 <audio controls preload="none" src={`/api/sessions/${sessionId}/recap-audio`} className="w-full" />
                 <p className="font-mono text-xs text-gray-600">
                   Visible to attendees on the session page.
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy !== null}
+                  onClick={recallForChanges}
+                >
+                  {busy === 'recall' ? 'Recalling…' : 'Recall for changes'}
+                </Button>
+                <p className="font-mono text-xs leading-5 text-gray-600">
+                  Recalling removes attendee access and returns this to a moderator-only draft.
+                  You can then re-create the audio, edit the script, or regenerate it from the
+                  current documents before approving it again.
                 </p>
               </div>
             )
@@ -257,6 +292,11 @@ export function AudioRecapPanel({
                   {busy === 'generate' ? 'Generating detailed recap…' : 'Regenerate detailed recap'}
                 </Button>
               </div>
+
+              <p className="font-mono text-xs leading-5 text-gray-600">
+                Creating or re-creating audio sends the current draft script—not the uploaded
+                document files—to the configured speech provider and may consume provider credits.
+              </p>
 
               {hasAudio && isDraft && !sourceStale ? (
                 <div className="space-y-3 border-t border-gray-200 pt-4">

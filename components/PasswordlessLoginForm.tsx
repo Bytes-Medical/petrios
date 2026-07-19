@@ -7,10 +7,12 @@ import { sendPasswordlessLoginLink } from '@/app/actions/member-onboarding'
 
 interface PasswordlessLoginFormProps {
   submitLabel?: string
+  nextPath?: string
 }
 
 export function PasswordlessLoginForm({
   submitLabel = 'Email Me a Sign-In Link',
+  nextPath = '/dashboard',
 }: PasswordlessLoginFormProps) {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
@@ -24,7 +26,7 @@ export function PasswordlessLoginForm({
     setSuccess(null)
 
     try {
-      const response = await sendPasswordlessLoginLink(email)
+      const response = await sendPasswordlessLoginLink(email, nextPath)
       if (response.success) {
         setSuccess(response.message)
       } else {

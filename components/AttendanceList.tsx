@@ -89,7 +89,9 @@ export function AttendanceList({
             </p>
             <p className="font-mono text-sm text-gray-600">
               Status: {record.status}
-              {record.primary_source && <> | Source: {record.primary_source}</>}
+              {record.primary_source && (
+                <> | Source: {record.primary_source === 'RECALL' ? 'Audio recap catch-up' : record.primary_source}</>
+              )}
             </p>
             {record.first_evidence_at && (
               <p className="font-mono text-xs text-gray-500">

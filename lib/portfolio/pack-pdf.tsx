@@ -1,7 +1,6 @@
 import React from 'react'
 import { Document, Page, Text, View, renderToBuffer } from '@react-pdf/renderer'
 import type { AttendanceLogEntry } from '@/lib/db/trainee-dashboard'
-import type { DomainCoverage } from '@/lib/ops/curriculum'
 import { docStyles as s, formatPdfDate } from './pdf-shared'
 
 /**
@@ -18,14 +17,13 @@ export interface PortfolioPackData {
   periodStart: Date
   periodEnd: Date
   entries: AttendanceLogEntry[]
-  coverage: DomainCoverage[]
   reflections: { sessionTitle: string; body: string }[]
   certificateCodes: string[]
   packCode: string
 }
 
 function sourceLabel(source: string | null): string {
-  if (source === 'RECALL') return 'Caught up (recall verified)'
+  if (source === 'RECALL') return 'Audio recap catch-up'
   if (!source) return '—'
   return source.replace(/_/g, ' ').toLowerCase()
 }
@@ -66,18 +64,6 @@ function PackDocument({ data }: { data: PortfolioPackData }) {
               </Text>
               <Text style={{ width: '12%' }}>{e.status}</Text>
               <Text style={{ width: '24%' }}>{sourceLabel(e.primary_source)}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>Curriculum coverage (RCPCH Progress+ domains)</Text>
-          {data.coverage.map((c) => (
-            <View key={c.code} style={s.row} wrap={false}>
-              <Text style={{ width: '80%' }}>{c.name}</Text>
-              <Text style={{ width: '20%' }}>
-                {c.sessionCount > 0 ? `${c.sessionCount} session(s)` : 'not covered'}
-              </Text>
             </View>
           ))}
         </View>

@@ -3,6 +3,10 @@ export type SessionStatus = 'DRAFT' | 'PUBLISHED' | 'CANCELLED'
 export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED'
 export type AttendanceMethod = 'SELF_CHECKIN' | 'MANUAL'
 export type CertificateRole = 'ATTENDEE' | 'TEACHER'
+export type CertificateRecognitionBasis =
+  | 'LIVE_ATTENDANCE'
+  | 'AUDIO_RECAP_CATCH_UP'
+  | 'TEACHING_ASSIGNMENT'
 export type UserRole = 'org_admin' | 'department_admin' | 'faculty' | 'trainee'
 export type EmailType = 'INVITATION' | 'REMINDER'
 export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED'
@@ -352,6 +356,7 @@ export interface Certificate {
   status?: 'VALID' | 'REVOKED' | 'LEGACY'
   attendance_revision?: number | null
   issuance_source?: string | null
+  recognition_basis?: CertificateRecognitionBasis
   revoked_at?: string | null
   revoked_by?: string | null
   revocation_reason?: string | null
@@ -441,25 +446,6 @@ export interface OpsFeedbackSynthesis {
   created_at: string
 }
 
-export interface OpsCurriculumDomain {
-  code: string
-  name: string
-  description: string | null
-  sort: number
-}
-
-export type OpsMapConfidence = 'deterministic' | 'llm_high' | 'llm_low'
-
-export interface OpsCurriculumMapping {
-  id: string
-  org_id: string
-  session_id: string
-  domain_code: string
-  confidence: OpsMapConfidence
-  rationale: string | null
-  created_at: string
-}
-
 export interface OpsSpeakerChase {
   id: string
   org_id: string
@@ -485,17 +471,67 @@ export interface OpsMemoryEntry {
 
 export type OpsNewsletterStatus = 'draft' | 'approved' | 'sent' | 'failed'
 
+export interface OpsNewsletterSessionSection {
+  session_id: string
+  title: string
+  date_label: string
+  overview: string
+  learning_points: string[]
+}
+
+export interface OpsNewsletterContent {
+  subject: string
+  intro: string
+  sessions: OpsNewsletterSessionSection[]
+  closing: string
+}
+
+export interface OpsNewsletterSourceDocument {
+  sessionId: string
+  sessionTitle: string
+  id: string
+  filename: string
+  mimeType: string
+  byteSize: number
+  sha256: string
+}
+
 export interface OpsNewsletterIssue {
   id: string
   org_id: string
+  department_id: string | null
   week_start: string
   subject: string
   html: string
   summary_points: { title: string; detail: string }[]
+  content: OpsNewsletterContent | null
+  source_session_ids: string[]
+  source_documents: OpsNewsletterSourceDocument[]
+  content_revision: number
+  generated_by: string | null
   status: OpsNewsletterStatus
   pending_action_id: string | null
   sent_count: number
   created_at: string
+  updated_at: string
+}
+
+export interface OpsNewsletterDelivery {
+  id: string
+  issue_id: string
+  org_id: string
+  department_id: string
+  recipient_user_id: string
+  recipient_email: string
+  content_revision: number
+  status: 'PENDING' | 'SENDING' | 'SENT' | 'FAILED'
+  attempt_count: number
+  provider_message_id: string | null
+  last_error: string | null
+  claimed_at: string | null
+  sent_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface OpsChatThread {

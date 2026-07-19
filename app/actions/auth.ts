@@ -4,6 +4,7 @@ import { createSupabaseClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { getAppUrlFromHeaders } from '@/lib/app-url'
+import { safeNextPath } from '@/lib/safe-next-path'
 
 /**
  * Microsoft Entra ID SSO (works with NHSmail accounts). Auth-plane: builds
@@ -12,14 +13,17 @@ import { getAppUrlFromHeaders } from '@/lib/app-url'
  * /join/callback completes the exchange when Microsoft redirects back.
  * Requires the Azure provider to be configured in Supabase Auth.
  */
-export async function getMicrosoftSignInUrl(): Promise<{ url?: string; error?: string }> {
+export async function getMicrosoftSignInUrl(
+  nextPath = '/dashboard'
+): Promise<{ url?: string; error?: string }> {
   const supabase = await createSupabaseClient()
   const baseUrl = await getAppUrlFromHeaders()
+  const safeNext = safeNextPath(nextPath)
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'azure',
     options: {
-      redirectTo: `${baseUrl}/join/callback?mode=login&next=/dashboard`,
+      redirectTo: `${baseUrl}/join/callback?mode=login&next=${encodeURIComponent(safeNext)}`,
       scopes: 'email',
     },
   })

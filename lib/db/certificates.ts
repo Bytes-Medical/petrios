@@ -1,5 +1,9 @@
-import type { Certificate, CertificateRole } from '@/lib/types'
-import { getDb } from './client'
+import type {
+  Certificate,
+  CertificateRecognitionBasis,
+  CertificateRole,
+} from '@/lib/types'
+import { getDb, getServiceDb } from './client'
 import { toDbError } from './errors'
 
 // Shapes for reads that embed session / department joins. Kept local so the
@@ -27,6 +31,27 @@ export interface CertificateWithSession extends Certificate {
 // Certificate rows
 // -----------------------------------------------------------------------------
 
+/**
+ * Count of issued certificates for a session — the delete-session guard.
+ * Service role justification: the caller is a moderator deciding whether a
+ * session is deletable; RLS scopes certificate reads to their owners, so an
+ * RLS count would undercount and let the guard pass wrongly.
+ */
+export async function countCertificatesForSession(
+  sessionId: string,
+  orgId: string
+): Promise<number> {
+  const db = await getServiceDb()
+  const { count, error } = await db
+    .from('certificates')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('org_id', orgId)
+
+  if (error) throw toDbError('Failed to count session certificates', error)
+  return count ?? 0
+}
+
 export async function insertCertificate(input: {
   orgId: string
   departmentId: string
@@ -42,6 +67,7 @@ export async function insertCertificate(input: {
   coordinatorNames?: string[]
   attendanceRevision?: number | null
   issuanceSource?: string
+  recognitionBasis?: CertificateRecognitionBasis
 }): Promise<Certificate> {
   const db = await getDb()
 
@@ -67,6 +93,9 @@ export async function insertCertificate(input: {
   if (input.coordinatorNames !== undefined) row.coordinator_names = input.coordinatorNames
   if (input.attendanceRevision !== undefined) row.attendance_revision = input.attendanceRevision
   if (input.issuanceSource !== undefined) row.issuance_source = input.issuanceSource
+  row.recognition_basis = input.recognitionBasis ?? (
+    input.role === 'TEACHER' ? 'TEACHING_ASSIGNMENT' : 'LIVE_ATTENDANCE'
+  )
   row.status = 'VALID'
 
   const { data, error } = await db
@@ -98,6 +127,7 @@ export async function insertCertificateAsSystem(input: {
   coordinatorNames?: string[]
   attendanceRevision?: number | null
   issuanceSource?: string
+  recognitionBasis?: CertificateRecognitionBasis
 }): Promise<Certificate> {
   const { getServiceDb } = await import('./client')
   const db = await getServiceDb()
@@ -119,6 +149,9 @@ export async function insertCertificateAsSystem(input: {
       coordinator_names: input.coordinatorNames ?? [],
       attendance_revision: input.attendanceRevision ?? null,
       issuance_source: input.issuanceSource ?? 'POST_SESSION_REPORT',
+      recognition_basis: input.recognitionBasis ?? (
+        input.role === 'TEACHER' ? 'TEACHING_ASSIGNMENT' : 'LIVE_ATTENDANCE'
+      ),
       status: 'VALID',
     })
     .select()
@@ -248,7 +281,8 @@ export async function findSessionForCertificate(
   sessionId: string,
   orgId: string
 ): Promise<SessionWithCertificateContext | null> {
-  const db = await getDb()
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
   const { data, error } = await db
     .from('sessions')
     .select(
@@ -370,6 +404,7 @@ export interface CertificateLookup {
   coordinator_names: string[]
   status: 'VALID' | 'REVOKED' | 'LEGACY'
   attendance_revision: number | null
+  recognition_basis: CertificateRecognitionBasis
 }
 
 export async function findCertificateByUserAndSession(
@@ -381,7 +416,7 @@ export async function findCertificateByUserAndSession(
   const db = await getServiceDb()
   let query = db
     .from('certificates')
-    .select('id, certificate_code, certificate_role, issued_at, recipient_name, recipient_email, issued_by_name, coordinator_names, status, attendance_revision')
+    .select('id, certificate_code, certificate_role, issued_at, recipient_name, recipient_email, issued_by_name, coordinator_names, status, attendance_revision, recognition_basis')
     .eq('user_id', userId)
     .eq('session_id', sessionId)
     .in('status', options.includeLegacy === false ? ['VALID'] : ['VALID', 'LEGACY'])
@@ -403,7 +438,7 @@ export async function findCertificateByExternalEmailAndSession(
   const db = await getServiceDb()
   let query = db
     .from('certificates')
-    .select('id, certificate_code, certificate_role, issued_at, recipient_name, recipient_email, issued_by_name, coordinator_names, status, attendance_revision')
+    .select('id, certificate_code, certificate_role, issued_at, recipient_name, recipient_email, issued_by_name, coordinator_names, status, attendance_revision, recognition_basis')
     .eq('session_id', sessionId)
     .is('user_id', null)
     .eq('recipient_email', externalEmail.trim().toLowerCase())
@@ -420,18 +455,26 @@ export async function findCertificateByExternalEmailAndSession(
 export async function findFinalizedAttendanceForUserAsSystem(
   sessionId: string,
   userId: string
-): Promise<{ status: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'; revision: number } | null> {
+): Promise<{
+  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'
+  revision: number
+  primary_source: string | null
+} | null> {
   const { getServiceDb } = await import('./client')
   const db = await getServiceDb()
   const { data, error } = await db
     .from('attendance')
-    .select('status, revision')
+    .select('status, revision, primary_source')
     .eq('session_id', sessionId)
     .eq('user_id', userId)
     .not('finalized_at', 'is', null)
     .maybeSingle()
   if (error) throw toDbError('Failed to read finalized attendance', error)
-  return data as { status: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'; revision: number } | null
+  return data as {
+    status: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'
+    revision: number
+    primary_source: string | null
+  } | null
 }
 
 export async function userIsAcceptedTeacherAsSystem(

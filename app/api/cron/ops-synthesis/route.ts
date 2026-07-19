@@ -28,7 +28,9 @@ import * as onboardingDb from '@/lib/db/onboarding'
  *     queued as a pending action for approval
  *
  * The 2-day floor lets the feedback window close; syntheses are ready before
- * the Monday newsletter covers the prior week. Cap 5 sessions per run.
+ * moderators have current privacy-safe teaching feedback artifacts. The
+ * separate newsletter is now moderator-triggered and document-led. Cap 5
+ * sessions per run.
  * Run daily: GET /api/cron/ops-synthesis with Authorization: Bearer CRON_SECRET
  */
 

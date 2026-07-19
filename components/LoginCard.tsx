@@ -21,7 +21,13 @@ export type LoginVariant = 'individual' | 'organisation' | 'neutral'
  * variants differ in copy, the join-with-code path, and the password toggle
  * (admins only — individuals are passwordless).
  */
-export function LoginCard({ variant }: { variant: LoginVariant }) {
+export function LoginCard({
+  variant,
+  nextPath = '/dashboard',
+}: {
+  variant: LoginVariant
+  nextPath?: string
+}) {
   const isIndividual = variant === 'individual'
   const isOrg = variant === 'organisation'
   const allowPassword = variant !== 'individual'
@@ -53,7 +59,7 @@ export function LoginCard({ variant }: { variant: LoginVariant }) {
       }
 
       await new Promise((resolve) => setTimeout(resolve, 200))
-      window.location.replace('/dashboard')
+      window.location.replace(nextPath)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')
       setLoading(false)
@@ -87,13 +93,13 @@ export function LoginCard({ variant }: { variant: LoginVariant }) {
         {/* Passwordless login (default) */}
         {!showPassword && (
           <>
-            <PasswordlessLoginForm submitLabel={formLabel} />
+            <PasswordlessLoginForm submitLabel={formLabel} nextPath={nextPath} />
             <div className="my-4 flex items-center gap-3" aria-hidden="true">
               <div className="h-px flex-1 bg-gray-300" />
               <span className="font-mono text-xs text-gray-500">or</span>
               <div className="h-px flex-1 bg-gray-300" />
             </div>
-            <MicrosoftSignInButton />
+            <MicrosoftSignInButton nextPath={nextPath} />
           </>
         )}
 

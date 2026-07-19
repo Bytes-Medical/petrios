@@ -37,22 +37,23 @@ departments; trainees need accounts, external teachers don't.
 - **Certificates**: PDF generation for teachers and attendees with a public
   verification page (`/verify/[code]`).
 - **Evidence Engine**: one-click, verifiable **ARCP portfolio packs** for
-  trainees (attendance + Progress+ curriculum coverage + reflections +
+  trainees (attendance + reflections +
   certificate codes, publicly checkable at `/verify/pack/[code]`) and
   **appraisal/revalidation dossiers** for teachers (sessions, hours, reach,
   privacy-processed feedback themes without stored identity fields).
 - **Petrios Recall**: a moderator-approved, roughly five-minute audio recap led
   by uploaded learning documents and supported by authoritative research, plus
-  AI-drafted recall questions emailed after each session (spaced retrieval at
-  +3 and +14 days). Catch-up completion is learning evidence only and never
-  rewrites physical attendance or creates a certificate.
+  five AI-drafted questions reviewed and published for registered finalized
+  absentees. After authenticated playback and a perfect 5/5 (up to three
+  attempts), Petrios records transparent “Audio recap catch-up” PRESENT
+  recognition and emails a provenance-labelled attendance certificate.
 - **In-app notifications**: bell with read tracking for invitations,
   responses, claims, and ops alerts.
-- **Petrios Ops (AI agent layer)**: drafts speaker-chase emails, post-session
-  thank-yous with feedback insights, and a weekly learning-points
-  newsletter; watches curriculum coverage (RCPCH Progress+ domains) and low
-  feedback scores; includes an organiser-only chat assistant that knows the
-  platform. **Nothing sends without human approval** — every outbound email
+- **Petrios Ops (AI agent layer)**: drafts speaker-chase emails and post-session
+  thank-yous, highlights low feedback scores, and includes an organiser-only
+  chat assistant. A moderator can turn every session and teaching document in a
+  completed week into an editable one-page departmental newsletter. **Nothing
+  sends without human approval** — every outbound email
   waits in an approval queue, all LLM calls go through one audited gateway
   (prompt hashes, never text), name-stripping and welfare-signal safety rails
   are built in, and `OPS_ENABLED=false` kills the whole layer.
@@ -62,8 +63,8 @@ departments; trainees need accounts, external teachers don't.
 - Next.js 16 (App Router) + TypeScript + React 19, server actions for all mutations
 - Supabase (Postgres + Row Level Security) and Supabase Auth
 - Tailwind CSS with cva-based UI primitives (neo-brutalist design system)
-- OpenAI Chat Completions (via `fetch`, no SDK) for the AI features —
-  optional, degrades gracefully
+- OpenAI API calls (via `fetch`, no SDK) for AI features, with optional
+  OpenAI or ElevenLabs speech generation for Audio Recaps — degrades gracefully
 - Jitsi Meet (`@jitsi/react-sdk`) for built-in video rooms
 - Resend REST API for transactional email (console log-sink in dev)
 - `@react-pdf/renderer` for certificates, Schedule-X for the calendar,
@@ -133,7 +134,7 @@ npm run build
 
 ### Cron jobs (production)
 
-Five idempotent routes under `/api/cron/`, each authenticated with
+Six retry-safe routes under `/api/cron/`, each authenticated with
 an `Authorization: Bearer CRON_SECRET` header — schedule them with Vercel Cron or any scheduler:
 
 | Route | Suggested schedule | What it does |
@@ -141,9 +142,9 @@ an `Authorization: Bearer CRON_SECRET` header — schedule them with Vercel Cron
 | `session-reminders` | hourly | Reminder emails ~24h before sessions |
 | `post-session-reports` | hourly | Certificates + report emails after sessions |
 | `ops-synthesis` | daily | AI feedback syntheses + thank-you drafts (approval-gated) |
-| `ops-weekly` | weekly | Speaker-chase drafts, low-score alerts, curriculum gap watch |
-| `ops-newsletter` | weekly (Mon) | Weekly learning-points newsletter draft (approval-gated) |
-| `recall-send` | daily | Recall question emails (+3d) and boost nudges (+14d) for approved sets |
+| `ops-weekly` | weekly | Speaker-chase drafts and low-score alerts |
+| `recall-send` | daily | Published Audio Recap catch-up invites to finalized registered absentees |
+| `recall-awards` | every 5–15 min or hourly | Retry catch-up certificate issue/PDF email after successful mastery |
 
 ## Architecture notes
 

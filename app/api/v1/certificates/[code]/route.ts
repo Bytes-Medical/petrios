@@ -27,6 +27,7 @@ export async function GET(
     data: {
       certificate_code: certificate.certificate_code,
       role: certificate.certificate_role,
+      recognition_basis: certificate.recognition_basis ?? null,
       recipient_name: certificate.recipient_name,
       teaching_coordinators: resolveTeachingCoordinatorNames(
         certificate.coordinator_names,

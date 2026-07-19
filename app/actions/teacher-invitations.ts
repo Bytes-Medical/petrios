@@ -7,8 +7,9 @@ import { buildInvitationEmailHtml } from '@/lib/email-templates'
 import type { Session } from '@/lib/types'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as teacherInvitationsDb from '@/lib/db/teacher-invitations'
-import * as teacherEmailsDb from '@/lib/db/teacher-emails'
+import * as slotsDb from '@/lib/db/teaching-slots'
 import * as contactsDb from '@/lib/db/external-contacts'
+import * as teacherEmailsDb from '@/lib/db/teacher-emails'
 import { DbNotFoundError } from '@/lib/db'
 import { generateCode } from '@/lib/codes'
 import { normalizeContactEmail } from '@/lib/contacts'
@@ -119,6 +120,33 @@ export async function deleteTeacherInvitation(sessionId: string, invitationId: s
   }
 
   await requireDepartmentModerator(scope.department_id)
+
+  // An external who claimed a teaching slot is attached to the session ONLY
+  // by their ACCEPTED invitation. Deleting it would silently detach them
+  // while the schedule still shows the slot claimed by them and their
+  // reminder emails stop. Block with guidance instead of a silent cascade.
+  const invitation = await teacherInvitationsDb.findInvitationById({
+    orgId,
+    sessionId,
+    invitationId,
+  })
+  if (invitation?.status === 'ACCEPTED') {
+    const claimedSlot = await slotsDb.findClaimedSlotForSession(sessionId, orgId)
+    if (claimedSlot?.claimed_by_contact_id) {
+      const contactEmail = await contactsDb.findContactEmail(
+        claimedSlot.claimed_by_contact_id,
+        orgId
+      )
+      if (
+        contactEmail &&
+        normalizeContactEmail(contactEmail) === normalizeContactEmail(invitation.email)
+      ) {
+        throw new Error(
+          'This teacher claimed this teaching slot — cancel or delete the session instead of removing their invitation.'
+        )
+      }
+    }
+  }
 
   await teacherInvitationsDb.deleteInvitation({
     orgId,

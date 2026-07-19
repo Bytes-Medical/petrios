@@ -151,8 +151,10 @@ not filter to slots published/offered to a particular audience.
 ### `GET /api/v1/certificates/:code` — `read:certificates`
 
 Looks up the globally unique code, then returns 404 unless the certificate
-organization matches the token. Response includes code, role, recipient name,
-ordered snapshotted `teaching_coordinators`, issued time,
+organization matches the token. Response includes code, role,
+`recognition_basis` (`LIVE_ATTENDANCE`, `AUDIO_RECAP_CATCH_UP`, or
+`TEACHING_ASSIGNMENT`), recipient name, ordered snapshotted
+`teaching_coordinators`, issued time,
 session id/title/date, department id/name, lifecycle `status`, revocation fields,
 and `valid`. Only status `VALID` returns `valid: true`;
 `LEGACY` and `REVOKED` remain resolvable audit states rather than false “not
@@ -202,12 +204,12 @@ consumer idempotency must derive from payload identifiers plus event semantics.
 |---|---|---|
 | `session.published` | Interactive nonpublished→published transition and bearer API publish | session id/title, department id, start/end |
 | `attendance.computed` | Post-session report job only | session id |
-| `certificate.issued` | Post-session report job only, for a newly inserted attendee cert | session id, code, `ATTENDEE` role |
+| `certificate.issued` | Post-session report job and Audio Recap catch-up award worker, for a newly inserted attendee cert | session id, code, `ATTENDEE` role; catch-up producer also includes recognition basis |
 | `slot.claimed` | Successful slot orchestration | slot id, generated session id, department id, start |
 
-Other attendance recomputations and certificate issue paths do not currently
-emit their nominal events. Consumers must not assume `certificate.issued` is a
-complete audit stream.
+Other attendance recomputations and manual/batch certificate issue paths do not
+currently emit their nominal events. Consumers must not assume
+`certificate.issued` is a complete audit stream.
 
 ## Delivery semantics and SSRF boundary
 
@@ -263,15 +265,17 @@ metadata, revocation list, or trust directory.
 
 ### Record shape and personal data
 
-An authenticated user exports their current passport as JSON containing:
+An authenticated user exports their current progress record as JSON containing:
 
 - format, issuer URL, issued timestamp, embedded public key;
 - full display name and profile grade;
-- **all live passport expected attendance entries**, including absences, with
+- **all live expected attendance entries**, including absences, with
   session title/date/status/source;
-- all current organization certificate codes;
-- curriculum-domain session counts; and
+- all current organization certificate codes; and
 - signature.
+
+Legacy `petrios-record/v1` exports may contain a `coverage` object. Verification
+continues to accept and sign-check that optional field, but new exports omit it.
 
 This is explicitly identifiable personal data. Export is the user's disclosure
 action; no background federation transfer occurs.
@@ -389,15 +393,50 @@ matching the URL paths.
 
 ### Speech
 
-`lib/ai/tts.ts` calls `<OPENAI_BASE_URL>/audio/speech`, default model
-`gpt-4o-mini-tts`, voice `alloy`, MP3 output. No key or endpoint 404 returns null;
-other failures throw. The default model accepts at most 2,000 input tokens; the
-generated recap target (650–800 words) is chosen to fit comfortably, and the
-application separately caps stored script text at 7,000 characters. Characters
-are not an exact token count, so custom/manual text can still receive a provider
-validation error rather than being silently truncated by the TTS adapter.
-The input limit is documented in the official
-[`gpt-4o-mini-tts` model reference](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts).
+`lib/ai/tts.ts` is the only sanctioned speech boundary. It returns MP3 bytes plus
+the exact public-safe provider, model, and voice metadata to persist with the
+artifact. Callers do not read provider environment variables or construct
+provider requests themselves.
+
+Provider selection is deterministic:
+
+1. a valid `TTS_PROVIDER=openai|elevenlabs` pins that provider;
+2. otherwise the presence of either `ELEVENLABS_API_KEY` or
+   `ELEVENLABS_VOICE_ID` selects ElevenLabs, making a partially configured setup
+   visible as an error instead of silently falling back; and
+3. otherwise OpenAI remains the historical default.
+
+OpenAI speech posts JSON to `<OPENAI_BASE_URL>/audio/speech` with Bearer
+`OPENAI_API_KEY`, `input`, `model`, `voice`, and `response_format: mp3`.
+`OPENAI_TTS_MODEL` defaults to `gpt-4o-mini-tts` and `OPENAI_TTS_VOICE` to
+`alloy`. A missing key returns null without network activity. A 404 from a custom
+compatible endpoint also returns null because that endpoint may support LLM but
+not speech; every other non-2xx response throws.
+
+ElevenLabs speech posts JSON containing `text` and `model_id` to
+`https://api.elevenlabs.io/v1/text-to-speech/:voice_id`, authenticated by the
+`xi-api-key` header, with `output_format=mp3_44100_128`. Both
+`ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` are required;
+`ELEVENLABS_MODEL_ID` defaults to `eleven_multilingual_v2`. The API origin and
+output encoding are fixed rather than operator-overridable so an ElevenLabs
+selection cannot silently disclose text to an arbitrary host. Non-2xx responses
+throw and no false audio success is stored.
+
+For Audio Recaps, the speech request contains only the current stored draft
+script. Uploaded document bytes/extracted content, hosted-search queries, public
+page bodies, research citations, raw feedback, actor identity, session id, and
+organization id are not added by the adapter. The separate LLM/document/research
+flow remains described above. Every create/re-create request can consume provider
+credits and the management UI warns accordingly.
+
+The generated recap target (650–800 words) is chosen to fit both the OpenAI
+default model's 2,000-token input budget and ElevenLabs' documented 10,000-
+character limit for `eleven_multilingual_v2`; the application independently caps
+stored scripts at 7,000 characters. Characters are not an exact OpenAI token
+count, so custom/manual text can still receive a provider validation error. The
+adapter never truncates a moderator-approved script. See the official
+[`gpt-4o-mini-tts` model reference](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts)
+and [ElevenLabs text-to-speech reference](https://elevenlabs.io/docs/api-reference/text-to-speech/convert).
 
 ### Meetings
 
@@ -472,9 +511,13 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `MAIL_DEV_REDIRECT` | Optional | Redirect every recipient to one inbox |
 | `EMAIL_DEV_MODE` | Exact `true` logs | Development email diagnostics |
 | `CRON_SECRET` | Required to run jobs | Shared Bearer secret; no query fallback |
-| `OPENAI_API_KEY` | Optional | Enables LLM/TTS; server secret |
+| `OPENAI_API_KEY` | Optional | Enables LLM and default OpenAI speech; server secret |
 | `OPENAI_BASE_URL` | Default OpenAI v1 | Compatible internal/gateway/provider base |
 | `OPENAI_MODEL` | Default `gpt-5.5` | Chat model |
+| `TTS_PROVIDER` | Optional `openai` or `elevenlabs` | Explicit speech-provider pin; invalid values disable speech with a configuration error |
+| `ELEVENLABS_API_KEY` | Required when ElevenLabs selected | Speech API credential; server secret |
+| `ELEVENLABS_VOICE_ID` | Required when ElevenLabs selected | Voice selected for new Audio Recap MP3 generation |
+| `ELEVENLABS_MODEL_ID` | Default `eleven_multilingual_v2` | ElevenLabs speech model |
 | `OPENAI_TTS_MODEL` | Default `gpt-4o-mini-tts` | Speech model |
 | `OPENAI_TTS_VOICE` | Default `alloy` | Speech voice |
 | `OPS_ENABLED` | Disabled only by exact `false` | Ops execution kill switch |

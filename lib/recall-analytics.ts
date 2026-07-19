@@ -1,6 +1,6 @@
 /**
- * Pure aggregation for Petrios Recall retention analytics — did the teaching
- * stick? Consumes score rows WITHOUT user ids (see
+ * Pure aggregate compatibility for legacy attendee retention and current
+ * final catch-up outcomes. Consumes score rows WITHOUT user ids (see
  * lib/db/recall.ts#listAnswerStatsForSession) and returns aggregates only.
  *
  * Privacy core: any cohort smaller than RETENTION_MIN_COHORT has its
@@ -52,8 +52,8 @@ export interface RetentionAnalytics {
   buckets: RetentionBucket[]
 }
 
-/** Bucket edges follow the recall cadence: sent at end+3d, boosted at +14d,
- * window closes +21d. */
+/** Stable historical reporting buckets. Current catch-up opens at moderator
+ * publication and may therefore enter any bucket relative to session end. */
 const BUCKET_DEFS = [
   { label: '0–3 days', minDay: 0, maxDay: 3 },
   { label: '4–7 days', minDay: 4, maxDay: 7 },

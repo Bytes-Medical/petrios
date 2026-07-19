@@ -64,6 +64,9 @@ export default async function VerifyCertificatePage(
                 label="Role"
                 value={certificate.certificate_role === 'TEACHER' ? 'Teacher' : 'Attendee'}
               />
+              {certificate.recognition_basis === 'AUDIO_RECAP_CATCH_UP' && (
+                <Detail label="Recognition route" value="Audio Recap catch-up" />
+              )}
               <Detail
                 label="Session"
                 value={certificate.sessions?.title || 'Unknown'}

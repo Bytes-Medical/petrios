@@ -9,6 +9,7 @@ import {
 import type { LocationType, Session, SessionStatus } from '@/lib/types'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as slotsDb from '@/lib/db/teaching-slots'
+import * as certificatesDb from '@/lib/db/certificates'
 import { DbNotFoundError } from '@/lib/db'
 import { emitWebhook } from '@/lib/webhooks'
 
@@ -159,6 +160,17 @@ export async function deleteSession(sessionId: string) {
   }
 
   await requireDepartmentModerator(scope.department_id)
+
+  // Issued certificates are durable, publicly verifiable records (the PDF
+  // carries a /verify link); certificates.session_id is ON DELETE CASCADE,
+  // so deleting the session would silently destroy them and make already-
+  // emailed evidence look forged. Cancel the session instead.
+  const certificateCount = await certificatesDb.countCertificatesForSession(sessionId, orgId)
+  if (certificateCount > 0) {
+    throw new Error(
+      'This session has issued certificates and cannot be deleted — cancel it instead so the certificates remain verifiable.'
+    )
+  }
 
   // A session created from a claimed teaching slot must close that slot,
   // or the slot stays CLAIMED forever (busy-date tag + unique-index block).

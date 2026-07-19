@@ -154,14 +154,20 @@ Current cron families:
 |---|---|
 | `session-reminders` | Session `reminder_sent_at` watermark |
 | `post-session-reports` | Session report watermark plus selected certificate/evidence checks |
-| `recall-send` | Three Recall send watermarks and answer existence |
+| `recall-send` | Per-recipient catch-up invite delivery plus set watermarks; watermark closes only after all eligible sends |
+| `recall-awards` | Unique completion/certificate plus claimed `ATTENDANCE_CERTIFICATE` delivery |
 | `ops-weekly` | Pending-action dedupe, chase counts, Ops memory; low-score notification has no dedupe |
 | `ops-synthesis` | Unique synthesis and Recall set per session |
-| `ops-newsletter` | Unique organization/week issue |
 
-Watermark timing matters. If a row is marked after partial email failures, those
-recipients are not automatically retried. Preserve or deliberately redesign that
-contract.
+Newsletters are not cron routes. Moderator generation is unique per
+organization/department/week, and delivery idempotency is per issue/member with
+a revision-bound claim ledger.
+
+Watermark timing matters. Recall invitation delivery deliberately keeps the set
+open after any missing profile/provider/ledger failure, while successful
+recipient rows skip on retry. Other jobs may retain different explicitly
+documented partial-failure behavior; preserve or deliberately redesign the
+relevant contract.
 
 ## Time and date rules
 
@@ -243,7 +249,9 @@ body.
 - Ops inference uses `lib/ops/gateway.ts` and its purpose allow-list.
 - The Ops tool loop is the sole sanctioned direct chat-completion caller outside
   the general adapter.
-- Speech uses only `lib/ai/tts.ts`.
+- Speech uses only `lib/ai/tts.ts`. Provider-specific headers, endpoints,
+  defaults, errors, and metadata stay behind that boundary; actions must not
+  branch directly on OpenAI or ElevenLabs.
 - Model output is untrusted: validate schema, enforce length/content rules, and
   never derive tenant/authorization from it.
 - Feedback/user content must be labelled and fenced as data. The regular

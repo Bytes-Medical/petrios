@@ -61,20 +61,20 @@ const FEATURES: Feature[] = [
   {
     eyebrow: 'Evidence Engine',
     title: 'Portfolio-ready proof, one click',
-    body: 'Trainees get a curriculum passport — which RCPCH Progress+ domains their attended teaching covered, with gaps highlighted — plus per-session reflections and a verifiable ARCP portfolio pack. Teachers get an appraisal-ready dossier: sessions taught, hours, reach, and privacy-processed feedback themes without stored identity fields.',
+    body: 'Trainees get a clear attendance record, per-session reflections, certificates, and a verifiable ARCP portfolio pack. Teachers get an appraisal-ready dossier: sessions taught, hours, reach, and privacy-processed feedback themes without stored identity fields.',
     points: [
       'Portfolio packs are snapshotted and publicly verifiable by code',
       'Signed, portable teaching records survive rotating between trusts',
       'Five-minute, document-led audio recaps add moderator-reviewed authoritative context',
-      'Spaced recall questions (+3 and +14 days) measure retention without changing attendance',
+      'Audio Recap catch-up turns an approved recap and 5/5 mastery into transparent attendance evidence',
     ],
   },
   {
     eyebrow: 'Petrios Ops',
     title: 'An AI assistant that never acts alone',
-    body: 'The ops layer drafts what programme admin eats your week: speaker chases for unconfirmed sessions, post-session thank-yous with feedback insights, and a weekly learning-points newsletter. Every outbound email waits in an approval queue until a human says send — that invariant is enforced in code, not policy.',
+    body: 'The ops layer drafts what programme admin eats your week: speaker chases and post-session thank-yous. A moderator can also generate an editable one-page departmental newsletter from every teaching session and document in a completed week. Every outbound email waits for an explicit human approval — that invariant is enforced in code, not policy.',
     points: [
-      'Curriculum gap watch across Progress+ domains',
+      'Revision-bound newsletter review and per-member retry-safe delivery',
       'Full audit trail of every AI run — prompt hashes, never prompt text; one kill switch',
     ],
   },

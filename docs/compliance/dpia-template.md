@@ -30,10 +30,10 @@ Map each purpose separately. Do not use one generic basis for the whole system.
 | Teaching administration | Session, teacher, invite, slot and contact data | *[basis]* | *[fill in]* |
 | Attendance evidence/result | Identity, session, source, timestamps, derived status | *[basis]* | *[proportionality and employment implications]* |
 | Identified feedback | Name, email, rating, answers, comments | *[basis]* | *[why identity is collected; consider anonymous/pseudonymous alternative]* |
-| Certificates / portfolio / Recall | Achievement, attendance, curriculum, reflections, answers | *[basis]* | *[fill in]* |
+| Certificates / portfolio / Recall | Achievement, recognition route, attendance, reflections, Audio Recap playback, attempts, answers, completion | *[basis]* | *[fill in]* |
 | Operational communications | Recipient and email content/status | *[basis; PECR assessment]* | *[fill in]* |
 | Security and audit | Actor, action, object, IP/provider logs | *[basis]* | *[fill in]* |
-| Optional AI assistance | Purpose-limited prompts/output and run metadata | *[basis; Art. 22 assessment]* | *[provider/disabled alternative]* |
+| Optional AI assistance | Purpose-limited prompts/output, speech script, and run/provider metadata | *[basis; Art. 22 assessment]* | *[provider/disabled alternative]* |
 
 If special-category data is intentionally processed or foreseeably retained in
 free text, identify an Article 9 condition and Schedule 1/DPA 2018 requirements.
@@ -50,7 +50,8 @@ free text, identify an Article 9 condition and Schedule 1/DPA 2018 requirements.
 - **Feedback:** public/accountless submission but identified storage of name,
   email, ratings, answers and comments; moderator audit; teacher release may
   include submitter name.
-- **Learning record:** certificates, Recall answers, reflections, curriculum
+- **Learning record:** certificates and recognition basis, Recall playback,
+  attempts/answers/completion and reflections
   coverage, portfolio snapshots and teaching dossier data.
 - **Communications:** recipients, bodies, attachments, delivery status,
   unsubscribe capabilities and provider logs.
@@ -64,7 +65,8 @@ the intended use and publish a free-text prohibition and escalation route.
 ## 4. Data flows, recipients, and locations
 
 Attach a diagram covering browser → app host → Supabase; app → email; browser →
-Jitsi; app → optional AI/TTS; cron/webhook/API flows; logs, monitoring and backups.
+Jitsi; app → optional LLM/document/research provider; app → optional speech
+provider; cron/webhook/API flows; logs, monitoring and backups.
 
 | Recipient/service | Role and purpose | Data | Region/retention | Contract and transfer safeguard |
 |---|---|---|---|---|
@@ -72,7 +74,8 @@ Jitsi; app → optional AI/TTS; cron/webhook/API flows; logs, monitoring and bac
 | Application host/CDN | Web runtime/network | *[fill in]* | *[fill in]* | *[fill in]* |
 | SMTP or Resend | Email | *[fill in]* | *[fill in]* | *[fill in]* |
 | Jitsi host | Optional meetings | *[fill in]* | *[fill in]* | *[fill in]* |
-| AI/TTS provider | Optional inference | *[purpose inputs]* | *[provider logging/retention]* | *[fill in]* |
+| LLM/research provider | Optional inference, private learning-document processing, and hosted research | *[session/assistant/feedback inputs; uploaded document contents; derived search queries; output/citations]* | *[provider logging/retention/region]* | *[DPA; transfer; search/tool subprocessors]* |
+| Speech provider | Optional Audio Recap MP3 synthesis | Current moderator-reviewed recap script and speech request metadata; no uploaded document files or research queries in this step | *[provider logging/history, retention, region, deletion]* | *[DPA; transfer; ElevenLabs/OpenAI account posture]* |
 | Support/security/monitoring | *[fill in]* | *[fill in]* | *[fill in]* | *[fill in]* |
 
 Reconcile the table with `/subprocessors`, provider dashboards and executed
@@ -93,6 +96,10 @@ dependency, log, backup, email, meeting and AI flow does so.
   operator adds incompatible technology.
 - Explain which AI paths run, what content is sent, provider retention, human
   review, and how to use a non-AI route where appropriate.
+- Assess LLM/document/research and speech as separate external flows. Verify the
+  deployed speech provider, model/voice provenance, repeat-request credit impact,
+  logging/history setting, and whether any claimed zero-retention mode is
+  contractually and technically available on the selected account.
 
 ## 6. Retention, deletion, and rights
 

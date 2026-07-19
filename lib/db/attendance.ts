@@ -364,6 +364,58 @@ export async function listAttendeeUserIdsByStatusAsSystem(
     .filter((id): id is string => !!id)
 }
 
+export async function listAttendeeUserIdsBySourceAsSystem(
+  sessionId: string,
+  source: EvidenceSource
+): Promise<string[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('attendance')
+    .select('user_id')
+    .eq('session_id', sessionId)
+    .eq('primary_source', source)
+    .not('user_id', 'is', null)
+  if (error) throw toDbError('Failed to list attendance by source', error)
+  return ((data as { user_id: string | null }[] | null) ?? [])
+    .map((row) => row.user_id)
+    .filter((userId): userId is string => Boolean(userId))
+}
+
+/** Finalization roster snapshot used by post-session catch-up delivery. */
+export async function listExpectedAttendeeUserIdsAsSystem(
+  sessionId: string
+): Promise<string[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('session_participants')
+    .select('user_id')
+    .eq('session_id', sessionId)
+    .eq('participant_role', 'ATTENDEE')
+    .eq('expectation', 'EXPECTED')
+    .not('user_id', 'is', null)
+  if (error) throw toDbError('Failed to list expected attendee roster', error)
+  return ((data as { user_id: string | null }[] | null) ?? [])
+    .map((row) => row.user_id)
+    .filter((userId): userId is string => Boolean(userId))
+}
+
+export async function isExpectedAttendeeAsSystem(
+  sessionId: string,
+  userId: string
+): Promise<boolean> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('session_participants')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .eq('participant_role', 'ATTENDEE')
+    .eq('expectation', 'EXPECTED')
+    .maybeSingle()
+  if (error) throw toDbError('Failed to verify expected attendee', error)
+  return Boolean(data)
+}
+
 // -----------------------------------------------------------------------------
 // Attendance computation (upserts)
 // -----------------------------------------------------------------------------

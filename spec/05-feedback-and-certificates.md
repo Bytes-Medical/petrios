@@ -405,6 +405,19 @@ Teaching assignment does not become physical-attendance evidence: it is the
 separate recognition basis for a certificate of teaching. No attendance row is
 created or changed by teacher certificate generation.
 
+`certificates.recognition_basis` is one of:
+
+- `LIVE_ATTENDANCE` for an ordinary attendee `PRESENT`/`LATE` result;
+- `AUDIO_RECAP_CATCH_UP` for a RECALL-primary result backed by the governed
+  completion in spec 08; or
+- `TEACHING_ASSIGNMENT` for a registered/external teacher.
+
+The trigger requires the basis appropriate to the role and provenance. A
+catch-up basis additionally requires a matching `recall_completions` row at the
+current revision; a RECALL-primary attendance row cannot be inserted as live
+attendance. Migration 059 backfills existing teacher rows from the former
+default to `TEACHING_ASSIGNMENT`.
+
 The trigger overwrites the certificate's `attendance_revision` with the current
 session revision and normalizes recipient email. For an attendee the revision
 refers to the qualifying attendance row; for a teacher it is the finalized
@@ -418,7 +431,8 @@ future issue paths that try to bypass the service. Certificate insert appends a
 |---|---|---|---|
 | Manual `generateCertificate` | Authenticated department moderator | One supplied registered user and role passing canonical eligibility | Reuses current `VALID` certificate for that role; renders PDF result |
 | Session batch | Department moderator, ended published session, finalized attendance governance | Current-revision `PRESENT`/`LATE` non-teacher registered attendees plus accepted registered and external teachers | Role-specific reuse; teachers do not need an attendee result; external teacher delivery uses a claimed `TEACHING_CERTIFICATE` ledger row and PDF attachment; returns issued/existing/failure counts |
-| Post-session job | Cron bearer secret; finalized sessions selected by report watermark | Internal `PRESENT`/`LATE` attendees excluding accepted teachers | Role-specific valid reuse/insert; durable claimed email delivery; watermark only after all recipients complete |
+| Post-session job | Cron bearer secret; finalized sessions selected by report watermark | Internal `PRESENT`/`LATE` attendees excluding accepted teachers and RECALL-primary catch-up learners | Role-specific valid reuse/insert; durable claimed email delivery; watermark only after all recipients complete; catch-up delivery stays with its dedicated worker |
+| Audio Recap catch-up | Perfect authenticated completion RPC, then immediate worker or `recall-awards` cron retry | Expected registered attendee changed from finalized `ABSENT` to transparent RECALL-primary `PRESENT` | Reuses/inserts one `AUDIO_RECAP_CATCH_UP` certificate; PDF email attachment uses claimed delivery; learning/attendance remains committed through provider failure |
 
 There is no feedback-submission issue path and no teacher-feedback-release issue
 path.
@@ -472,7 +486,8 @@ tenant colours:
   contrast-safe clay (`#A95134`) are the renderer tokens;
 - the masthead contains the clay-block `P` and explicit `PETRIOS` wordmark;
 - organization and department attribution remain visible;
-- attendee and teacher certificates use role-specific recognition wording;
+- live attendee, Audio Recap catch-up, and teacher certificates use
+  role/provenance-specific recognition wording;
 - the lower credential area shows the snapshotted coordinator list and a
   distinct human issuer when present; and
 - certificate code, issue date, and a QR verification URL remain visible.
@@ -501,7 +516,8 @@ owner; `REVOKED` cannot.
 `/verify/:certificateId` is public because the code is a bearer verification
 identifier. It uses the certificate's coordinator snapshot (falling back to the
 legacy department lead only for an unmigrated/defensive read), shows each
-coordinator plus a distinct issuer, and reports:
+coordinator plus a distinct issuer, displays “Audio Recap catch-up” when that is
+the recognition basis, and reports:
 
 - green “Valid Certificate” for `VALID`;
 - amber “Legacy Certificate Record” with the pre-gate warning for `LEGACY`; and

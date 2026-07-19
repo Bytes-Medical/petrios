@@ -25,11 +25,8 @@ import type { OpsRun } from './run'
 const OPS_PURPOSES = [
   'feedback_synthesis',
   'email_draft',
-  'session_summary',
-  'curriculum_map',
   'newsletter',
   'low_score_digest',
-  'gap_topics',
   'recall_questions',
   'audio_recap',
   'assistant',
@@ -57,7 +54,7 @@ const JSON_INSTRUCTION =
 
 /**
  * Run one gated inference. Returns the parsed value (when `schema` is given)
- * or the raw text, or null when Claude is unconfigured, declines, or the
+ * or the raw text, or null when the configured model is unavailable, declines, or the
  * output fails validation twice — callers treat null as "skip this item".
  * Throws only on misuse: ops disabled or unknown purpose.
  */
@@ -83,8 +80,8 @@ export async function opsInference<T = string>(input: {
   if (!OPS_PURPOSES.includes(input.purpose)) {
     throw new Error(`Unknown ops inference purpose: ${input.purpose}`)
   }
-  if (input.files?.length && input.purpose !== 'audio_recap') {
-    throw new Error('Private file inputs are allowed only for the audio_recap purpose')
+  if (input.files?.length && !['audio_recap', 'newsletter'].includes(input.purpose)) {
+    throw new Error('Private file inputs are allowed only for audio recap or newsletter generation')
   }
   if (input.webSearch && input.purpose !== 'audio_recap') {
     throw new Error('Hosted web search is allowed only for the audio_recap purpose')

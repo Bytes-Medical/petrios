@@ -38,16 +38,21 @@ export async function GET(request: NextRequest) {
         session_id: session.id,
       })
 
-      // 3. Attendees who were actually there (LATE still attended)
-      const [allAttendeeIds, acceptedTeacherIds] = await Promise.all([
+      // 3. Live attendees (LATE still attended). RECALL-primary learners use
+      // the dedicated award worker so their PDF/email keeps its catch-up basis.
+      const [allAttendeeIds, acceptedTeacherIds, recallCatchupIds] = await Promise.all([
         attendanceDb.listAttendeeUserIdsByStatusAsSystem(session.id, ['PRESENT', 'LATE']),
         certificatesDb.listAcceptedRegisteredTeacherIdsAsSystem(session.id),
+        attendanceDb.listAttendeeUserIdsBySourceAsSystem(session.id, 'RECALL'),
       ])
       const teacherIdSet = new Set(acceptedTeacherIds)
+      const recallCatchupIdSet = new Set(recallCatchupIds)
       // A person teaching this session receives the role-specific teaching
       // certificate through the moderator batch, never a duplicate attendee
       // certificate merely because their attendance was PRESENT/LATE.
-      const attendeeIds = allAttendeeIds.filter((userId) => !teacherIdSet.has(userId))
+      const attendeeIds = allAttendeeIds.filter(
+        (userId) => !teacherIdSet.has(userId) && !recallCatchupIdSet.has(userId)
+      )
 
       if (attendeeIds.length === 0) {
         await sessionsDb.markSessionReportSent(session.id)
@@ -108,6 +113,7 @@ export async function GET(request: NextRequest) {
               coordinatorNames,
               attendanceRevision: eligibility.attendanceRevision,
               issuanceSource: 'POST_SESSION_REPORT',
+              recognitionBasis: eligibility.recognitionBasis,
             })
             certificateId = certificate.id
             void emitWebhook(session.org_id, 'certificate.issued', {

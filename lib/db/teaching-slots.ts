@@ -137,6 +137,24 @@ export async function closeSlot(input: {
   return !!data
 }
 
+/** The CLAIMED slot (if any) that created this session, with its claimer. */
+export async function findClaimedSlotForSession(
+  sessionId: string,
+  orgId: string
+): Promise<{ id: string; claimed_by_contact_id: string | null } | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('teaching_slots')
+    .select('id, claimed_by_contact_id')
+    .eq('session_id', sessionId)
+    .eq('org_id', orgId)
+    .eq('status', 'CLAIMED')
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to look up claimed slot', error)
+  return (data as { id: string; claimed_by_contact_id: string | null } | null) ?? null
+}
+
 /**
  * Deleting a claimed slot's session closes the slot (never reopens it —
  * silently re-advertising a date the claimer still believes they teach

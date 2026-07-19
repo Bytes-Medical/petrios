@@ -56,7 +56,7 @@ export default function PrivacyPolicyPage() {
           <li><strong>Membership and authority:</strong> organisation, department, role, invitations, and teaching assignments.</li>
           <li><strong>Teaching activity:</strong> sessions created, taught, joined, or attended; private session documents; attendance evidence, roster, corrections, and finalized status; teaching slots and claims.</li>
           <li><strong>Feedback:</strong> first name, last name, email, ratings, answers, and free-text comments. The public feedback form does not require an account, but its submissions are <strong>identified, not anonymous</strong>.</li>
-          <li><strong>Records and learning:</strong> certificates (including recipient, teaching-coordinator, and issuer names), Recall answers, personal reflections, curriculum coverage, portfolio snapshots, and teaching dossiers.</li>
+          <li><strong>Records and learning:</strong> certificates (including recognition route, recipient, teaching-coordinator, and issuer names), Audio Recap listening progress, Recall attempts/answers/completion, personal reflections, portfolio snapshots, and teaching dossiers.</li>
           <li><strong>Communications:</strong> invitation, reminder, notification, newsletter, feedback-release, and delivery status data.</li>
           <li><strong>Security and technical data:</strong> essential authentication cookies, IP/network data available to infrastructure providers, request and error logs, API credentials, audit events, and abuse-prevention signals.</li>
         </ul>
@@ -101,13 +101,16 @@ export default function PrivacyPolicyPage() {
         <p>
           Optional AI features are currently <strong>{config.aiEnabled ? `enabled through ${config.aiProvider}` : 'disabled'}</strong>.
           When enabled, a configured AI provider may receive session metadata, assistant messages,
-          purpose-limited feedback content, and private uploaded PDF/DOCX/PPTX learning documents
-          when a moderator deliberately generates an Audio Recap. PDFs may be processed as text and
-          page images; Office files are processed as extracted text. The provider&apos;s hosted search may
+          purpose-limited feedback content, and private uploaded PDF/DOCX/PPTX learning documents.
+          A deliberate Audio Recap request sends the documents for that session; a deliberate weekly
+          newsletter request sends all available documents for every teaching session in the selected
+          department and completed week. Newsletter generation does not use web search. PDFs may be
+          processed as text and page images; Office files are processed as extracted text. For Audio
+          Recap only, the provider&apos;s hosted search may
           issue queries derived from that learning material to retrieve supporting information from a
           restricted list of authoritative public clinical and evidence sources. Petrios records the
-          document identifiers and integrity hashes used for the recap plus returned public source
-          titles and URLs; it does not copy those public pages. Opening a source link contacts that
+          document identifiers and integrity hashes used for recaps and newsletters plus returned
+          recap public-source titles and URLs; it does not copy those public pages. Opening a source link contacts that
           external website from your browser. The Ops audit log stores model-run hashes and operational
           metadata rather than raw prompt text or search queries. The provider may retain request and
           search content under its own terms. OpenAI states that API data is not used to train its models by
@@ -119,6 +122,36 @@ export default function PrivacyPolicyPage() {
             API data controls documentation
           </a>.
         </p>
+        <p>
+          Audio speech synthesis is currently{' '}
+          <strong>
+            {config.speechConfigurationError
+              ? 'incompletely configured'
+              : config.speechEnabled
+                ? `enabled through ${config.speechProvider}`
+                : 'disabled'}
+          </strong>.
+          When a moderator creates an audio preview, the selected speech provider receives the
+          current draft recap script and request metadata needed to produce the MP3. That separate
+          speech request does not contain the uploaded document files, raw feedback, or hosted-search
+          queries. Re-creating audio makes another provider request and may consume provider credits.
+          The resulting narration is AI-generated and remains unavailable to attendees until the
+          moderator listens to and approves it.
+        </p>
+        {config.speechEnabled && config.speechProvider === 'ElevenLabs API' ? (
+          <p>
+            This deployment uses ElevenLabs for speech generation. Standard API requests use the
+            provider&apos;s configured logging/history posture; zero-retention availability depends on
+            the operator&apos;s plan and account configuration. The operator must reconcile retention,
+            region, contract, and transfer settings with the{' '}
+            <a
+              className="underline hover:text-clay-700"
+              href="https://elevenlabs.io/docs/api-reference/text-to-speech/convert"
+            >
+              ElevenLabs API documentation
+            </a>.
+          </p>
+        ) : null}
       </ComplianceSection>
 
       <ComplianceSection title="Cookies and tracking">

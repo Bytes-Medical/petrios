@@ -151,7 +151,11 @@ export function buildTeacherFeedbackEmailHtml(params: TeacherFeedbackEmailParams
 export function buildCertificateEmailHtml(
   sessionTitle: string,
   recipientName: string,
-  options: { role?: 'ATTENDEE' | 'TEACHER'; attached?: boolean } = {}
+  options: {
+    role?: 'ATTENDEE' | 'TEACHER'
+    attached?: boolean
+    recognitionBasis?: 'LIVE_ATTENDANCE' | 'AUDIO_RECAP_CATCH_UP'
+  } = {}
 ): string {
   const safeSessionTitle = escapeHtml(sessionTitle)
   const safeRecipientName = escapeHtml(recipientName)
@@ -160,11 +164,14 @@ export function buildCertificateEmailHtml(
   const deliveryText = options.attached
     ? `Your ${certificateLabel.toLowerCase()} is attached to this email as a PDF. No Petrios account is required.`
     : `Your ${certificateLabel.toLowerCase()} is now ready for download when you sign in to your dashboard.`
+  const recognitionText = options.recognitionBasis === 'AUDIO_RECAP_CATCH_UP'
+    ? `You completed the approved Audio Recap and answered all five mastery questions correctly for <strong>${safeSessionTitle}</strong>. Petrios has recorded this as PRESENT through the transparent “Audio recap catch-up” source; it does not claim physical presence at the original session.`
+    : `${isTeacher ? 'Thank you for teaching' : 'Thank you for attending'} <strong>${safeSessionTitle}</strong>.`
   return `
     <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
       <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Your ${certificateLabel}</h2>
       <p style="margin:20px 0;">Dear ${safeRecipientName},</p>
-      <p style="margin:20px 0;">${isTeacher ? 'Thank you for teaching' : 'Thank you for attending'} <strong>${safeSessionTitle}</strong>. ${deliveryText}</p>
+      <p style="margin:20px 0;">${recognitionText} ${deliveryText}</p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
         This email was sent via Petrios.
       </p>
@@ -651,16 +658,19 @@ interface RecallEmailParams {
 export function buildRecallEmailHtml(params: RecallEmailParams): string {
   const intro =
     params.kind === 'CATCH_UP'
-      ? `You missed <strong>${params.sessionTitle}</strong> — you can still have
-         it count. Answer three quick recall questions (pass 2 of 3) by
-         <strong>${params.deadlineStr}</strong> and your attendance will be
-         recorded as caught up.`
+      ? `You were marked absent from <strong>${params.sessionTitle}</strong>.
+         You can complete the approved learning pathway by
+         <strong>${params.deadlineStr}</strong>: sign in, listen to the Audio
+         Recap, then answer all five mastery questions correctly. Successful
+         completion records PRESENT with the transparent “Audio recap catch-up”
+         source and emails your attendance certificate; it does not claim you
+         were physically at the original session.`
       : params.kind === 'BOOST'
         ? `One week left: a final chance to lock in the learning from
-           <strong>${params.sessionTitle}</strong>. Three quick questions,
+           <strong>${params.sessionTitle}</strong>. Five quick questions,
            open until <strong>${params.deadlineStr}</strong>.`
         : `Quick knowledge check from <strong>${params.sessionTitle}</strong> —
-           three questions, two minutes. Spaced recall is the best-evidenced
+           five questions. Spaced recall is the best-evidenced
            way to make teaching stick.`
 
   return buildMonospaceEmailShell(
@@ -669,9 +679,9 @@ export function buildRecallEmailHtml(params: RecallEmailParams): string {
       <p style="margin:20px 0;">Hi ${params.recipientName},</p>
       <p style="margin:20px 0;">${intro}</p>
       <p style="margin:20px 0;">
-        <a href="${params.answerUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Answer the questions</a>
+        <a href="${params.answerUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Start Audio Recap catch-up</a>
       </p>
-      <p style="font-size:12px;color:#666;">One attempt; your score and the explanations are shown straight after.</p>
+      <p style="font-size:12px;color:#666;">Sign-in is required. You have up to three attempts; the answer key stays hidden while a retry remains.</p>
     `
   )
 }

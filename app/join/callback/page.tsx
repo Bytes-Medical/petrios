@@ -7,6 +7,7 @@ import { createSupabaseClient } from '@/lib/supabase/client'
 import { finalizeMemberOnboarding } from '@/app/actions/member-onboarding'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
+import { safeNextPath } from '@/lib/safe-next-path'
 
 /**
  * The page component is only a Suspense boundary. The real work lives in
@@ -54,7 +55,7 @@ function JoinCallbackInner() {
         const type = searchParams.get('type')
         const requestId = searchParams.get('requestId')
         const mode = searchParams.get('mode')
-        const next = searchParams.get('next') || '/dashboard'
+        const next = safeNextPath(searchParams.get('next'))
 
         if (code) {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)

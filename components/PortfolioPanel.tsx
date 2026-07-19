@@ -4,10 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { generatePortfolioPack, saveReflection, type Passport } from '@/app/actions/portfolio'
 import { exportTeachingRecord } from '@/app/actions/federation'
-import { Badge } from './Badge'
 import { Button } from './Button'
 import { Card } from './Card'
-import { cn } from '@/lib/utils'
 
 interface PortfolioPanelProps {
   passport: Passport
@@ -18,8 +16,8 @@ function isoDaysAgo(days: number): string {
 }
 
 /**
- * The curriculum passport: personal Progress+ coverage, reflections per
- * attended session, and the one-click ARCP portfolio pack download.
+ * Personal attendance evidence, reflections per attended session, and the
+ * one-click ARCP portfolio pack download.
  */
 export function PortfolioPanel({ passport }: PortfolioPanelProps) {
   const router = useRouter()
@@ -90,8 +88,8 @@ export function PortfolioPanel({ passport }: PortfolioPanelProps) {
           <div>
             <h2 className="font-mono text-xl font-bold">ARCP portfolio pack</h2>
             <p className="font-mono text-sm text-gray-600">
-              A verifiable PDF of your attendance, curriculum coverage,
-              reflections, and certificates for the chosen period.
+              A verifiable PDF of your attendance, reflections, and
+              certificates for the chosen period.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -125,29 +123,6 @@ export function PortfolioPanel({ passport }: PortfolioPanelProps) {
       </Card>
 
       <Card>
-        <h2 className="mb-1 font-mono text-xl font-bold">Curriculum passport</h2>
-        <p className="mb-4 font-mono text-sm text-gray-600">
-          RCPCH Progress+ domains covered by teaching you attended.
-        </p>
-        <div className="divide-y divide-gray-200 border border-gray-200">
-          {passport.coverage.map((c) => (
-            <div
-              key={c.code}
-              className={cn(
-                'flex items-center justify-between px-3 py-2',
-                c.sessionCount === 0 && 'bg-red-50'
-              )}
-            >
-              <span className="font-mono text-sm">{c.name}</span>
-              <Badge variant={c.sessionCount > 0 ? 'success' : 'danger'}>
-                {c.sessionCount > 0 ? `${c.sessionCount} session(s)` : 'gap'}
-              </Badge>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card>
         <h2 className="mb-1 font-mono text-xl font-bold">Reflections</h2>
         <p className="mb-4 font-mono text-sm text-gray-600">
           A short reflection per attended session strengthens the pack as
@@ -171,7 +146,7 @@ export function PortfolioPanel({ passport }: PortfolioPanelProps) {
                       </p>
                       <p className="font-mono text-xs text-gray-500">
                         {new Date(entry.session_date).toLocaleDateString('en-GB')}
-                        {entry.primary_source === 'RECALL' && ' · caught up'}
+                        {entry.primary_source === 'RECALL' && ' · audio recap catch-up'}
                       </p>
                     </div>
                     {!editing && (

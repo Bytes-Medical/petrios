@@ -9,10 +9,11 @@ import { cn } from '@/lib/utils'
 interface RecallAnswerFormProps {
   token: string
   questions: PublicRecallQuestion[]
+  attemptsRemaining: number
 }
 
-/** One-attempt recall quiz; correct answers are only revealed after submit. */
-export function RecallAnswerForm({ token, questions }: RecallAnswerFormProps) {
+/** Three-attempt mastery quiz; answers stay hidden while a retry remains. */
+export function RecallAnswerForm({ token, questions, attemptsRemaining }: RecallAnswerFormProps) {
   const [selected, setSelected] = useState<(number | null)[]>(questions.map(() => null))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,8 +47,10 @@ export function RecallAnswerForm({ token, questions }: RecallAnswerFormProps) {
 
         {result.caughtUp && (
           <p className="border border-green-700 bg-green-50 px-4 py-3 font-mono text-sm text-green-800">
-            Catch-up completed. This records learning completion, not physical
-            attendance at the original session.
+            Catch-up completed. Your attendance is now PRESENT through the
+            transparent “Audio recap catch-up” source; this does not claim you
+            were physically present at the original session. Your certificate
+            {result.awardStatus === 'DELIVERED' ? ' has been emailed.' : ' is being prepared.'}
           </p>
         )}
         {result.attendanceLocked && (
@@ -58,8 +61,9 @@ export function RecallAnswerForm({ token, questions }: RecallAnswerFormProps) {
         )}
         {result.kind === 'CATCH_UP' && !result.passed && (
           <p className="border border-gray-300 bg-gray-50 px-4 py-3 font-mono text-sm text-gray-700">
-            Below the catch-up pass mark. The explanations below cover what the
-            session taught; the result does not alter attendance.
+            {result.attemptsRemaining > 0
+              ? `You need 5/5 to complete catch-up. The answer key stays hidden while you still have ${result.attemptsRemaining} attempt${result.attemptsRemaining === 1 ? '' : 's'} remaining.`
+              : 'All attempts have been used. Review the explanations below; attendance has not changed.'}
           </p>
         )}
 
@@ -80,6 +84,17 @@ export function RecallAnswerForm({ token, questions }: RecallAnswerFormProps) {
             </div>
           ))}
         </div>
+
+        {!result.passed && result.attemptsRemaining > 0 && (
+          <Button
+            onClick={() => {
+              setSelected(questions.map(() => null))
+              setResult(null)
+            }}
+          >
+            Try again ({result.attemptsRemaining} remaining)
+          </Button>
+        )}
       </div>
     )
   }
@@ -124,7 +139,7 @@ export function RecallAnswerForm({ token, questions }: RecallAnswerFormProps) {
       )}
 
       <Button onClick={handleSubmit} disabled={!complete || busy}>
-        {busy ? 'Submitting…' : 'Submit answers (one attempt)'}
+        {busy ? 'Submitting…' : `Submit answers (${attemptsRemaining} attempt${attemptsRemaining === 1 ? '' : 's'} available)`}
       </Button>
     </div>
   )

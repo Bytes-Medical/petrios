@@ -42,7 +42,7 @@ supabase db push
 | Database + auth | Hosted Supabase project | Supabase self-host stack (`SUPABASE_*` vars point at it) |
 | Email | `RESEND_API_KEY` | **`SMTP_HOST`** (+ `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`) — any relay; takes priority over Resend |
 | AI (optional) | OpenAI (`OPENAI_API_KEY`) | **`OPENAI_BASE_URL`** → Azure OpenAI, a gateway, or a locally hosted OpenAI-compatible model; unset the key to disable AI entirely |
-| Audio recaps (optional) | OpenAI TTS (`OPENAI_TTS_MODEL`/`OPENAI_TTS_VOICE`, shares the key) | Requires a `/audio/speech` endpoint on your `OPENAI_BASE_URL`; endpoints without one (most local models) simply disable recaps |
+| Audio recaps (optional) | OpenAI speech by default, or ElevenLabs when `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` are declared | Pin with `TTS_PROVIDER`; OpenAI-compatible endpoints require `/audio/speech`, while ElevenLabs receives only the draft recap script during explicit audio creation |
 | Video (optional) | meet.jit.si | **`NEXT_PUBLIC_JITSI_DOMAIN`** → your own Jitsi server |
 | AI agent kill switch | on | `OPS_ENABLED=false` halts every agent surface |
 | Chat assistant | **off** | `OPS_ASSISTANT_ENABLED=true` opts a deployment in (needs its own safety review) |
@@ -60,9 +60,9 @@ each route is idempotent and authenticated with an `Authorization: Bearer $CRON_
 | `/api/cron/session-reminders` | hourly |
 | `/api/cron/post-session-reports` | hourly |
 | `/api/cron/recall-send` | daily |
+| `/api/cron/recall-awards` | every 5–15 minutes, or hourly |
 | `/api/cron/ops-synthesis` | daily |
 | `/api/cron/ops-weekly` | weekly |
-| `/api/cron/ops-newsletter` | weekly (Monday) |
 
 Example crontab entry:
 

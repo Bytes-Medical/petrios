@@ -141,7 +141,7 @@
         "description": "Scope: read:certificates. Only certificates in the token's org are confirmed.",
         "parameters": [{ "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": {
-          "200": { "description": "Certificate details, including ordered teaching_coordinators, with VALID, LEGACY, or REVOKED status and valid=true only for VALID" },
+          "200": { "description": "Certificate details, including recognition_basis and ordered teaching_coordinators, with VALID, LEGACY, or REVOKED status and valid=true only for VALID" },
           "404": { "description": "Not found" }
         }
       }

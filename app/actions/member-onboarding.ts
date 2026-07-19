@@ -24,6 +24,7 @@ import {
 } from '@/app/actions/departments'
 import { getAppUrl, getAppUrlFromHeaders } from '@/lib/app-url'
 import { getEmailClient, getFromAddress } from '@/lib/email'
+import { safeNextPath } from '@/lib/safe-next-path'
 import {
   buildDepartmentInviteActivationEmailHtml,
   buildDepartmentJoinMagicLinkEmailHtml,
@@ -700,9 +701,11 @@ export async function finalizeMemberOnboarding(requestId: string) {
 }
 
 export async function sendPasswordlessLoginLink(
-  emailInput: string
+  emailInput: string,
+  nextPath = '/dashboard'
 ): Promise<{ success: boolean; message: string }> {
   const email = normalizeEmail(emailInput)
+  const safeNext = safeNextPath(nextPath)
   if (!email) {
     return { success: false, message: 'Email is required' }
   }
@@ -766,7 +769,7 @@ export async function sendPasswordlessLoginLink(
   const linkType = data.properties.verification_type === 'invite' ? 'invite' : 'magiclink'
   const inviteUrl = buildCallbackLink(baseUrl, data.properties.hashed_token, linkType, {
     mode: 'login',
-    next: '/dashboard',
+    next: safeNext,
   })
 
   const profile = await onboardingDb.findProfileByEmail(email)

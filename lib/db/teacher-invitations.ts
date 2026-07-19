@@ -10,6 +10,24 @@ import { toDbError } from './errors'
  * `findByCode`, which is hit from the public RSVP page.
  */
 
+export async function findInvitationById(input: {
+  orgId: string
+  sessionId: string
+  invitationId: string
+}): Promise<{ id: string; email: string; status: InvitationStatus } | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('teacher_invitations')
+    .select('id, email, status')
+    .eq('id', input.invitationId)
+    .eq('session_id', input.sessionId)
+    .eq('org_id', input.orgId)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to look up invitation', error)
+  return (data as { id: string; email: string; status: InvitationStatus } | null) ?? null
+}
+
 export async function findInvitationForEmail(input: {
   sessionId: string
   email: string

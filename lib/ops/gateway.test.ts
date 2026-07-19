@@ -28,7 +28,7 @@ describe('hashPrompt', () => {
 })
 
 describe('file-input purpose gate', () => {
-  it('rejects private files for non-recap inference purposes', async () => {
+  it('rejects private files outside recap and newsletter inference', async () => {
     await expect(
       opsInference({
         purpose: 'assistant',
@@ -41,7 +41,7 @@ describe('file-input purpose gate', () => {
           sha256: 'a'.repeat(64),
         }],
       })
-    ).rejects.toThrow('allowed only for the audio_recap purpose')
+    ).rejects.toThrow('allowed only for audio recap or newsletter generation')
   })
 
   it('rejects hosted web search for non-recap inference purposes', async () => {

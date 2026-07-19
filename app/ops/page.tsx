@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 /**
  * Petrios Ops hub: the human control room for the agent layer. Organisers
  * review drafted outbound actions, audit what the agent did, and reach the
- * assistant, newsletter archive, and curriculum coverage.
+ * assistant and moderator-triggered newsletter workspace.
  */
 export default async function OpsPage() {
   const user = await getCurrentUser()
@@ -46,12 +46,6 @@ export default async function OpsPage() {
               className="border border-black bg-white px-4 py-3 text-center font-mono text-sm text-black hover:bg-gray-50"
             >
               Newsletters
-            </Link>
-            <Link
-              href="/ops/curriculum"
-              className="border border-black bg-white px-4 py-3 text-center font-mono text-sm text-black hover:bg-gray-50"
-            >
-              Curriculum
             </Link>
           </div>
         </div>

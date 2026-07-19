@@ -53,6 +53,7 @@ async function generateAndDeliverExternalTeacherCertificate(input: {
     coordinatorNames: input.coordinatorNames,
     attendanceRevision: eligibility.attendanceRevision,
     issuanceSource: 'MODERATOR_BATCH',
+    recognitionBasis: eligibility.recognitionBasis,
     issuedBy: input.issuedBy,
     issuedByName: input.issuedByName,
   })
@@ -179,6 +180,7 @@ export async function generateCertificate(
     verifyUrl,
     coordinatorNames,
     issuerName: issuerName || undefined,
+    recognitionBasis: eligibility.recognitionBasis,
   })
 
   let certificate
@@ -197,6 +199,7 @@ export async function generateCertificate(
       coordinatorNames,
       attendanceRevision: eligibility.attendanceRevision,
       issuanceSource: 'MODERATOR_BATCH',
+      recognitionBasis: eligibility.recognitionBasis,
     })
   } catch (error) {
     if (error instanceof DbConflictError) {
@@ -374,6 +377,7 @@ export async function downloadMyCertificateForSession(sessionId: string) {
     verifyUrl,
     coordinatorNames,
     issuerName: certificate.issued_by_name || undefined,
+    recognitionBasis: certificate.recognition_basis,
   })
 
   // Return base64 for client-side download

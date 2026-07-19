@@ -195,7 +195,16 @@ describe('computeAttendanceFromEvidence', () => {
     expect(result.primarySource).toBeNull()
   })
 
-  it('policy v2 never treats feedback or recall completion as attendance', () => {
+  it('policy v2 preserves previously governed recall evidence after day 21', () => {
+    const result = computeAttendanceFromEvidence(
+      [evidence('RECALL', '2026-08-01T09:00:00.000Z', { status_override: 'PRESENT' })],
+      { ...session, attendance_policy_version: 2 }
+    )
+    expect(result.status).toBe('PRESENT')
+    expect(result.primarySource).toBe('RECALL')
+  })
+
+  it('policy v2 ignores feedback but preserves governed recall completion', () => {
     const result = computeAttendanceFromEvidence(
       [
         evidence('FEEDBACK', '2026-07-01T11:30:00.000Z'),
@@ -205,11 +214,8 @@ describe('computeAttendanceFromEvidence', () => {
       ],
       { ...session, attendance_policy_version: 2 }
     )
-    expect(result).toEqual({
-      status: 'ABSENT',
-      primarySource: null,
-      firstEvidenceAt: null,
-    })
+    expect(result.status).toBe('PRESENT')
+    expect(result.primarySource).toBe('RECALL')
   })
 
   it('policy v2 ignores teacher-assignment attribution', () => {

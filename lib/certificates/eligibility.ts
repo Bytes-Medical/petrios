@@ -1,8 +1,12 @@
-import type { CertificateRole } from '@/lib/types'
+import type {
+  CertificateRecognitionBasis,
+  CertificateRole,
+} from '@/lib/types'
 import * as certificatesDb from '@/lib/db/certificates'
 
 export interface CertificateEligibility {
   attendanceRevision: number
+  recognitionBasis: CertificateRecognitionBasis
 }
 
 /**
@@ -55,7 +59,7 @@ export async function requireCertificateEligibility(input: {
     // A teaching certificate recognizes the accepted teaching assignment. The
     // finalized revision remains its governance snapshot, but no attendee
     // attendance result is invented or required for the teacher.
-    return { attendanceRevision }
+    return { attendanceRevision, recognitionBasis: 'TEACHING_ASSIGNMENT' }
   }
 
   if (!input.userId) {
@@ -76,5 +80,10 @@ export async function requireCertificateEligibility(input: {
     throw new Error('Attendance changed after this result was finalized')
   }
 
-  return { attendanceRevision: attendance.revision }
+  return {
+    attendanceRevision: attendance.revision,
+    recognitionBasis: attendance.primary_source === 'RECALL'
+      ? 'AUDIO_RECAP_CATCH_UP'
+      : 'LIVE_ATTENDANCE',
+  }
 }

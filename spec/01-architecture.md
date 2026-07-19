@@ -9,8 +9,8 @@ feedback, teaching evidence, communications, reporting, API integration, and an
 optional AI-assisted operations layer.
 
 This document describes the source and migrations through
-`051_attendance_secret_boundary.sql`. It is an implementation specification, not a generic
-Next.js architecture recommendation.
+`058_audio_recap_tts_provider.sql`. It is an implementation specification, not a
+generic Next.js architecture recommendation.
 
 ## Runtime stack
 
@@ -24,7 +24,7 @@ Next.js architecture recommendation.
 | Server database clients | Request-scoped RLS client and service-role client, created by `lib/db/client.ts` |
 | Email | `lib/email/adapter.ts`: SMTP first, then Resend, then development sink |
 | AI | OpenAI-compatible Chat Completions through `lib/ai/llm.ts`; constrained Ops gateway and one sanctioned tool loop |
-| Speech | OpenAI-compatible speech endpoint through `lib/ai/tts.ts` |
+| Speech | Provider-neutral `lib/ai/tts.ts` boundary selecting OpenAI-compatible or ElevenLabs speech and returning auditable provider/model/voice metadata |
 | Meetings | Jitsi iframe integration or stored Microsoft Teams link; in-person and hybrid locations also supported |
 | Documents | React PDF for certificate, portfolio, dossier, audit, and member-report documents |
 | Unit tests | Vitest, primarily pure library tests |
@@ -150,7 +150,10 @@ in [11 — Identity and administration](./11-identity-and-administration.md).
 
 `proxy.ts` refreshes browser auth and redirects unauthenticated page requests.
 It treats the marketing/auth/onboarding pages, public verification and capability
-pages, feedback/RSVP/Recall pages, and well-known metadata as public.
+pages, feedback/RSVP/Recall landing pages, and well-known metadata as public.
+Recall is proxy-public only so an email link can reach its sign-in prompt; its
+audio, questions, progress, answers, and completion require the token's exact
+authenticated account.
 
 The signed-in check is a **local JWT verification** (`auth.getClaims()`:
 WebCrypto against the project's cached JWKS — the project uses asymmetric
@@ -184,13 +187,15 @@ The public surface includes:
 - session and department feedback entry points;
 - registered-teacher invite response and external-teacher RSVP;
 - certificate, portfolio-pack, and portable-record verification;
-- Recall answer links;
+- Recall deep links (landing is public; learning content/mutations are
+  identity-bound after sign-in);
 - Ops newsletter unsubscribe links;
 - `/.well-known/petrios`, OpenAPI documentation, sitemap, robots, and images.
 
-“Public” means no login cookie is required. Invite codes, HMACs, record codes,
-and feed tokens are bearer capabilities and must not be logged or exposed more
-widely than necessary.
+“Public” normally means no login cookie is required; the Recall exception is a
+public landing route with its own account gate. Invite codes, HMACs, record
+codes, and feed tokens are bearer capabilities and must not be logged or exposed
+more widely than necessary.
 
 ## Personal workspaces and account posture
 
@@ -207,7 +212,8 @@ With the flag disabled:
 
 When enabled, the dashboard may provision a personal organization and default
 department. Code that assumes personal organizations exist must be guarded by the
-same feature posture. Ops newsletter generation excludes personal organizations.
+same feature posture. The manual newsletter action is department-scoped and does
+not contain a separate personal-organization exclusion.
 
 ## Rendering, caching, and time
 
@@ -251,7 +257,7 @@ Configuration falls into five trust classes:
 1. Browser-safe values prefixed `NEXT_PUBLIC_`.
 2. Auth/database secrets, especially `SUPABASE_SERVICE_ROLE_KEY`.
 3. Delivery secrets for SMTP/Resend and public application URL construction.
-4. AI/Ops secrets and model selection.
+4. AI/Ops and speech-provider secrets, selection, and model/voice configuration.
 5. Integration identities such as `CRON_SECRET` and `INSTANCE_SIGNING_KEY`.
 
 The complete variable contract and precedence are in spec 09. Secrets must never

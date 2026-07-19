@@ -5,12 +5,12 @@ import type {
   OpsAgentRunStep,
   OpsChatMessage,
   OpsChatThread,
-  OpsCurriculumDomain,
-  OpsCurriculumMapping,
   OpsFeedbackSynthesis,
-  OpsMapConfidence,
   OpsMemoryEntry,
+  OpsNewsletterContent,
+  OpsNewsletterDelivery,
   OpsNewsletterIssue,
+  OpsNewsletterSourceDocument,
   OpsNewsletterStatus,
   OpsPendingAction,
   OpsSynthesisTheme,
@@ -79,6 +79,21 @@ export async function listPendingActions(
   const { data, error } = await query
   if (error) throw toDbError('Failed to list pending actions', error)
   return (data as OpsPendingAction[] | null) ?? []
+}
+
+export async function findPendingAction(
+  id: string,
+  orgId: string
+): Promise<OpsPendingAction | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('ops_pending_actions')
+    .select('*')
+    .eq('id', id)
+    .eq('org_id', orgId)
+    .maybeSingle()
+  if (error) throw toDbError('Failed to fetch pending action', error)
+  return (data as OpsPendingAction | null) ?? null
 }
 
 export async function countPendingActions(orgId: string): Promise<number> {
@@ -343,69 +358,6 @@ export async function insertSynthesis(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Curriculum domains + mappings
-// ---------------------------------------------------------------------------
-
-export async function listCurriculumDomains(): Promise<OpsCurriculumDomain[]> {
-  const db = await getServiceDb()
-  const { data, error } = await db
-    .from('ops_curriculum_domains')
-    .select('*')
-    .order('sort', { ascending: true })
-
-  if (error) throw toDbError('Failed to list curriculum domains', error)
-  return (data as OpsCurriculumDomain[] | null) ?? []
-}
-
-export async function insertCurriculumMappings(
-  rows: {
-    orgId: string
-    sessionId: string
-    domainCode: string
-    confidence: OpsMapConfidence
-    rationale?: string | null
-  }[]
-): Promise<void> {
-  if (rows.length === 0) return
-  const db = await getServiceDb()
-  const { error } = await db.from('ops_curriculum_map').upsert(
-    rows.map((r) => ({
-      org_id: r.orgId,
-      session_id: r.sessionId,
-      domain_code: r.domainCode,
-      confidence: r.confidence,
-      rationale: r.rationale ?? null,
-    })),
-    { onConflict: 'session_id,domain_code', ignoreDuplicates: true }
-  )
-
-  if (error) throw toDbError('Failed to store curriculum mappings', error)
-}
-
-export async function listMappingsForOrg(orgId: string): Promise<OpsCurriculumMapping[]> {
-  const db = await getServiceDb()
-  const { data, error } = await db
-    .from('ops_curriculum_map')
-    .select('*')
-    .eq('org_id', orgId)
-
-  if (error) throw toDbError('Failed to list curriculum mappings', error)
-  return (data as OpsCurriculumMapping[] | null) ?? []
-}
-
-export async function listMappedSessionIds(sessionIds: string[]): Promise<Set<string>> {
-  if (sessionIds.length === 0) return new Set()
-  const db = await getServiceDb()
-  const { data, error } = await db
-    .from('ops_curriculum_map')
-    .select('session_id')
-    .in('session_id', sessionIds)
-
-  if (error) throw toDbError('Failed to list mapped sessions', error)
-  return new Set(((data as { session_id: string }[] | null) ?? []).map((r) => r.session_id))
-}
-
-// ---------------------------------------------------------------------------
 // Speaker chases
 // ---------------------------------------------------------------------------
 
@@ -521,6 +473,7 @@ export async function upsertMemory(input: {
 
 export async function findNewsletterIssue(
   orgId: string,
+  departmentId: string,
   weekStart: string
 ): Promise<OpsNewsletterIssue | null> {
   const db = await getServiceDb()
@@ -528,6 +481,7 @@ export async function findNewsletterIssue(
     .from('ops_newsletter_issues')
     .select('*')
     .eq('org_id', orgId)
+    .eq('department_id', departmentId)
     .eq('week_start', weekStart)
     .maybeSingle()
 
@@ -549,20 +503,30 @@ export async function findNewsletterIssueById(id: string): Promise<OpsNewsletter
 
 export async function insertNewsletterIssue(input: {
   orgId: string
+  departmentId: string
   weekStart: string
+  generatedBy: string
   subject: string
   html: string
   summaryPoints: { title: string; detail: string }[]
+  content: OpsNewsletterContent
+  sourceSessionIds: string[]
+  sourceDocuments: OpsNewsletterSourceDocument[]
 }): Promise<OpsNewsletterIssue> {
   const db = await getServiceDb()
   const { data, error } = await db
     .from('ops_newsletter_issues')
     .insert({
       org_id: input.orgId,
+      department_id: input.departmentId,
       week_start: input.weekStart,
+      generated_by: input.generatedBy,
       subject: input.subject,
       html: input.html,
       summary_points: input.summaryPoints,
+      content: input.content,
+      source_session_ids: input.sourceSessionIds,
+      source_documents: input.sourceDocuments,
     })
     .select('*')
     .single()
@@ -573,27 +537,112 @@ export async function insertNewsletterIssue(input: {
 
 export async function updateNewsletterIssue(
   id: string,
-  patch: { status?: OpsNewsletterStatus; pendingActionId?: string; sentCount?: number }
+  patch: {
+    status?: OpsNewsletterStatus
+    pendingActionId?: string | null
+    sentCount?: number
+  }
 ): Promise<void> {
   const db = await getServiceDb()
   const update: Record<string, unknown> = {}
   if (patch.status) update.status = patch.status
-  if (patch.pendingActionId) update.pending_action_id = patch.pendingActionId
+  if (patch.pendingActionId !== undefined) update.pending_action_id = patch.pendingActionId
   if (patch.sentCount !== undefined) update.sent_count = patch.sentCount
+  update.updated_at = new Date().toISOString()
 
   const { error } = await db.from('ops_newsletter_issues').update(update).eq('id', id)
   if (error) throw toDbError('Failed to update newsletter issue', error)
 }
 
+export async function replaceNewsletterDraft(input: {
+  id: string
+  orgId: string
+  departmentId: string
+  generatedBy: string
+  subject: string
+  html: string
+  summaryPoints: { title: string; detail: string }[]
+  content: OpsNewsletterContent
+  sourceSessionIds: string[]
+  sourceDocuments: OpsNewsletterSourceDocument[]
+}): Promise<OpsNewsletterIssue> {
+  const db = await getServiceDb()
+  const update: Record<string, unknown> = {
+    generated_by: input.generatedBy,
+    subject: input.subject,
+    html: input.html,
+    summary_points: input.summaryPoints,
+    content: input.content,
+    status: 'draft',
+    pending_action_id: null,
+    source_session_ids: input.sourceSessionIds,
+    source_documents: input.sourceDocuments,
+    content_revision: 1,
+    updated_at: new Date().toISOString(),
+  }
+  const { data, error } = await db
+    .from('ops_newsletter_issues')
+    .update(update)
+    .eq('id', input.id)
+    .eq('org_id', input.orgId)
+    .eq('department_id', input.departmentId)
+    .in('status', ['draft', 'failed'])
+    .eq('sent_count', 0)
+    .select('*')
+    .maybeSingle()
+  if (error) throw toDbError('Failed to replace newsletter draft', error)
+  if (!data) throw new Error('This newsletter is no longer editable')
+  return data as OpsNewsletterIssue
+}
+
+export async function saveNewsletterDraft(input: {
+  id: string
+  orgId: string
+  departmentId: string
+  subject: string
+  html: string
+  summaryPoints: { title: string; detail: string }[]
+  content: OpsNewsletterContent
+  expectedRevision: number
+}): Promise<OpsNewsletterIssue> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('ops_newsletter_issues')
+    .update({
+      subject: input.subject,
+      html: input.html,
+      summary_points: input.summaryPoints,
+      content: input.content,
+      content_revision: input.expectedRevision + 1,
+      status: 'draft',
+      pending_action_id: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.id)
+    .eq('org_id', input.orgId)
+    .eq('department_id', input.departmentId)
+    .in('status', ['draft', 'failed'])
+    .eq('sent_count', 0)
+    .eq('content_revision', input.expectedRevision)
+    .select('*')
+    .maybeSingle()
+  if (error) throw toDbError('Failed to save newsletter draft', error)
+  if (!data) throw new Error('The newsletter changed; refresh before saving again')
+  return data as OpsNewsletterIssue
+}
+
 export async function listNewsletterIssues(
   orgId: string,
+  departmentIds: string[],
   limit = 26
 ): Promise<OpsNewsletterIssue[]> {
+  if (departmentIds.length === 0) return []
   const db = await getServiceDb()
   const { data, error } = await db
     .from('ops_newsletter_issues')
     .select('*')
     .eq('org_id', orgId)
+    .in('department_id', departmentIds)
     .order('week_start', { ascending: false })
     .limit(limit)
 
@@ -619,6 +668,88 @@ export async function listNewsletterOptoutUserIds(orgId: string): Promise<Set<st
 
   if (error) throw toDbError('Failed to list newsletter opt-outs', error)
   return new Set(((data as { user_id: string }[] | null) ?? []).map((r) => r.user_id))
+}
+
+export async function deleteUnsentNewsletterDeliveries(issueId: string): Promise<void> {
+  const db = await getServiceDb()
+  const { error } = await db
+    .from('ops_newsletter_deliveries')
+    .delete()
+    .eq('issue_id', issueId)
+    .neq('status', 'SENT')
+  if (error) throw toDbError('Failed to clear obsolete newsletter deliveries', error)
+}
+
+export async function seedNewsletterDeliveries(input: {
+  issue: OpsNewsletterIssue
+  recipients: { userId: string; email: string }[]
+}): Promise<void> {
+  if (input.recipients.length === 0) return
+  const db = await getServiceDb()
+  const { error } = await db.from('ops_newsletter_deliveries').upsert(
+    input.recipients.map((recipient) => ({
+      issue_id: input.issue.id,
+      org_id: input.issue.org_id,
+      department_id: input.issue.department_id,
+      recipient_user_id: recipient.userId,
+      recipient_email: recipient.email.trim().toLowerCase(),
+      content_revision: input.issue.content_revision,
+    })),
+    { onConflict: 'issue_id,recipient_user_id', ignoreDuplicates: true }
+  )
+  if (error) throw toDbError('Failed to prepare newsletter deliveries', error)
+}
+
+export async function listNewsletterDeliveries(
+  issueId: string
+): Promise<OpsNewsletterDelivery[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('ops_newsletter_deliveries')
+    .select('*')
+    .eq('issue_id', issueId)
+    .order('created_at', { ascending: true })
+  if (error) throw toDbError('Failed to list newsletter deliveries', error)
+  return (data as OpsNewsletterDelivery[] | null) ?? []
+}
+
+export async function claimNewsletterDelivery(
+  deliveryId: string
+): Promise<OpsNewsletterDelivery | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .rpc('claim_ops_newsletter_delivery_v1', { p_delivery_id: deliveryId })
+    .maybeSingle()
+  if (error) throw toDbError('Failed to claim newsletter delivery', error)
+  return (data as OpsNewsletterDelivery | null) ?? null
+}
+
+export async function finishNewsletterDelivery(input: {
+  id: string
+  success: boolean
+  providerMessageId?: string | null
+  error?: string | null
+}): Promise<void> {
+  const db = await getServiceDb()
+  const now = new Date().toISOString()
+  const { error } = await db
+    .from('ops_newsletter_deliveries')
+    .update(input.success
+      ? {
+          status: 'SENT',
+          sent_at: now,
+          provider_message_id: input.providerMessageId ?? null,
+          last_error: null,
+          updated_at: now,
+        }
+      : {
+          status: 'FAILED',
+          last_error: (input.error ?? 'Newsletter delivery failed').slice(0, 1000),
+          updated_at: now,
+        })
+    .eq('id', input.id)
+    .eq('status', 'SENDING')
+  if (error) throw toDbError('Failed to finish newsletter delivery', error)
 }
 
 // ---------------------------------------------------------------------------

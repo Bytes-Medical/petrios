@@ -2,7 +2,7 @@ import { getEmailClient, getFromAddress } from '@/lib/email'
 import { getAppUrl } from '@/lib/app-url'
 import type { OpsPendingAction } from '@/lib/types'
 import * as opsDb from '@/lib/db/ops'
-import * as onboardingDb from '@/lib/db/onboarding'
+import * as departmentsDb from '@/lib/db/departments'
 import { makeUnsubToken, UNSUBSCRIBE_PLACEHOLDER } from './newsletter'
 
 /**
@@ -70,48 +70,83 @@ async function executeSimpleEmail(action: OpsPendingAction): Promise<void> {
 }
 
 async function executeNewsletterIssue(action: OpsPendingAction): Promise<void> {
-  const issueId = (action.payload as { issueId?: string }).issueId
+  const payload = action.payload as { issueId?: string; contentRevision?: number }
+  const issueId = payload.issueId
   if (!issueId) throw new Error('Newsletter action payload is missing issueId')
 
   const issue = await opsDb.findNewsletterIssueById(issueId)
   if (!issue) throw new Error('Newsletter issue not found')
+  if (issue.org_id !== action.org_id || issue.department_id !== action.department_id) {
+    throw new Error('Newsletter action scope does not match its issue')
+  }
   if (issue.status === 'sent') return // already delivered (double-execution guard)
+  if (!issue.department_id || !issue.content) {
+    throw new Error('Legacy organization-wide newsletters cannot use department delivery')
+  }
+  if (payload.contentRevision !== issue.content_revision) {
+    throw new Error('The newsletter changed after review; review the current revision before sending')
+  }
 
   await opsDb.updateNewsletterIssue(issue.id, { status: 'approved' })
 
   const [members, optouts] = await Promise.all([
-    onboardingDb.listOrganizationMembers(action.org_id),
+    departmentsDb.listDepartmentMembersWithProfiles(action.org_id, issue.department_id),
     opsDb.listNewsletterOptoutUserIds(action.org_id),
   ])
-  const recipientIds = members.map((m) => m.user_id).filter((id) => !optouts.has(id))
-  const profiles = await onboardingDb.listProfilesForUsers(recipientIds)
+  const recipients = members.filter((member) => !optouts.has(member.user_id))
+  const missingEmail = recipients.filter((member) => !member.email.trim())
+  if (missingEmail.length > 0) {
+    await opsDb.updateNewsletterIssue(issue.id, { status: 'failed' })
+    throw new Error(`${missingEmail.length} department member(s) do not have a deliverable email address`)
+  }
+  await opsDb.seedNewsletterDeliveries({
+    issue,
+    recipients: recipients.map((member) => ({ userId: member.user_id, email: member.email })),
+  })
 
   const mailer = getEmailClient()
   const fromAddress = getFromAddress()
   const appUrl = getAppUrl()
 
-  let sent = 0
-  for (const profile of profiles) {
-    if (!profile.email) continue
+  const deliveries = await opsDb.listNewsletterDeliveries(issue.id)
+  for (const delivery of deliveries) {
+    if (delivery.status === 'SENT') continue
+    if (delivery.content_revision !== issue.content_revision) {
+      throw new Error('A newsletter delivery belongs to an obsolete content revision')
+    }
+    const claimed = await opsDb.claimNewsletterDelivery(delivery.id)
+    if (!claimed) continue
     try {
-      const unsubUrl = `${appUrl}/ops/unsubscribe/${makeUnsubToken(action.org_id, profile.user_id)}`
+      const unsubUrl = `${appUrl}/ops/unsubscribe/${makeUnsubToken(action.org_id, delivery.recipient_user_id)}`
       const html = issue.html.split(UNSUBSCRIBE_PLACEHOLDER).join(unsubUrl)
-      const { error } = await mailer.emails.send({
+      const result = await mailer.emails.send({
         from: fromAddress,
-        to: profile.email,
+        to: delivery.recipient_email,
         subject: issue.subject,
         html,
       })
-      if (error) throw new Error(error.message)
-      sent++
+      if (result.error) throw new Error(result.error.message)
+      await opsDb.finishNewsletterDelivery({
+        id: delivery.id,
+        success: true,
+        providerMessageId: result.data?.id,
+      })
     } catch (err) {
-      console.error(`Failed to send newsletter to ${profile.user_id}:`, err)
+      await opsDb.finishNewsletterDelivery({
+        id: delivery.id,
+        success: false,
+        error: err instanceof Error ? err.message : 'Newsletter delivery failed',
+      }).catch(() => undefined)
+      console.error(`Failed to send newsletter to ${delivery.recipient_user_id}:`, err)
     }
   }
 
-  if (sent === 0 && profiles.length > 0) {
-    await opsDb.updateNewsletterIssue(issue.id, { status: 'failed', sentCount: 0 })
-    throw new Error(`Newsletter delivery failed for all ${profiles.length} recipients`)
+  const final = await opsDb.listNewsletterDeliveries(issue.id)
+  const sent = final.filter((delivery) => delivery.status === 'SENT').length
+  const unfinished = final.filter((delivery) => delivery.status !== 'SENT').length
+  if (unfinished > 0) {
+    await opsDb.updateNewsletterIssue(issue.id, { status: 'failed', sentCount: sent })
+    throw new Error(`${unfinished} newsletter delivery(s) failed or remain unfinished; successful members will not be emailed again`)
   }
 
   await opsDb.updateNewsletterIssue(issue.id, { status: 'sent', sentCount: sent })

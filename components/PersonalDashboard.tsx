@@ -31,7 +31,7 @@ interface PersonalDashboardProps {
   /** Org-wide open slots shown as Available on the calendar tab. */
   openSlots: SlotEvent[]
   calendarUrl: string
-  /** Curriculum passport + reflections + certificates (Portfolio tab). */
+  /** Attendance evidence + reflections + certificates (Portfolio tab). */
   passport: Passport
   /** Deep-link target, e.g. /dashboard?tab=teaching from invitation emails. */
   initialTab?: string

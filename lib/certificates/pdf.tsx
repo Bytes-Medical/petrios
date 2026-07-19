@@ -281,6 +281,7 @@ export interface CertificateData {
   verifyUrl: string
   coordinatorNames?: string[]
   issuerName?: string
+  recognitionBasis?: 'LIVE_ATTENDANCE' | 'AUDIO_RECAP_CATCH_UP' | 'TEACHING_ASSIGNMENT'
 }
 
 function trim(value: string, max: number): string {
@@ -358,7 +359,9 @@ const CertificateDocument = ({
             <Text style={styles.recognitionLine}>
               {isTeacher
                 ? 'In recognition of delivering the teaching session'
-                : 'In recognition of attending the teaching session'}
+                : data.recognitionBasis === 'AUDIO_RECAP_CATCH_UP'
+                  ? 'In recognition of completing the approved Audio Recap catch-up pathway'
+                  : 'In recognition of attending the teaching session'}
             </Text>
             <Text style={styles.sessionTitle}>{trim(data.sessionTitle, 110)}</Text>
             <Text style={styles.sessionDate}>{data.sessionDate}</Text>
