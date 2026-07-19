@@ -5,7 +5,6 @@ import { getCurrentUser, isOrgManager } from '@/lib/auth'
 import { getOpsOverview } from '@/app/actions/ops'
 import { NavShell } from '@/components/NavShell'
 import { PendingActionsPanel } from '@/components/ops/PendingActionsPanel'
-import { RecentRunsPanel } from '@/components/ops/RecentRunsPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,10 +56,7 @@ export default async function OpsPage() {
           </p>
         )}
 
-        <div className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-2">
-          <PendingActionsPanel pending={overview.pending} reviewed={overview.reviewed} />
-          <RecentRunsPanel runs={overview.runs} />
-        </div>
+        <PendingActionsPanel pending={overview.pending} reviewed={overview.reviewed} />
       </div>
     </div>
   )

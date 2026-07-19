@@ -40,7 +40,6 @@ export interface OpsOverview {
   enabled: boolean
   pending: OpsPendingAction[]
   reviewed: OpsPendingAction[]
-  runs: OpsAgentRun[]
 }
 
 async function newsletterDepartments(userId: string, orgId: string) {
@@ -62,16 +61,15 @@ async function requireActionScope(action: OpsPendingAction, orgId: string): Prom
 
 export async function getOpsOverview(): Promise<OpsOverview> {
   const { userId, orgId } = await requireOpsManager()
-  const [pending, reviewed, runs] = await Promise.all([
+  const [pending, reviewed] = await Promise.all([
     opsDb.listPendingActions(orgId, { statuses: ['pending'] }),
     opsDb.listPendingActions(orgId, {
       statuses: ['approved', 'executed', 'rejected', 'failed'],
       limit: 15,
     }),
-    opsDb.listRecentRuns(orgId),
   ])
   const elevated = (await isOrgAdmin(orgId)) || (await isSuperAdmin())
-  if (elevated) return { enabled: opsEnabled(), pending, reviewed, runs }
+  if (elevated) return { enabled: opsEnabled(), pending, reviewed }
   const departmentIds = new Set(
     (await departmentsDb.listModeratedDepartments(userId, orgId)).map((department) => department.id)
   )
@@ -79,7 +77,6 @@ export async function getOpsOverview(): Promise<OpsOverview> {
     enabled: opsEnabled(),
     pending: pending.filter((action) => action.department_id && departmentIds.has(action.department_id)),
     reviewed: reviewed.filter((action) => action.department_id && departmentIds.has(action.department_id)),
-    runs,
   }
 }
 
