@@ -4,7 +4,10 @@ import {
   buildNewsletterHtml,
   escapeHtml,
   makeUnsubToken,
+  newsletterSchemaForSessions,
   newsletterWeekWindow,
+  newsletterWindowFromWeekStart,
+  newsletterWordCount,
   verifyUnsubToken,
   UNSUBSCRIBE_PLACEHOLDER,
 } from './newsletter'
@@ -38,6 +41,25 @@ describe('newsletterWeekWindow', () => {
   })
 })
 
+describe('newsletterWindowFromWeekStart', () => {
+  it('accepts a completed Monday-Sunday week', () => {
+    const window = newsletterWindowFromWeekStart('2026-06-29', new Date('2026-07-08T12:00:00Z'))
+    expect(window.weekEnd.toISOString()).toBe('2026-07-06T00:00:00.000Z')
+  })
+
+  it('accepts the current in-progress week (draft covers the week so far)', () => {
+    const window = newsletterWindowFromWeekStart('2026-07-06', new Date('2026-07-08T12:00:00Z'))
+    expect(window.weekStartKey).toBe('2026-07-06')
+  })
+
+  it('rejects non-Mondays and weeks that have not started', () => {
+    expect(() => newsletterWindowFromWeekStart('2026-06-30', new Date('2026-07-08T12:00:00Z')))
+      .toThrow('Monday')
+    expect(() => newsletterWindowFromWeekStart('2026-07-13', new Date('2026-07-08T12:00:00Z')))
+      .toThrow("hasn't started")
+  })
+})
+
 describe('unsubscribe tokens', () => {
   const secret = 'test-secret'
   const orgId = '11111111-2222-3333-4444-555555555555'
@@ -67,54 +89,103 @@ describe('buildNewsletterHtml', () => {
   const content = {
     subject: 'Week in teaching',
     intro: 'Three sessions ran this week.',
-    learning_points: [{ title: 'Sepsis <6>', detail: 'Early recognition & escalation' }],
-    looking_ahead: 'DKA workshop on Friday.',
+    sessions: [{
+      session_id: '11111111-1111-4111-8111-111111111111',
+      title: 'Sepsis <6>',
+      date_label: 'Monday & Tuesday',
+      overview: 'Early recognition & escalation',
+      learning_points: ['Escalate <early>'],
+    }],
+    closing: 'Keep learning & sharing.',
   }
 
   it('escapes HTML in model-authored and session-derived text', () => {
-    const html = buildNewsletterHtml({ orgName: 'St <Elsewhere>', weekLabel: 'w/c 29 Jun', content })
+    const html = buildNewsletterHtml({
+      organizationName: 'St <Elsewhere>',
+      departmentName: 'Paediatrics & Neonates',
+      weekLabel: 'w/c 29 Jun',
+      content,
+    })
     expect(html).toContain('St &lt;Elsewhere&gt;')
+    expect(html).toContain('Paediatrics &amp; Neonates')
     expect(html).toContain('Sepsis &lt;6&gt;')
     expect(html).toContain('Early recognition &amp; escalation')
     expect(html).not.toContain('<6>')
   })
 
   it('contains the per-recipient unsubscribe placeholder', () => {
-    const html = buildNewsletterHtml({ orgName: 'Org', weekLabel: 'w/c', content })
+    const html = buildNewsletterHtml({
+      organizationName: 'Org',
+      departmentName: 'Department',
+      weekLabel: 'w/c',
+      content,
+    })
     expect(html).toContain(UNSUBSCRIBE_PLACEHOLDER)
   })
 
-  it('omits the looking-ahead section when empty', () => {
+  it('uses the compact Petrios one-page visual treatment', () => {
     const html = buildNewsletterHtml({
-      orgName: 'Org',
+      organizationName: 'Org',
+      departmentName: 'Department',
       weekLabel: 'w/c',
-      content: { ...content, looking_ahead: '  ' },
+      content,
     })
-    expect(html).not.toContain('Coming up')
+    expect(html).toContain('max-width:680px')
+    expect(html).toContain('box-shadow:3px 3px 0 #c96f4a')
   })
 })
 
 describe('NewsletterSchema', () => {
-  it('bounds learning points to 1..8', () => {
+  const session = {
+    session_id: '11111111-1111-4111-8111-111111111111',
+    title: 'Session',
+    date_label: 'Monday 29 June',
+    overview: 'A concise overview.',
+    learning_points: ['One point'],
+  }
+
+  it('requires one to three learning points per delivered session', () => {
     const base = {
       subject: 's',
       intro: 'i',
-      looking_ahead: '',
-      learning_points: [] as { title: string; detail: string }[],
+      closing: 'c',
+      sessions: [{ ...session, learning_points: [] as string[] }],
     }
     expect(NewsletterSchema.safeParse(base).success).toBe(false)
     expect(
       NewsletterSchema.safeParse({
         ...base,
-        learning_points: [{ title: 't', detail: 'd' }],
+        sessions: [session],
       }).success
     ).toBe(true)
     expect(
       NewsletterSchema.safeParse({
         ...base,
-        learning_points: Array.from({ length: 9 }, () => ({ title: 't', detail: 'd' })),
+        sessions: [{ ...session, learning_points: ['1', '2', '3', '4'] }],
       }).success
     ).toBe(false)
+  })
+
+  it('requires every expected session exactly once', () => {
+    const secondId = '22222222-2222-4222-8222-222222222222'
+    const schema = newsletterSchemaForSessions([session.session_id, secondId])
+    const content = { subject: 's', intro: 'i', closing: 'c', sessions: [session] }
+    expect(schema.safeParse(content).success).toBe(false)
+    expect(schema.safeParse({
+      ...content,
+      sessions: [session, { ...session, session_id: secondId }],
+    }).success).toBe(true)
+  })
+
+  it('enforces the one-page word budget', () => {
+    const content = {
+      subject: 'Weekly teaching',
+      intro: Array.from({ length: 650 }, () => 'word').join(' '),
+      sessions: [session],
+      closing: Array.from({ length: 80 }, () => 'word').join(' '),
+    }
+    expect(newsletterWordCount(content)).toBeGreaterThan(700)
+    expect(NewsletterSchema.safeParse(content).success).toBe(false)
   })
 })
 
