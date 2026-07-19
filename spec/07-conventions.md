@@ -314,6 +314,11 @@ Every mutation click is at least two server round trips (action, then
 - **Heavy client-only libraries load via a dynamic client wrapper**
   (`SessionCalendarLazy`, `JitsiMeetingPanel` pattern), never statically
   from a page.
+- **Signed-in pages get the utility footer automatically** — `AppFooter`
+  renders once from the root layout on app-area routes (© / AGPL / Source /
+  Privacy; the Source link is the AGPL section-13 route every self-hosted
+  instance inherits). Public pages keep the marketing `Footer`; don't add
+  either per-page.
 - **Dense management pages use collapsible sections**
   (`components/SettingsSection.tsx` — a native <details> styled like Card,
   server-renderable, counts in the header, optional internal scroll)

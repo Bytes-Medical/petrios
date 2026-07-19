@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { IBM_Plex_Mono } from 'next/font/google'
 import { ToastProvider } from '@/components/ToastProvider'
+import { AppFooter } from '@/components/AppFooter'
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from '@/lib/site'
 import './globals.css'
 
@@ -68,8 +69,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${plexMono.variable} font-mono`}>
-        <ToastProvider>{children}</ToastProvider>
+      <body className={`${plexMono.variable} flex min-h-screen flex-col font-mono`}>
+        <ToastProvider>
+          {children}
+          <AppFooter />
+        </ToastProvider>
       </body>
     </html>
   )
