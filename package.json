@@ -18,7 +18,8 @@
     "seed:demo": "node scripts/seed-demo.mjs",
     "cf:build": "node scripts/cloudflare/build.mjs",
     "cf:preview": "node scripts/cloudflare/preview.mjs",
-    "cf:deploy:staging": "node scripts/cloudflare/deploy-staging.mjs"
+    "cf:deploy:staging": "node scripts/cloudflare/deploy-staging.mjs",
+    "cf:deploy:production": "node scripts/cloudflare/deploy-production.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.132.1",

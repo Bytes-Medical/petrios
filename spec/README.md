@@ -47,7 +47,7 @@ data to whoever possesses it.
 | [06 — Petrios Ops](./06-petrios-ops.md) | AI operations layer, inference audit, approval gate, assistant tools, jobs, and audio recap approval |
 | [07 — Engineering conventions](./07-conventions.md) | Code boundaries, validation, errors, email, jobs, testing, CI, and change procedure |
 | [08 — Portfolio and Recall](./08-portfolio-and-recall.md) | Personal attendance/reflection/certificate record, durable portfolio snapshots, teacher dossier, recall questions, analytics, and catch-up learning completion |
-| [09 — API, federation, and self-hosting](./09-platform-api-and-self-hosting.md) | Bearer API, webhooks, portable signed records, provider adapters, deployment (Render/Docker and the Cloudflare Workers staging build), health, and environment variables |
+| [09 — API, federation, and self-hosting](./09-platform-api-and-self-hosting.md) | Bearer API, webhooks, portable signed records, provider adapters, deployment (Render/Docker, the Cloudflare Workers staging build and the production cutover), health, and environment variables |
 | [10 — Federated benchmarking](./10-federated-benchmarking.md) | **RFC, not implemented:** opt-in, signed, aggregate-only cross-instance comparison |
 | [11 — Identity and administration](./11-identity-and-administration.md) | Login methods, signup posture, join workflow, profiles, memberships, roles, and administrator surfaces |
 | [12 — Audit and reporting](./12-audit-and-reporting.md) | Audit scope, metric denominators, equity views, member reports, exports, and privacy caveats |
@@ -104,10 +104,15 @@ must not be used to erase those details.
     scanner scores and repository controls are not represented as certification.
 13. **One scheduler per database.** Cron jobs run from exactly one scheduler
     (Render's, or a Worker's after a deliberate cutover) against a given
-    database. The Workers staging environment declares no cron triggers, and
-    `scheduled()` dispatches only when `CRON_ENABLED` is exactly `true`.
+    database. The Workers staging and production-preflight environments
+    declare no cron triggers, `scheduled()` dispatches only when `CRON_ENABLED`
+    is exactly `true`, the live production deploy requires the operator's
+    attestation that Render's scheduled jobs are disabled, and a rollback
+    resumes Render's only after the Worker's schedules are cleared and any run
+    in progress has had its 15 minutes.
     Likewise only the production host emails real users from a given
-    database: staging sets `OUTBOUND_EMAIL_ENABLED=false` (spec 09).
+    database: staging and production preflight set
+    `OUTBOUND_EMAIL_ENABLED=false` (spec 09).
 14. **Server code is dual-runtime.** The same code runs on Node (Render) and
     Cloudflare Workers: no floating promises on server paths (request paths use
     `after()`, crons await), no whole-file buffering where a stream will do, and

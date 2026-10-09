@@ -63,7 +63,15 @@ describe('wrangler.jsonc cron safety', () => {
     expect([...wrangler.env.production.triggers.crons].sort()).toEqual(Object.keys(CRON_SCHEDULE).sort())
     expect(wrangler.env.production.vars.CRON_ENABLED).toBe('true')
     const otherEnvs = Object.keys(wrangler.env).filter((name) => name !== 'production')
-    expect(otherEnvs).toEqual([])
+    expect(otherEnvs).toEqual(['production_preflight'])
+  })
+
+  it('gives the production preflight phase (same Worker) no cron triggers, no routes and CRON_ENABLED=false', () => {
+    const preflight = wrangler.env.production_preflight
+    expect(preflight.name).toBe(wrangler.env.production.name)
+    expect(preflight.triggers).toEqual({ crons: [] })
+    expect(preflight.routes).toEqual([])
+    expect(preflight.vars.CRON_ENABLED).toBe('false')
   })
 })
 

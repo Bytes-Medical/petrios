@@ -1,7 +1,9 @@
 // Cloudflare Workers configuration (docs/cloudflare-workers.md). Render/Docker
 // ignores this file. The TOP LEVEL is the staging Worker: workers.dev only and
-// no cron triggers, because Render still runs the cron jobs against the same
-// database. Deploy it only with `npm run cf:deploy:staging`.
+// no cron triggers, because the production scheduler (Render's, or the
+// production Worker's after the cutover) runs the cron jobs against the same
+// database. Deploy it only with `npm run cf:deploy:staging`. The production
+// Worker is env.production / env.production_preflight below.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "petrios-staging",
@@ -47,23 +49,85 @@
   },
 
   "env": {
-    // FUTURE CUTOVER ONLY. There is no deploy script for this environment.
-    // Deploying it while Render's scheduler runs would double-send every
-    // cron email. Add the custom-domain route and APP_URL at cutover.
+    // PRODUCTION (petrios.uk). Two phases of ONE Worker, "petrios": both
+    // environments use the same name, so they share its secrets, and each
+    // deploy replaces the other's shape. Deploy ONLY with
+    // `npm run cf:deploy:production -- <phase>` (docs/cloudflare-workers.md,
+    // "Cutover"); scripts/cloudflare/lib.mjs productionConfigProblems() and its
+    // tests enforce everything below. The phases may differ only in routes,
+    // workers_dev, triggers.crons, CRON_ENABLED and OUTBOUND_EMAIL_ENABLED.
+    //
+    // LIVE. A Workers route on the EXISTING proxied DNS record of petrios.uk
+    // makes the Worker serve the traffic; no DNS record is created, changed or
+    // deleted, and removing the route (the rollback phase) returns traffic to
+    // Render. Runs the six crons, so Render's scheduled jobs must be disabled
+    // first: only one scheduler per database.
     "production": {
       "name": "petrios",
+      // Pinned so every step (secret upload, deploys, the route and schedule
+      // API calls) targets the one account that owns petrios.uk.
+      "account_id": "610371b5de9811b7d258c7622c23849b",
       "workers_dev": false,
       "preview_urls": false,
+      // A plain route, never custom_domain (that would rewrite DNS), on
+      // APP_URL's host only. www.petrios.uk is answered by Cloudflare itself
+      // with a 301 to the apex (no Render response), so it gets no route and
+      // the cutover leaves it untouched.
+      "routes": [{ "pattern": "petrios.uk/*", "zone_name": "petrios.uk" }],
+      // services, vars and secrets are never inherited from the top level.
       "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "petrios" }],
-      // Must match cfw/cron.ts CRON_SCHEDULE (enforced by cfw/cron.test.ts) and
-      // Render's real schedule. UTC.
+      // Must equal cfw/cron.ts CRON_SCHEDULE (cfw/cron.test.ts, lib.test.ts)
+      // and the schedule Render ran. UTC.
       "triggers": {
         "crons": ["0 * * * *", "15 * * * *", "5,20,35,50 * * * *", "0 8 * * *", "30 6 * * *", "0 7 * * MON"]
       },
       "vars": {
-        "APP_URL": "",
+        // The public origin in every email link, certificate QR code and cron dispatch.
+        "APP_URL": "https://petrios.uk",
         "CRON_ENABLED": "true",
         "OUTBOUND_EMAIL_ENABLED": "true",
+        "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip",
+        "HOSTING_PROVIDER": "cloudflare-workers"
+      },
+      // Deploy fails unless these exist as secrets of the "petrios" Worker.
+      // MAIL_FROM: lib/email.ts cannot send without it. PRIVACY_*/DATA_*: the
+      // public disclosures (lib/compliance.ts), which must name Cloudflare.
+      "secrets": {
+        "required": [
+          "SUPABASE_URL",
+          "SUPABASE_ANON_KEY",
+          "SUPABASE_SERVICE_ROLE_KEY",
+          "CRON_SECRET",
+          "RESEND_API_KEY",
+          "MAIL_FROM",
+          "PRIVACY_CONTROLLER_NAME",
+          "PRIVACY_CONTROLLER_ADDRESS",
+          "PRIVACY_CONTACT_EMAIL",
+          "DATA_HOSTING_REGION",
+          "DATA_TRANSFER_SAFEGUARDS"
+        ]
+      }
+    },
+
+    // PREFLIGHT (and the shape rollback returns to). Same Worker and secrets,
+    // reachable only at petrios.<account-subdomain>.workers.dev: no routes, no
+    // cron schedules (an explicit [] makes wrangler clear them), no cron
+    // dispatch and no outbound email. It serves the production database with
+    // the production APP_URL, so links it would email point at petrios.uk.
+    "production_preflight": {
+      "name": "petrios",
+      "account_id": "610371b5de9811b7d258c7622c23849b",
+      "workers_dev": true,
+      "preview_urls": false,
+      // Declared empty so no route is ever inherited. Wrangler does NOT remove
+      // routes a previous live deploy attached: the rollback phase deletes them.
+      "routes": [],
+      "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "petrios" }],
+      "triggers": { "crons": [] },
+      "vars": {
+        "APP_URL": "https://petrios.uk",
+        "CRON_ENABLED": "false",
+        "OUTBOUND_EMAIL_ENABLED": "false",
         "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip",
         "HOSTING_PROVIDER": "cloudflare-workers"
       },
@@ -73,7 +137,13 @@
           "SUPABASE_ANON_KEY",
           "SUPABASE_SERVICE_ROLE_KEY",
           "CRON_SECRET",
-          "RESEND_API_KEY"
+          "RESEND_API_KEY",
+          "MAIL_FROM",
+          "PRIVACY_CONTROLLER_NAME",
+          "PRIVACY_CONTROLLER_ADDRESS",
+          "PRIVACY_CONTACT_EMAIL",
+          "DATA_HOSTING_REGION",
+          "DATA_TRANSFER_SAFEGUARDS"
         ]
       }
     }

@@ -66,18 +66,37 @@ export function wranglerEnv(extra = {}) {
   return env
 }
 
-/** argv for wrangler against wrangler.jsonc's top-level (staging) environment. */
-export function wranglerArgv(args) {
-  return [packageBin('wrangler', 'wrangler'), ...args, '--config', WRANGLER_CONFIG_PATH, '--env=']
+/**
+ * argv for wrangler against one wrangler.jsonc environment: the top level
+ * (staging) by default, or a named one (`production`, `production_preflight`).
+ * Always explicit, so CLOUDFLARE_ENV from the shell never selects one.
+ */
+export function wranglerArgv(args, envName = '') {
+  return [packageBin('wrangler', 'wrangler'), ...args, '--config', WRANGLER_CONFIG_PATH, `--env=${envName}`]
 }
 
-export function runWrangler(args, extraEnv = {}) {
-  const result = spawnSync(process.execPath, wranglerArgv(args), {
+export function runWrangler(args, extraEnv = {}, envName = '') {
+  const result = spawnSync(process.execPath, wranglerArgv(args, envName), {
     cwd: ROOT,
     stdio: 'inherit',
     env: wranglerEnv(extraEnv),
   })
   return result.status === 0
+}
+
+/**
+ * Runs wrangler with stdout captured (stderr and stdin stay attached), for
+ * read-only commands whose output the scripts parse. Callers never print it.
+ */
+export function captureWrangler(args, envName = '') {
+  const result = spawnSync(process.execPath, wranglerArgv(args, envName), {
+    cwd: ROOT,
+    stdio: ['inherit', 'pipe', 'inherit'],
+    env: wranglerEnv(),
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  })
+  return { ok: result.status === 0, stdout: result.stdout ?? '' }
 }
 
 function runOpenNextBuild() {
@@ -191,7 +210,7 @@ function* fileContents(dirs) {
  * exact files `wrangler deploy` would upload: the dry-run bundle and the
  * static assets directory. Prints variable names only.
  */
-export async function runGuard() {
+export async function runGuard(envName = '') {
   let passed = true
   const snapshotKeys = await nextEnvLeaks()
   if (snapshotKeys.length) {
@@ -205,8 +224,9 @@ export async function runGuard() {
 
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'petrios-cf-guard-'))
   try {
-    log('dry-run bundle (wrangler deploy --dry-run; does not contact Cloudflare)')
-    if (!runWrangler(['deploy', '--dry-run', '--outdir', outDir], { OPEN_NEXT_DEPLOY: 'true' })) {
+    const target = envName ? ` --env ${envName}` : ''
+    log(`dry-run bundle (wrangler deploy --dry-run${target}; does not contact Cloudflare)`)
+    if (!runWrangler(['deploy', '--dry-run', '--outdir', outDir], { OPEN_NEXT_DEPLOY: 'true' }, envName)) {
       fail('wrangler deploy --dry-run failed')
       return false
     }
@@ -235,8 +255,11 @@ export async function runGuard() {
   return passed
 }
 
-/** cf:build — OpenNext build, Worker modules, .env scrub, backpressure patch, then the guard. */
-export async function runBuild() {
+/**
+ * cf:build — OpenNext build, Worker modules, .env scrub, backpressure patch,
+ * then the guard (its dry run uses `envName`; the bundle is the same for all).
+ */
+export async function runBuild(envName = '') {
   if (!runOpenNextBuild()) {
     fail('opennextjs-cloudflare build failed')
     return false
@@ -244,5 +267,5 @@ export async function runBuild() {
   prepareWorkerModules()
   scrubNextEnv()
   patchStreamingBackpressure()
-  return runGuard()
+  return runGuard(envName)
 }

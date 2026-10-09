@@ -3,10 +3,32 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Writable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
+import { CRON_SCHEDULE } from '../../cfw/cron'
 import {
+  ALL_OR_NONE_SECRET_GROUPS,
   EMPTY_NEXT_ENV_MODULE,
+  PREFLIGHT_ENV,
+  PRODUCTION_ENV,
+  PRODUCTION_FORBIDDEN_SECRETS,
+  PRODUCTION_OPTIONAL_SECRETS,
+  PRODUCTION_REQUIRED_SECRETS,
   STREAMING_BACKPRESSURE_MARKER,
+  cronScheduleExpressions,
+  deployedVersionId,
+  dirtyPaths,
+  domainsForService,
   isLocalEnvFile,
+  liveRoutePatterns,
+  parseProductionSecretsFile,
+  parseSecretList,
+  productionConfigProblems,
+  productionSecretNameProblems,
+  productionSecretsFileProblems,
+  productionStateProblems,
+  renderResumeTime,
+  routesForScript,
+  scheduleExpressions,
+  validateProductionAppUrl,
   leakCandidates,
   namesFoundIn,
   nextEnvKeyNames,
@@ -193,6 +215,416 @@ describe('first-deploy secrets file', () => {
     expect(
       secretsFileProblems(required, wranglerConfig, { filePath: '/home/operator/petrios-secrets/s.env', root: outside.root })
     ).toEqual([])
+  })
+})
+
+describe('production cron schedule source', () => {
+  it('reads exactly the CRON_SCHEDULE keys from cfw/cron.ts', () => {
+    const source = fs.readFileSync(path.join(root, 'cfw', 'cron.ts'), 'utf8')
+    expect(cronScheduleExpressions(source)).toEqual(Object.keys(CRON_SCHEDULE))
+  })
+
+  it('fails loudly when CRON_SCHEDULE is no longer a literal', () => {
+    expect(() => cronScheduleExpressions('export const CRON_SCHEDULE = build()')).toThrow(/CRON_SCHEDULE/)
+    expect(() => cronScheduleExpressions('export const OTHER = {}')).toThrow(/CRON_SCHEDULE/)
+  })
+})
+
+describe('production APP_URL', () => {
+  it('accepts the public https origin', () => {
+    expect(validateProductionAppUrl('https://petrios.uk')).toEqual({ origin: 'https://petrios.uk', host: 'petrios.uk' })
+    expect(validateProductionAppUrl('https://petrios.uk/').origin).toBe('https://petrios.uk')
+    // www.petrios.uk is a Cloudflare 301 to the apex today: it gets no route.
+    expect(liveRoutePatterns('petrios.uk')).toEqual(['petrios.uk/*'])
+  })
+
+  it.each([
+    undefined,
+    '',
+    'petrios.uk',
+    'http://petrios.uk',
+    'https://petrios.uk/login',
+    'https://petrios.uk?x=1',
+    'https://petrios.uk:8443',
+    'https://user:pass@petrios.uk',
+    'https://PETRIOS.uk',
+    'https://petrios.fibrinlab.workers.dev',
+    'https://localhost',
+    'https://127.0.0.1',
+    'https://intranet',
+  ])('rejects %s', (value) => {
+    expect(validateProductionAppUrl(value).error).toBeTruthy()
+  })
+})
+
+describe('production wrangler environments', () => {
+  const expectedCrons = Object.keys(CRON_SCHEDULE)
+  const committedLive = wranglerConfig.env[PRODUCTION_ENV]
+  const committedPreflight = wranglerConfig.env[PREFLIGHT_ENV]
+
+  /** The committed config with one environment replaced (deep copy). */
+  function withEnv(envName: string, change: (env: Record<string, any>) => void) {
+    const copy = structuredClone(wranglerConfig)
+    change(copy.env[envName])
+    return copy
+  }
+
+  function problemsOf(config: unknown) {
+    return productionConfigProblems(config, { expectedCrons })
+  }
+
+  it('accepts the committed production and preflight environments', () => {
+    expect(problemsOf(wranglerConfig)).toEqual([])
+  })
+
+  it('pins the committed values the cutover depends on', () => {
+    expect(committedLive.name).toBe('petrios')
+    expect(committedLive.vars.APP_URL).toBe('https://petrios.uk')
+    expect(committedLive.routes).toEqual([{ pattern: 'petrios.uk/*', zone_name: 'petrios.uk' }])
+    expect(committedLive.account_id).toMatch(/^[0-9a-f]{32}$/)
+    expect(committedPreflight.account_id).toBe(committedLive.account_id)
+    expect(committedLive.workers_dev).toBe(false)
+    expect(committedPreflight.workers_dev).toBe(true)
+    expect(committedLive.secrets.required).toEqual(PRODUCTION_REQUIRED_SECRETS)
+    expect(committedPreflight.secrets.required).toEqual(PRODUCTION_REQUIRED_SECRETS)
+  })
+
+  it('requires both phases to be one Worker bound to itself', () => {
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.name = 'petrios-preflight')))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/same Worker/), expect.stringMatching(/services must be exactly/)])
+    )
+    expect(
+      problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.services = [{ binding: 'WORKER_SELF_REFERENCE', service: 'petrios-staging' }])))
+    ).toEqual([expect.stringMatching(/env.production.services/)])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => delete env.services))).toEqual([
+      expect.stringMatching(/env.production.services/),
+    ])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.name = wranglerConfig.name)))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/differ from the staging Worker/)])
+    )
+  })
+
+  it('pins one Cloudflare account for both phases', () => {
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => delete env.account_id))).toEqual([
+      expect.stringMatching(/production_preflight.account_id must pin/),
+      expect.stringMatching(/same account_id/),
+    ])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.account_id = 'f'.repeat(32))))).toEqual([
+      expect.stringMatching(/same account_id/),
+    ])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.account_id = 'not-an-account')))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/production.account_id must pin/)])
+    )
+  })
+
+  it('requires exactly one live route, on APP_URL’s host in its zone, never a custom domain', () => {
+    const routeProblem = (routes: unknown) => problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.routes = routes)))
+    expect(
+      routeProblem([
+        { pattern: 'petrios.uk/*', zone_name: 'petrios.uk' },
+        { pattern: 'www.petrios.uk/*', zone_name: 'petrios.uk' },
+      ])
+    ).toEqual([expect.stringMatching(/must be exactly petrios.uk\/\* \(APP_URL/)])
+    expect(routeProblem([{ pattern: 'staging.petrios.uk/*', zone_name: 'petrios.uk' }])).toEqual([
+      expect.stringMatching(/must be exactly/),
+    ])
+    expect(routeProblem([{ pattern: 'petrios.uk/*', zone_name: 'example.org' }])).toEqual([
+      expect.stringMatching(/zone_name example.org does not contain petrios.uk/),
+    ])
+    expect(routeProblem([{ pattern: 'petrios.uk/*', zone_name: 'petrios.uk', custom_domain: true }])).toEqual([
+      expect.stringMatching(/custom_domain would rewrite DNS/),
+    ])
+    expect(routeProblem(['petrios.uk/*'])).toEqual(
+      expect.arrayContaining([expect.stringMatching(/\{ pattern, zone_name \} objects/)])
+    )
+    expect(routeProblem([])).toEqual([expect.stringMatching(/must list the production routes/)])
+  })
+
+  it('ties the routes to APP_URL', () => {
+    const moved = withEnv(PRODUCTION_ENV, (env) => (env.vars.APP_URL = 'https://teaching.example.nhs.uk'))
+    moved.env[PREFLIGHT_ENV].vars.APP_URL = 'https://teaching.example.nhs.uk'
+    expect(problemsOf(moved)).toEqual([
+      expect.stringMatching(/must be exactly teaching.example.nhs.uk\/\*/),
+      expect.stringMatching(/route petrios.uk\/\*: zone_name petrios.uk does not contain teaching.example.nhs.uk/),
+    ])
+    expect(
+      problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.APP_URL = 'https://petrios.fibrinlab.workers.dev')))
+    ).toEqual(expect.arrayContaining([expect.stringMatching(/workers.dev/)]))
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.APP_URL = 'https://www.petrios.uk')))).toEqual([
+      expect.stringMatching(/vars.APP_URL must be identical/),
+    ])
+  })
+
+  it('runs exactly CRON_SCHEDULE in live and clears every schedule in preflight', () => {
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => env.triggers.crons.pop()))).toEqual([
+      expect.stringMatching(/triggers.crons must equal cfw\/cron.ts CRON_SCHEDULE/),
+    ])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => env.triggers.crons.push('0 * * * *')))).toHaveLength(1)
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.triggers = { crons: [] })))).toHaveLength(1)
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.triggers = { crons: ['0 * * * *'] })))).toEqual([
+      expect.stringMatching(/production_preflight.triggers.crons must be declared as \[\]/),
+    ])
+    // Absent means "keep the Worker's current schedules": refused.
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => delete env.triggers))).toHaveLength(1)
+  })
+
+  it('switches cron dispatch and email per phase only', () => {
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.CRON_ENABLED = 'false')))).toEqual([
+      expect.stringMatching(/production.vars.CRON_ENABLED must be "true"/),
+    ])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.OUTBOUND_EMAIL_ENABLED = 'false')))).toEqual([
+      expect.stringMatching(/production.vars.OUTBOUND_EMAIL_ENABLED must be "true"/),
+    ])
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.CRON_ENABLED = 'true')))).toEqual([
+      expect.stringMatching(/production_preflight.vars.CRON_ENABLED must be "false"/),
+    ])
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.OUTBOUND_EMAIL_ENABLED = 'true')))).toEqual([
+      expect.stringMatching(/production_preflight.vars.OUTBOUND_EMAIL_ENABLED must be "false"/),
+    ])
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.TRUSTED_CLIENT_IP_HEADER = 'x-forwarded-for')))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/TRUSTED_CLIENT_IP_HEADER/)])
+    )
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.APP_TIME_ZONE = 'Europe/London')))).toEqual([
+      expect.stringMatching(/same vars keys/),
+    ])
+  })
+
+  it('keeps preflight off production hostnames and live off workers.dev', () => {
+    expect(
+      problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.routes = [{ pattern: 'petrios.uk/*', zone_name: 'petrios.uk' }])))
+    ).toEqual([expect.stringMatching(/production_preflight.routes must be declared as \[\]/)])
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => delete env.routes))).toHaveLength(1)
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.route = 'petrios.uk/*')))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/must not use "route"/)])
+    )
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.workers_dev = false)))).toEqual([
+      expect.stringMatching(/production_preflight.workers_dev must be true/),
+    ])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.workers_dev = true)))).toEqual([
+      expect.stringMatching(/production.workers_dev must be false/),
+    ])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.preview_urls = true)))).toEqual([
+      expect.stringMatching(/preview_urls must be false/),
+    ])
+  })
+
+  it('requires the full secret list in both phases and nothing outside the phase keys', () => {
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => env.secrets.required.pop()))).toEqual([
+      expect.stringMatching(/secrets.required lacks DATA_TRANSFER_SAFEGUARDS/),
+      expect.stringMatching(/same secrets/),
+    ])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.compatibility_date = '2020-01-01')))).toEqual([
+      expect.stringMatching(/declares compatibility_date/),
+    ])
+    expect(problemsOf({ ...wranglerConfig, env: { ...wranglerConfig.env, canary: {} } })).toEqual([
+      expect.stringMatching(/unexpected wrangler environments: canary/),
+    ])
+    expect(problemsOf({ ...wranglerConfig, env: { [PRODUCTION_ENV]: committedLive } })).toEqual([
+      'env.production_preflight is missing',
+    ])
+  })
+})
+
+describe('production Worker secrets (names only)', () => {
+  const live = wranglerConfig.env[PRODUCTION_ENV]
+
+  it('parses wrangler secret list JSON, tolerating surrounding noise', () => {
+    const stdout = 'noise\n[\n  { "name": "CRON_SECRET", "type": "secret_text" },\n  { "name": "A", "type": "secret_text" }\n]\n'
+    expect(parseSecretList(stdout)).toEqual({ names: ['A', 'CRON_SECRET'] })
+    expect(parseSecretList('Worker not found').error).toBeTruthy()
+    expect(parseSecretList('[{"nope":1}]').error).toBeTruthy()
+  })
+
+  it('accepts a Worker with every required secret', () => {
+    expect(productionSecretNameProblems([...PRODUCTION_REQUIRED_SECRETS, 'ANTHROPIC_API_KEY'], live, PRODUCTION_ENV)).toEqual(
+      []
+    )
+  })
+
+  it('refuses stored SMTP settings, which would replace Resend', () => {
+    expect(productionSecretNameProblems([...PRODUCTION_REQUIRED_SECRETS, 'SMTP_HOST'], live, PRODUCTION_ENV)).toEqual([
+      expect.stringMatching(/SMTP_HOST would switch production email from Resend to SMTP.*secret delete <NAME>/),
+    ])
+  })
+
+  it('names missing secrets, var-shadowing secrets and forbidden names with the fix command', () => {
+    const problems = productionSecretNameProblems(
+      [...PRODUCTION_REQUIRED_SECRETS.filter((name) => name !== 'MAIL_FROM'), 'CRON_ENABLED', 'SUPABASE_INTERNAL_URL'],
+      live,
+      PRODUCTION_ENV
+    )
+    expect(problems).toHaveLength(3)
+    expect(problems[0]).toMatch(/missing on petrios: MAIL_FROM.*wrangler secret put <NAME> --env production/)
+    expect(problems[1]).toMatch(/CRON_ENABLED shadow vars.*wrangler secret delete <NAME> --env production/)
+    expect(problems[2]).toMatch(/SUPABASE_INTERNAL_URL must not exist/)
+  })
+})
+
+describe('production secrets file', () => {
+  const preflight = wranglerConfig.env[PREFLIGHT_ENV]
+  const outside = { filePath: '/home/operator/petrios-production-secrets.json', root: '/home/operator/petrios' }
+  const template = JSON.parse(
+    fs.readFileSync(path.join(root, 'scripts', 'cloudflare', 'production-secrets.template.json'), 'utf8')
+  )
+  const filled = (names: string[]) => names.map((name) => ({ name, kind: 'set' }))
+
+  it('ships a template with every required and optional name, all empty', () => {
+    expect(Object.keys(template).sort()).toEqual([...PRODUCTION_REQUIRED_SECRETS, ...PRODUCTION_OPTIONAL_SECRETS].sort())
+    expect(Object.values(template).every((value) => value === '')).toBe(true)
+  })
+
+  it('reads value kinds, never values', () => {
+    const parsed = parseProductionSecretsFile('{"A":"x-secret-value","B":"  ","C":null,"D":1}')
+    expect(parsed).toEqual({
+      entries: [
+        { name: 'A', kind: 'set' },
+        { name: 'B', kind: 'empty' },
+        { name: 'C', kind: 'non-string' },
+        { name: 'D', kind: 'non-string' },
+      ],
+    })
+    expect(JSON.stringify(parsed)).not.toContain('x-secret-value')
+    expect(parseProductionSecretsFile('A=b').error).toMatch(/must be JSON/)
+    expect(parseProductionSecretsFile('["A"]').error).toMatch(/JSON object/)
+  })
+
+  it('accepts a filled file outside the repository', () => {
+    expect(productionSecretsFileProblems(filled([...PRODUCTION_REQUIRED_SECRETS, 'ANTHROPIC_API_KEY']), preflight, outside)).toEqual({
+      problems: [],
+      unknown: [],
+    })
+  })
+
+  it('refuses the unfilled template, missing names, nulls and partial groups', () => {
+    const fromTemplate = parseProductionSecretsFile(JSON.stringify(template)).entries!
+    expect(productionSecretsFileProblems(fromTemplate, preflight, outside).problems).toEqual([
+      expect.stringMatching(/remove or fill the empty values/),
+    ])
+    const { problems } = productionSecretsFileProblems(
+      [
+        ...filled(PRODUCTION_REQUIRED_SECRETS.filter((name) => name !== 'RESEND_API_KEY')),
+        { name: 'OPS_ENABLED', kind: 'non-string' },
+        ...filled(['ELEVENLABS_API_KEY', 'JAAS_APP_ID']),
+      ],
+      preflight,
+      outside
+    )
+    expect(problems).toEqual([
+      expect.stringMatching(/lacks required RESEND_API_KEY/),
+      expect.stringMatching(/values must be strings: OPS_ENABLED/),
+      expect.stringMatching(/ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID or none/),
+      expect.stringMatching(/JAAS_APP_ID, JAAS_API_KEY_ID, JAAS_PRIVATE_KEY or none/),
+    ])
+    expect(ALL_OR_NONE_SECRET_GROUPS).toHaveLength(3)
+  })
+
+  it('applies the staging file rules and flags unknown names', () => {
+    const { problems, unknown } = productionSecretsFileProblems(
+      filled([...PRODUCTION_REQUIRED_SECRETS, 'APP_URL', 'NEXT_PUBLIC_APP_URL', 'ANTHROPIC_APIKEY']),
+      preflight,
+      { ...outside, filePath: '/home/operator/petrios/production-secrets.json' }
+    )
+    expect(problems).toEqual([
+      expect.stringMatching(/must not set APP_URL/),
+      expect.stringMatching(/must not set NEXT_PUBLIC_APP_URL.*APP_URL fallback/),
+      expect.stringMatching(/outside the repository/),
+    ])
+    expect(unknown).toEqual(['APP_URL', 'NEXT_PUBLIC_APP_URL', 'ANTHROPIC_APIKEY'])
+  })
+
+  it('refuses SMTP names copied from Render and accepts APP_TIME_ZONE', () => {
+    const { problems, unknown } = productionSecretsFileProblems(
+      filled([...PRODUCTION_REQUIRED_SECRETS, 'APP_TIME_ZONE', ...PRODUCTION_FORBIDDEN_SECRETS]),
+      preflight,
+      outside
+    )
+    expect(problems).toEqual([expect.stringMatching(/remove SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE/)])
+    expect(unknown).toEqual([])
+    expect(PRODUCTION_OPTIONAL_SECRETS).toContain('APP_TIME_ZONE')
+  })
+
+  it('refuses an ambiguous LLM configuration', () => {
+    const names = [...PRODUCTION_REQUIRED_SECRETS, 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL']
+    expect(productionSecretsFileProblems(filled(names), preflight, outside).problems).toEqual([
+      expect.stringMatching(/LLM_PROVIDER/),
+    ])
+    expect(productionSecretsFileProblems(filled([...names, 'LLM_PROVIDER']), preflight, outside).problems).toEqual([])
+  })
+})
+
+describe('production deploy helpers', () => {
+  it('selects only the routes that point at the production Worker', () => {
+    const routes = [
+      { id: '1', pattern: 'petrios.uk/*', script: 'petrios' },
+      { id: '2', pattern: 'www.petrios.uk/*', script: 'petrios' },
+      { id: '3', pattern: 'petrios.uk/api/other/*', script: 'other-worker' },
+      { id: '4', pattern: 'petrios.uk/static/*' },
+    ]
+    expect(routesForScript(routes, 'petrios').map((route: { id: string }) => route.id)).toEqual(['1', '2'])
+  })
+
+  it('selects only the custom domains and schedules of the production Worker', () => {
+    expect(
+      domainsForService(
+        [
+          { hostname: 'petrios.uk', service: 'petrios' },
+          { hostname: 'docs.petrios.uk', service: 'docs' },
+        ],
+        'petrios'
+      )
+    ).toEqual([{ hostname: 'petrios.uk', service: 'petrios' }])
+    expect(domainsForService(null, 'petrios')).toEqual([])
+    expect(scheduleExpressions({ schedules: [{ cron: '0 * * * *' }, { cron: '15 * * * *' }] })).toEqual([
+      '0 * * * *',
+      '15 * * * *',
+    ])
+    expect(scheduleExpressions({ schedules: [] })).toEqual([])
+  })
+
+  it('takes the deployed version from wrangler output, null when the deploy was declined', () => {
+    const entry = (fields: object) => JSON.stringify({ version: 1, timestamp: '2026-10-09T10:00:00Z', ...fields })
+    expect(deployedVersionId([entry({ type: 'wrangler-session' }), entry({ type: 'deploy', version_id: 'v-1' }), ''].join('\n'))).toBe(
+      'v-1'
+    )
+    expect(deployedVersionId(entry({ type: 'deploy', version_id: null }))).toBeNull()
+    expect(deployedVersionId('')).toBeNull()
+    expect(deployedVersionId('not json\n')).toBeNull()
+  })
+
+  it('confirms the live and preflight state from the API, never a partial one', () => {
+    const live = { routePatterns: ['petrios.uk/*'], crons: Object.keys(CRON_SCHEDULE) }
+    const routes = [{ pattern: 'petrios.uk/*' }]
+    const crons = Object.keys(CRON_SCHEDULE)
+    expect(productionStateProblems('live', { routes, domains: [], schedules: crons }, live)).toEqual([])
+    // Routes applied but schedules failed (wrangler updates them concurrently), or the reverse.
+    expect(productionStateProblems('live', { routes, domains: [], schedules: [] }, live)).toEqual([
+      expect.stringMatching(/cron schedules are \[\], expected/),
+    ])
+    expect(productionStateProblems('live', { routes: [], domains: [], schedules: crons }, live)).toEqual([
+      expect.stringMatching(/routes are \[\], expected \[petrios.uk\/\*\]/),
+    ])
+    expect(productionStateProblems('preflight', { routes: [], domains: [], schedules: [] })).toEqual([])
+    expect(
+      productionStateProblems('preflight', { routes, domains: [{ hostname: 'petrios.uk' }], schedules: ['0 * * * *'] })
+    ).toEqual([
+      'custom domains are attached: petrios.uk',
+      'routes are still attached: petrios.uk/*',
+      'cron schedules remain: 0 * * * *',
+    ])
+  })
+
+  it('tells the operator when Render may resume: after the longest Worker cron run', () => {
+    expect(renderResumeTime(new Date('2026-10-09T10:05:30Z'))).toBe('2026-10-09 10:21 UTC')
+    expect(renderResumeTime(new Date('2026-10-09T23:50:00Z'))).toBe('2026-10-10 00:05 UTC')
+  })
+
+  it('lists dirty paths from git status --porcelain', () => {
+    expect(dirtyPaths(' M wrangler.jsonc\n?? notes.txt\nR  a.ts -> b.ts\n\n')).toEqual([
+      'wrangler.jsonc',
+      'notes.txt',
+      'a.ts -> b.ts',
+    ])
+    expect(dirtyPaths('')).toEqual([])
   })
 })
 

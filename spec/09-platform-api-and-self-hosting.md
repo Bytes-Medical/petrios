@@ -8,7 +8,7 @@ This document specifies four external boundaries:
 2. signed outbound webhooks;
 3. user-initiated portable teaching-record federation; and
 4. deployment/provider configuration for a self-hosted instance, the Render
-   Docker image, and the Cloudflare Workers staging build.
+   Docker image, and the Cloudflare Workers staging and production builds.
 
 All `/api/*` paths bypass the browser-auth proxy. Every handler owns its auth
 contract. The supported API schema is also published at `public/openapi.json` and
@@ -603,21 +603,58 @@ GoTrue metadata, and Supabase helper behavior. A vanilla Postgres server without
 the compatible auth schema/functions is not a complete Petrios backend. Deploy
 against hosted Supabase or a self-hosted Supabase-compatible stack.
 
-### Cloudflare Workers (staging)
+### Cloudflare Workers (staging and the production cutover)
 
 Petrios also builds for Cloudflare Workers with `@opennextjs/cloudflare`
 (`npm run cf:build`, `wrangler.jsonc`, custom entry `cfw/worker.ts`); the
 operator guide is `docs/cloudflare-workers.md`. Render/Docker remains
-production. `.dockerignore` excludes every Cloudflare file, so the Docker image
-never contains them, and the application code is identical on both runtimes.
+production until the owner runs the cutover described there. `.dockerignore`
+excludes every Cloudflare file, so the Docker image never contains them, and
+the application code is identical on both runtimes.
 
 - **Invariant:** the top-level wrangler environment (`petrios-staging`) is
   workers.dev only, with `triggers.crons: []`, no routes, and
-  `CRON_ENABLED="false"`. Only `env.production` (`petrios`) declares cron
-  triggers and `CRON_ENABLED="true"`, and no repository script deploys it.
-  `cfw/cron.test.ts` and `npm run cf:deploy:staging` enforce the top-level
-  shape; the test also requires `env.production` triggers to equal
-  `CRON_SCHEDULE` in `cfw/cron.ts` (spec 07).
+  `CRON_ENABLED="false"`. Only `env.production` declares cron triggers and
+  `CRON_ENABLED="true"`. `cfw/cron.test.ts` and `npm run cf:deploy:staging`
+  enforce the top-level shape; the test also requires `env.production`
+  triggers to equal `CRON_SCHEDULE` in `cfw/cron.ts` (spec 07).
+- **Invariant:** production is one Worker (`petrios`) with two wrangler
+  environments that share its name, its pinned `account_id` and its secrets. `env.production_preflight` is
+  workers.dev only, declares `routes: []` and `triggers.crons: []`, and sets
+  `CRON_ENABLED` and `OUTBOUND_EMAIL_ENABLED` to `"false"`. `env.production`
+  (live) routes only `petrios.uk/*` in zone `petrios.uk` on the existing
+  proxied DNS record (a plain route, never a custom domain, so no DNS record
+  changes; `www.petrios.uk` is a Cloudflare 301 to the apex and gets no
+  route), disables workers.dev, runs exactly `CRON_SCHEDULE`, and
+  sets both flags to `"true"`. Both set `APP_URL=https://petrios.uk`, the same
+  vars and the same `secrets.required` (the staging four plus `RESEND_API_KEY`,
+  `MAIL_FROM`, the three `PRIVACY_*` and the two `DATA_*` disclosures).
+  `productionConfigProblems()` in `scripts/cloudflare/lib.mjs` (unit-tested)
+  enforces this, and `npm run cf:deploy:production` refuses any violation.
+- `cf:deploy:production -- preflight|live|rollback` deploys only from a clean
+  git checkout (never an export or copy), refuses a shell
+  `CLOUDFLARE_ACCOUNT_ID` other than the pinned one, checks the Worker's
+  secret names with read-only `wrangler secret list` (every required one
+  present, none shadowing a var, no `SMTP_*`), runs `cf:build` and its guard,
+  and confirms every deploy afterwards: wrangler can exit 0 without deploying
+  (a declined prompt), so the script requires the version id from
+  `WRANGLER_OUTPUT_FILE_PATH` and the routes, custom domains and cron
+  schedules the Cloudflare API reports (live: exactly its route and
+  `CRON_SCHEDULE`; preflight: none). `live` refuses without
+  `--render-crons-disabled`, the operator's attestation that Render's
+  scheduled jobs are suspended (one scheduler per database). wrangler 4.149
+  replaces a Worker's routes only when the config lists at least one and never
+  removes them otherwise, and updates routes and schedules concurrently, so
+  `preflight` refuses while the Worker still has routes or custom domains; a
+  first go-live that is not confirmed immediately deletes whatever it attached
+  and clears the schedules; and `rollback` deletes the routes and clears the
+  schedules through the Cloudflare API with the operator's wrangler login
+  (custom domains are reported, never deleted), then tells the operator to
+  resume Render's jobs only 15 minutes later (a Worker cron run in progress can
+  last that long), then redeploys preflight. `check-secrets`/`secrets`
+  validate a filled copy of `scripts/cloudflare/production-secrets.template.json`
+  kept outside the repository (names and emptiness only) before
+  `wrangler secret bulk`.
 - **Invariant:** the staging Worker never emails real users. It serves the
   production database, so its links and certificate QR codes would point at
   `workers.dev`, and a delivery it marked `SENT` would never be re-sent from
@@ -726,7 +763,7 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `OUTBOUND_EMAIL_ENABLED` | Unset (email on); exactly `false` refuses | Deployment kill switch read by `lib/email.ts` at send time. `false` refuses every send before any transport is contacted and returns an ordinary error. Set to `false` on the Workers staging Worker (it serves the production database); Render never sets it |
 | `OUTBOUND_EMAIL_ALLOWLIST` | Optional; used only while `OUTBOUND_EMAIL_ENABLED=false` | Comma-separated addresses that may still receive mail; a send goes out only if every recipient is listed. Staging test inboxes only |
 | `CRON_SECRET` | Required to run jobs | Shared Bearer secret; no query fallback |
-| `CRON_ENABLED` | Unset on Render; set in `wrangler.jsonc` on Workers | `scheduled()` in `cfw/worker.ts` dispatches cron routes only when exactly `true`. Exactly `false` also makes every `/api/cron/*` route answer 503 after authentication (`lib/cron-auth.ts`), so the staging Worker cannot run jobs over HTTP either. `false` at the top level, `true` in `env.production`; unset means routes run |
+| `CRON_ENABLED` | Unset on Render; set in `wrangler.jsonc` on Workers | `scheduled()` in `cfw/worker.ts` dispatches cron routes only when exactly `true`. Exactly `false` also makes every `/api/cron/*` route answer 503 after authentication (`lib/cron-auth.ts`), so the staging Worker cannot run jobs over HTTP either. `false` at the top level and in `env.production_preflight`, `true` in `env.production`; unset means routes run |
 | `TRUSTED_CLIENT_IP_HEADER` | Optional; `cf-connecting-ip` on Workers | Header `lib/rate-limit.ts` trusts for the client IP of login-link and group-code throttles. When set, only that header is read (missing = no IP). Unset keeps first `x-forwarded-for` hop, then `x-real-ip` |
 | `ATTENDANCE_RATE_LIMIT_SECRET` | Optional HMAC key pseudonymizing check-in IPs for rate limiting; falls back to the service-role key |
 | `LLM_PROVIDER` | Optional `anthropic` or `openai` | Provider pin; other values disable AI with a configuration error. Required when both keys and `OPENAI_BASE_URL` are set |
@@ -783,10 +820,12 @@ monthly active users across both (docs/cloudflare-workers.md). Never set `SUPABA
 `STORAGE_INTERNAL_URL` there: they name Docker-network hosts that a Worker cannot
 reach. A Worker serving the production database must use byte-for-byte copies of
 Render's `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-`ATTENDANCE_RATE_LIMIT_SECRET`, `CRON_SECRET`, and `INSTANCE_SIGNING_KEY`.
+`ATTENDANCE_RATE_LIMIT_SECRET`, and `INSTANCE_SIGNING_KEY`.
 The calendar-feed token, Recall and unsubscribe HMACs, the rate-limit
 pseudonym, and the auth cookie name derive from these values, so a hosting move
-never rotates them.
+never rotates them. `CRON_SECRET` is only the `/api/cron/*` bearer token: each
+Worker has its own, and the production Worker gets a new one so an external
+scheduler still holding Render's value is refused after the cutover.
 
 Current `.env.example` limitation: it does not enumerate every optional/legacy
 variable above. Treat this table plus source as the current behavior until the
