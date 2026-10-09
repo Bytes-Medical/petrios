@@ -214,14 +214,16 @@ export const PRODUCTION_REQUIRED_SECRETS = [
   'RESEND_API_KEY',
   'MAIL_FROM',
   'PRIVACY_CONTROLLER_NAME',
-  'PRIVACY_CONTROLLER_ADDRESS',
   'PRIVACY_CONTACT_EMAIL',
-  'DATA_HOSTING_REGION',
-  'DATA_TRANSFER_SAFEGUARDS',
 ]
 
 /** Secrets set only when the feature is used (docs/cloudflare-workers.md, "Configuration and secrets"). */
 export const PRODUCTION_OPTIONAL_SECRETS = [
+  // Legal disclosures Render does not declare today; /privacy shows them as
+  // "Not declared by this deployment" until the controller supplies them.
+  'PRIVACY_CONTROLLER_ADDRESS',
+  'DATA_HOSTING_REGION',
+  'DATA_TRANSFER_SAFEGUARDS',
   'ATTENDANCE_RATE_LIMIT_SECRET',
   'INSTANCE_SIGNING_KEY',
   'GOOGLE_SITE_VERIFICATION',

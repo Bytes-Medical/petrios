@@ -90,8 +90,11 @@
         "HOSTING_PROVIDER": "cloudflare-workers"
       },
       // Deploy fails unless these exist as secrets of the "petrios" Worker.
-      // MAIL_FROM: lib/email.ts cannot send without it. PRIVACY_*/DATA_*: the
-      // public disclosures (lib/compliance.ts), which must name Cloudflare.
+      // MAIL_FROM: lib/email.ts cannot send without it. PRIVACY_CONTROLLER_NAME
+      // and PRIVACY_CONTACT_EMAIL: the public disclosures (lib/compliance.ts).
+      // The address, DATA_HOSTING_REGION and DATA_TRANSFER_SAFEGUARDS are
+      // optional (undeclared on Render too); set them, naming Cloudflare, once
+      // the controller has them.
       "secrets": {
         "required": [
           "SUPABASE_URL",
@@ -101,10 +104,7 @@
           "RESEND_API_KEY",
           "MAIL_FROM",
           "PRIVACY_CONTROLLER_NAME",
-          "PRIVACY_CONTROLLER_ADDRESS",
-          "PRIVACY_CONTACT_EMAIL",
-          "DATA_HOSTING_REGION",
-          "DATA_TRANSFER_SAFEGUARDS"
+          "PRIVACY_CONTACT_EMAIL"
         ]
       }
     },
@@ -140,10 +140,7 @@
           "RESEND_API_KEY",
           "MAIL_FROM",
           "PRIVACY_CONTROLLER_NAME",
-          "PRIVACY_CONTROLLER_ADDRESS",
-          "PRIVACY_CONTACT_EMAIL",
-          "DATA_HOSTING_REGION",
-          "DATA_TRANSFER_SAFEGUARDS"
+          "PRIVACY_CONTACT_EMAIL"
         ]
       }
     }

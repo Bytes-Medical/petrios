@@ -410,7 +410,7 @@ describe('production wrangler environments', () => {
 
   it('requires the full secret list in both phases and nothing outside the phase keys', () => {
     expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => env.secrets.required.pop()))).toEqual([
-      expect.stringMatching(/secrets.required lacks DATA_TRANSFER_SAFEGUARDS/),
+      expect.stringMatching(/secrets.required lacks PRIVACY_CONTACT_EMAIL/),
       expect.stringMatching(/same secrets/),
     ])
     expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.compatibility_date = '2020-01-01')))).toEqual([
