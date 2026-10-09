@@ -12,9 +12,24 @@ import { getRecallSetForSession } from '@/app/actions/recall'
 import { getAudioRecap } from '@/app/actions/audio-recaps'
 import { opsEnabled } from '@/lib/ops/flags'
 import Link from 'next/link'
-import { ManageSessionTabs } from '@/components/ManageSessionTabs'
+import { ManageSessionTabs, type MeetingCardInfo } from '@/components/ManageSessionTabs'
+import { meetingGuestUrl, sessionMeetingUrl } from '@/lib/jitsi'
+import { getMeetingConfig } from '@/lib/meeting/config'
+import type { MeetingConfig } from '@/lib/meeting/types'
+import type { Session } from '@/lib/types'
 import { canUploadSessionDocuments, getSessionDocuments } from '@/app/actions/session-documents'
 import { getSessionAttendanceGovernance } from '@/app/actions/attendance-evidence'
+
+/**
+ * The overview's join link. sessionMeetingUrl never throws; without a public
+ * app URL a token-mode room has no absolute link, so fall back to the
+ * relative session page rather than showing nothing.
+ */
+function memberMeetingLink(session: Session, config: MeetingConfig): string | null {
+  const link = sessionMeetingUrl(session, { kind: 'member' }, config)
+  if (link) return link
+  return session.location_type === 'JITSI' ? `/sessions/${session.id}` : null
+}
 
 export default async function ManageSessionPage(
   props: {
@@ -75,6 +90,19 @@ export default async function ManageSessionPage(
     redirect(`/sessions/${params.id}`)
   }
 
+  // Petrios Meet is resolved on the server (lib/meeting/config.ts); the
+  // client card only renders these facts. The configuration error names
+  // variables, never secret values, and this page is moderator-only.
+  const meetingConfig = getMeetingConfig()
+  const meetingLink = memberMeetingLink(session, meetingConfig)
+  const meetingCard: MeetingCardInfo = {
+    mode: meetingConfig.ok ? meetingConfig.mode : 'unavailable',
+    tokenProtected: meetingConfig.ok && meetingConfig.tokenAuth !== 'none',
+    domain: meetingConfig.ok ? meetingConfig.domain : null,
+    guestUrl: meetingGuestUrl(session.id, meetingConfig),
+    configurationError: meetingConfig.ok ? null : meetingConfig.error,
+  }
+
   return (
     <div className="min-h-screen">
       <NavShell />
@@ -89,6 +117,8 @@ export default async function ManageSessionPage(
 
         <ManageSessionTabs
           session={session}
+          meetingLink={meetingLink}
+          meetingCard={meetingCard}
           department={department}
           teachers={teachers}
           departmentMembers={departmentMembers}

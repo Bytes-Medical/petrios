@@ -72,7 +72,8 @@ the intended use and publish a free-text prohibition and escalation route.
 ## 4. Data flows, recipients, and locations
 
 Attach a diagram covering browser → app host → Supabase; app → email; browser →
-Jitsi; app → optional LLM/document/research provider; app → optional speech
+meeting provider (8x8 JaaS / self-hosted Jitsi embedded with app-minted room
+passes, or meet.jit.si opened directly); app → optional LLM/document/research provider; app → optional speech
 provider; cron/webhook/API flows; logs, monitoring and backups.
 
 | Recipient/service | Role and purpose | Data | Region/retention | Contract and transfer safeguard |
@@ -80,7 +81,7 @@ provider; cron/webhook/API flows; logs, monitoring and backups.
 | Supabase project | Database/auth | *[fill in]* | *[region/backups]* | *[DPA; transfer]* |
 | Application host/CDN | Web runtime/network. List every host that serves this database, including a Cloudflare Workers staging Worker (docs/cloudflare-workers.md), which the Render-served `/subprocessors` page cannot name | *[requests, IP, cookies, app data in transit; runtime logs, which can include recipient email addresses (Workers Logs on Cloudflare)]* | *[fill in]* | *[fill in]* |
 | SMTP or Resend | Email | *[fill in]* | *[fill in]* | *[fill in]* |
-| Jitsi host | Optional meetings | *[fill in]* | *[fill in]* | *[fill in]* |
+| Meeting provider (8x8 JaaS / self-hosted Jitsi / meet.jit.si) | Optional Petrios Meet video rooms; the active mode is named on `/subprocessors`. JaaS makes 8x8 a subprocessor | *[JaaS/self-hosted: room pass with display name (never email), per-session pseudonymous id and moderator flag; room name from the session id; session title; audio/video/chat/screen share. meet.jit.si: nothing from Petrios; participants go to Jitsi directly and the room starter signs in to Jitsi]* | *[fill in]* | *[fill in]* |
 | LLM/research provider | Optional inference, private learning-document processing, and hosted research. Default Anthropic (Files API: documents uploaded per generation, one-hour expiry, deleted afterwards, daily orphan sweep; web search called directly, allow-listed); optional OpenAI-compatible endpoint | *[session metadata incl. invited teachers' names (invitee email where no name); assistant messages and tool results; purpose-limited feedback; uploaded document contents (OpenAI-compatible: original DOCX/PPTX files incl. comments and author properties; Anthropic: extracted body text and PPTX speaker notes); derived search queries; output/citations]* | *[provider logging/retention/region; whether Files API/web search fall under any zero-retention arrangement; OpenAI document requests send `store: false`, abuse-monitoring retention still applies]* | *[DPA; US transfer safeguard; search/tool subprocessors]* |
 | Speech provider | Optional Audio Recap MP3 synthesis | Current moderator-reviewed recap script and speech request metadata; no uploaded document files or research queries in this step | *[provider logging/history, retention, region, deletion]* | *[DPA; transfer; ElevenLabs/OpenAI account posture]* |
 | Support/security/monitoring | *[fill in]* | *[fill in]* | *[fill in]* | *[fill in]* |

@@ -21,6 +21,13 @@ CRON_ENABLED=false
 # lib/email.ts refuses every send while this is "false" (the staging default).
 OUTBOUND_EMAIL_ENABLED=false
 
+# Petrios Meet: the JAAS_* / JITSI_* variables (see .env.example) are optional
+# secrets that wrangler.jsonc does not declare, so this preview ignores them and
+# runs in public mode (rooms open on meet.jit.si in a new tab). Test embedded
+# JaaS or self-hosted rooms with `npm run dev`, or on the staging Worker after
+# `wrangler secret put` (JAAS_PRIVATE_KEY and JITSI_APP_SECRET are critical
+# secrets: never commit them, and never paste a production key into this file).
+
 # Never copy this file into a --secrets-file: cf:deploy:staging refuses one
 # that sets APP_URL, CRON_ENABLED or OUTBOUND_EMAIL_ENABLED.
 

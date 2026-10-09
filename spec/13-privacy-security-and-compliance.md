@@ -131,8 +131,91 @@ Provider status is derived without exposing secrets:
   `OPENAI_API_KEY`) is labelled "Not configured". `speechProviderKind`
   (`openai`/`elevenlabs`/null when speech is off or incomplete) lets the notice
   pick the speech provider's own data-use text, independent of the LLM.
-- `NEXT_PUBLIC_JITSI_DOMAIN` selects the meeting-service label, defaulting to
-  `meet.jit.si`.
+- The meeting provider comes from the same resolver the runtime uses
+  (`getMeetingConfig`, `lib/meeting/config.ts`; spec 04) through
+  `describeMeetingProvider`: "8x8 Jitsi as a Service (JaaS, 8x8.vc)",
+  "Operator-configured Jitsi service (<domain>)", "Jitsi Meet (meet.jit.si),
+  opened in a new tab", or "Video rooms unavailable (incomplete meeting
+  configuration)". `meetingProviderKind` (`jaas`/`self-hosted`/`public`/null),
+  `meetingConfigurationError`, and `meetingRoomPass` (Petrios mints room passes:
+  JaaS or self-hosted JWT) select the data statement. The label carries at most
+  the non-secret domain; it never repeats the configuration error message, a
+  key, or a secret.
+- What each meeting mode shares, as stated on `/subprocessors` (register row
+  from `meetingRegisterEntry`) and `/privacy`:
+  - **JaaS / self-hosted with room passes**: a short-lived pass with the display
+    name (profile name, or the invitation name for an external teacher; never
+    the email; "Attendee"/"Guest teacher" fallback), a per-session pseudonymous
+    participant id, and a moderator flag; the room name derived from the session
+    id; the session title as room subject; and the audio, video, chat and screen
+    sharing exchanged in the room. Passes set recording, live streaming,
+    transcription, dial-in/out and file upload off (enforced by JaaS; by a
+    self-hosted server only if its configuration does). With JaaS configured,
+    **8x8 is a subprocessor** and the operator must record it (DPA, region,
+    transfers) like any other provider.
+  - **Open self-hosted**: the display name pre-filled from the profile (editable
+    before joining), room name, session title and room media, without a pass.
+  - A self-hosted server with room passes enforces "only hosts moderate" and
+    "only pass holders join" only with guest access off, Jicofo auto-owner off
+    and a Prosody module that applies the token's moderator claim
+    (docs/self-hosting.md); without them the first person to join moderates.
+  - **Public (meet.jit.si)**: Petrios sends nothing; the participant opens
+    meet.jit.si directly (`rel="noopener noreferrer"`, so no referrer) under
+    Jitsi's own terms, and the person who starts the room signs in to Jitsi.
+  - **Unavailable**: rooms are closed and nothing is shared; the register shows
+    "Configuration incomplete".
+
+### External teacher invite codes
+
+Migration 017 created two `teacher_invitations` policies with no `TO` clause,
+so they apply to the `anon` role holding the public anon key:
+`Public can read invitation by code` (`FOR SELECT USING (true)`) and
+`Public can respond to invitation` (`FOR UPDATE USING (true) WITH CHECK (true)`).
+No later migration removes them. While they are live, anyone can list every
+invitation (emails, names, invite codes, session and org ids) or rewrite any
+row (for example set `status = 'ACCEPTED'` and a chosen `invite_code`). Every
+application path already uses the service role (`lib/db/teacher-invitations.ts`
+and the other DAL readers), and the triggers that read the table run inside
+service-role or `SECURITY DEFINER` paths, so nothing in the app depends on these
+policies.
+
+Until they are removed an invite code proves nothing, so Petrios does not treat
+it as a capability: `TEACHER_INVITATIONS_RLS_LOCKED` (exactly `true`, default
+off, `lib/teacher-invitation-capability.ts`) gates the external teacher's
+moderator room pass (`getExternalTeacherMeetingJoin`) and the RSVP page's
+service-role session read. With it off, external teachers get no embedded
+room pass and signed-out RSVP visitors see the form without session details
+(meet.jit.si rooms and Teams links are unaffected), and the server logs one
+warning per process.
+
+The fix is a database change and therefore needs its own reviewed migration
+(confirm production with the schema-drift check first). The statements are:
+
+```sql
+DROP POLICY IF EXISTS "Public can read invitation by code" ON public.teacher_invitations;
+DROP POLICY IF EXISTS "Public can respond to invitation" ON public.teacher_invitations;
+REVOKE ALL ON public.teacher_invitations FROM anon;
+```
+
+RLS stays enabled with no remaining policy, so `authenticated` callers see no
+rows either; the service role is unaffected. After applying it, verify that an
+anonymous `GET /rest/v1/teacher_invitations?select=id&limit=1` with the anon key
+returns no rows (or a permission error), then set
+`TEACHER_INVITATIONS_RLS_LOCKED=true` and redeploy. Invite codes issued before
+the CSPRNG change remain valid; rotate them only if the table may already have
+been read.
+
+### Room-pass lifetime
+
+A pass expires at `min(now + 4 h, room close)` (room close = session end + 30
+minutes) rather than after a short connect-time allowance. The pass travels in
+the provider iframe URL (it can appear in the provider's access logs), so a
+leaked moderator pass is reusable for that one room until it expires. The
+longer lifetime is a deliberate trade-off: Jitsi re-authenticates with the same
+pass when an in-call XMPP connection has to be rebuilt, and the embed cannot
+inject a fresh one, so a short lifetime would turn every network blip after a
+few minutes into a dropped call. Exposure stays bounded to one room and to the
+session's own window; revisit if 8x8 documents mid-call refresh.
 
 ## Public compliance surface
 
@@ -430,8 +513,9 @@ already sent.
 ## Browser security baseline
 
 `proxy.ts` applies these headers through `lib/security-headers.ts` to every
-response its matcher reaches, with origins taken from runtime configuration
-(`lib/runtime-config.ts`):
+response its matcher reaches, with the app and Supabase origins taken from
+runtime configuration (`lib/runtime-config.ts`) and the meeting origin from
+`lib/meeting/config.ts`:
 
 | Header | Implemented value / purpose |
 |---|---|
@@ -440,7 +524,7 @@ response its matcher reaches, with origins taken from runtime configuration
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY`, redundant defence for older clients alongside `frame-ancestors 'none'` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
-| `Permissions-Policy` | Disables unused sensors/payment/USB; autoplay, camera, microphone, display capture, and fullscreen limited to self and configured Jitsi origin |
+| `Permissions-Policy` | Disables unused sensors/payment/USB; camera, microphone, and display capture delegated only to the embedded meeting origin and otherwise `()`; autoplay and fullscreen `self` plus that origin (per-mode table below) |
 | `X-Permitted-Cross-Domain-Policies` | `none` |
 
 HSTS intentionally omits `preload`: inclusion in a browser preload list creates
@@ -460,8 +544,14 @@ responses carry the full baseline on both hosts.
 
 Origins are normalized with the URL parser before header construction. Invalid
 values fall back to the safe expected provider origin rather than being copied
-verbatim into a response header. Supabase and configured Jitsi receive only the
-source capabilities their current flows need.
+verbatim into a response header. Supabase and the embedded meeting origin
+receive only the source capabilities their current flows need. The meeting
+origin is `meetingEmbedOrigin(getMeetingConfig())`: `https://8x8.vc` for JaaS
+(react-sdk loads `https://8x8.vc/<AppID>/external_api.js`, which the origin
+source covers), `https://<JITSI_DOMAIN>` (port included) for a self-hosted
+server, and **none** in public mode or when the meeting configuration is
+incomplete. The domain is validated as `host[:port]` before it can reach a
+header.
 
 Production directives:
 
@@ -470,15 +560,30 @@ Production directives:
 - `object-src 'none'`
 - `frame-ancestors 'none'`
 - `form-action 'self'`
-- `script-src 'self' 'unsafe-inline' <jitsi-origin>`
+- `script-src 'self' 'unsafe-inline' [<meeting-origin>]`
 - `style-src 'self' 'unsafe-inline'`
 - `img-src 'self' data: blob: https:`
 - `font-src 'self' data:`
 - `media-src 'self' blob:`
 - `worker-src 'self' blob:`
-- `frame-src 'self' <jitsi-origin>`
-- `connect-src 'self' <supabase-http/ws> <jitsi-http/ws>`
+- `frame-src 'self' [<meeting-origin>]`
+- `connect-src 'self' <supabase-http/ws> [<meeting-origin-https/wss>]`
 - `upgrade-insecure-requests` (only when the configured app URL is HTTPS)
+
+Per meeting mode:
+
+| Directive | JaaS | Self-hosted (open or JWT) | Public (meet.jit.si) / unavailable |
+|---|---|---|---|
+| `script-src` | `… https://8x8.vc` | `… https://<domain[:port]>` | no meeting origin |
+| `frame-src` | `'self' https://8x8.vc` | `'self' https://<domain[:port]>` | `'self'` |
+| `connect-src` | `… https://8x8.vc wss://8x8.vc` | `… https://<domain> wss://<domain>` | Supabase only |
+| Permissions-Policy `camera`, `microphone`, `display-capture` | `(self "https://8x8.vc")` | `(self "https://<domain>")` | `()` |
+| Permissions-Policy `autoplay`, `fullscreen` | `(self "https://8x8.vc")` | `(self "https://<domain>")` | `(self)` |
+
+Public mode delegates nothing because meet.jit.si is opened as a top-level tab:
+Petrios loads no script from it, frames nothing from it, and needs no device
+access (Petrios itself never calls `getUserMedia`). Never embed meet.jit.si again
+without revisiting this table: the 5-minute embed cut-off makes it unusable.
 
 The Supabase origin in `connect-src` also carries browser-direct
 session-document uploads to one-shot signed Storage URLs (spec 04); removing it
@@ -503,9 +608,10 @@ a broad scheme wildcard without documenting the recipient/data flow. Prefer a
 specific normalized origin and update public provider disclosure where data
 leaves the deployment.
 
-Jitsi must be regression-tested when CSP or Permissions-Policy changes. A header
-that makes the page scanner pass while silently breaking camera/microphone/video
-is a defect.
+Embedded Petrios Meet (JaaS and self-hosted) must be regression-tested when CSP,
+Permissions-Policy, or the meeting configuration changes: join, camera,
+microphone, screen share, and rejoin. A header that makes the page scanner pass
+while silently breaking camera/microphone/video is a defect.
 
 ## Accessibility baseline
 
@@ -701,8 +807,9 @@ Changes to this surface require, at minimum:
 - the Display cookie and GPC disclosures (`e2e/public-pages.spec.ts`) when
   `/privacy`, `/privacy/choices`, or `lib/public-display.ts` changes;
 - production fetch of public pages and headers after deployment;
-- Jitsi join/camera/microphone regression where header source or permissions
-  policy changes; and
+- Petrios Meet join/camera/microphone/rejoin regression in the deployed mode
+  (JaaS or self-hosted) where header source, permissions policy, or meeting
+  configuration changes, and the meet.jit.si link-out in public mode; and
 - a rescan interpreted alongside manual review, not as certification.
 
 Before release, an operator must also complete controller/contact/region/transfer

@@ -97,9 +97,10 @@ its architecture, contracts, policies, users, and intended use.
   specs 01, 02, and 11.
 - Production responses set HSTS (one year), Content Security Policy,
   anti-framing, MIME-sniffing protection, referrer policy, and permissions
-  policy. CSP permits required Supabase and configured Jitsi origins; inline
-  script/style remains allowed for current Next.js rendering and is documented
-  as a hardening limitation.
+  policy. CSP permits required Supabase origins and only the embedded meeting
+  origin (8x8.vc for JaaS or the self-hosted Jitsi host; none when rooms open
+  on meet.jit.si in a new tab); inline script/style remains allowed for current
+  Next.js rendering and is documented as a hardening limitation.
 - API access uses hashed organisation-scoped tokens. Webhooks are HMAC-signed;
   known replay and SSRF limitations remain documented in spec 09.
 - CI runs CodeQL, Semgrep, TruffleHog, production dependency audit, and a

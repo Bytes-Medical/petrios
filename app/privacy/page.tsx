@@ -239,6 +239,16 @@ export default function PrivacyPolicyPage() {
           <Link href="/subprocessors">subprocessors and external services page</Link>.
           Data may also be disclosed where legally required or necessary to protect people and the service.
         </p>
+        <p>
+          Petrios Meet video rooms: <strong>{config.meetingProvider}</strong>.{' '}
+          {config.meetingConfigurationError
+            ? 'Video rooms are closed until the operator completes the meeting configuration, so no meeting data is shared.'
+            : config.meetingProviderKind === 'public'
+              ? 'Petrios sends no data to meet.jit.si. A participant who opens the room link joins meet.jit.si directly under Jitsi’s own terms; the person who starts the room signs in to Jitsi, and the name you enter there, your audio, video, chat, and screen sharing are handled by that service.'
+              : config.meetingRoomPass
+                ? 'When you join, the provider receives a short-lived room pass with your display name (your profile name, or the name on a teacher invitation; never your email address), a pseudonymous participant id that is different for every session, and whether you moderate the room, plus the room name, the session title, and the audio, video, chat, and screen sharing exchanged in the room.'
+                : 'When you join, the provider receives the display name pre-filled from your profile name (never your email address, and editable before joining), the room name, the session title, and the audio, video, chat, and screen sharing exchanged in the room.'}
+        </p>
       </ComplianceSection>
 
       <ComplianceSection title={SECTIONS[7]}>

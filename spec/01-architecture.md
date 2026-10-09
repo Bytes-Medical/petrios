@@ -27,7 +27,7 @@ generic Next.js architecture recommendation.
 | AI | Anthropic Claude by default (official SDK, streamed beta Messages with refusal fallbacks, Files API documents, hosted web search) or an optional OpenAI-compatible adapter, both through `lib/ai/llm.ts` (provider resolution in `lib/ai/provider.ts`); constrained Ops gateway and one sanctioned tool loop |
 | Speech | Provider-neutral `lib/ai/tts.ts` boundary selecting OpenAI-compatible or ElevenLabs speech (independent of the LLM provider; unconfigured when neither is set up) and returning auditable provider/model/voice metadata |
 | Dates | Server-rendered dates and teaching-slot wall times use `APP_TIME_ZONE` (default `Europe/London`) through `lib/datetime.ts`, because server clocks are UTC on both runtimes; client components otherwise use the viewer's zone (rules and exceptions in spec 07) |
-| Meetings | Jitsi iframe integration or stored Microsoft Teams link; in-person and hybrid locations also supported |
+| Meetings | Petrios Meet: Jitsi rooms derived from the session id, embedded (`MeetingEmbed`, `@jitsi/react-sdk`) on 8x8 JaaS or a self-hosted Jitsi with short-lived server-minted room passes, or opened in a new tab on meet.jit.si (mode resolved server-side by `lib/meeting/config.ts`, spec 04); or a stored Microsoft Teams link; in-person and hybrid locations also supported |
 | Documents | React PDF for certificate, portfolio, dossier, audit, and member-report documents |
 | Unit tests | Vitest, primarily pure library tests |
 | Browser smoke tests | Playwright against the public surface |
@@ -150,8 +150,12 @@ in [11 — Identity and administration](./11-identity-and-administration.md).
 
 ## Routing and authentication boundary
 
-`proxy.ts` refreshes browser auth and redirects unauthenticated page requests.
-It treats the marketing/auth/onboarding pages, public verification and capability
+`proxy.ts` refreshes browser auth and redirects unauthenticated page requests
+to `/login?next=<requested path and query>` (`loginUrlFor` in
+`lib/safe-next-path.ts`: same-origin only, Next's `_rsc` key dropped, no `next`
+for `/`, `/dashboard` or `/login`), so an emailed or calendar link (for example
+a session's video room) lands back on that page after sign-in; the login page
+re-validates it with `safeNextPath`. It treats the marketing/auth/onboarding pages, public verification and capability
 pages, feedback/RSVP/Recall landing pages, and well-known metadata as public.
 Recall is proxy-public only so an email link can reach its sign-in prompt; its
 audio, questions, progress, answers, and completion require the token's exact

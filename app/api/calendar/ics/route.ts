@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ical, { ICalCalendarMethod, ICalEventStatus } from 'ical-generator'
-import { sessionMeetingUrl } from '@/lib/jitsi'
+import { icsEventLinks } from '@/lib/ics-event-links'
+import { getMeetingConfig } from '@/lib/meeting/config'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as organizationsDb from '@/lib/db/organizations'
 
@@ -42,17 +43,11 @@ export async function GET(request: NextRequest) {
     ttl: 3600,
   })
 
+  // Resolve the meeting configuration once per feed, not once per event.
+  const meetingConfig = getMeetingConfig()
+
   for (const session of sessions) {
-    const locationParts: string[] = []
-    if (session.location_type === 'MS_TEAMS' || session.location_type === 'HYBRID') {
-      locationParts.push(session.teams_meeting_url || 'Microsoft Teams')
-    }
-    if (session.location_type === 'IN_PERSON' || session.location_type === 'HYBRID') {
-      locationParts.push('In Person')
-    }
-    if (session.location_type === 'JITSI') {
-      locationParts.push(sessionMeetingUrl(session) || 'Petrios Meet (Video)')
-    }
+    const { location, url } = icsEventLinks(session, meetingConfig)
 
     calendar.createEvent({
       id: session.id,
@@ -60,7 +55,8 @@ export async function GET(request: NextRequest) {
       end: new Date(session.date_end),
       summary: session.title,
       description: session.description || undefined,
-      location: locationParts.join(' / ') || undefined,
+      location,
+      url,
       status: ICalEventStatus.CONFIRMED,
     })
   }

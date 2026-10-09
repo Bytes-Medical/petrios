@@ -1,6 +1,7 @@
 import { applySecurityHeaders } from '@/lib/security-headers'
 
 import { getPublicRuntimeConfig } from '@/lib/runtime-config'
+import { loginUrlFor } from '@/lib/safe-next-path'
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -93,8 +94,12 @@ export async function proxy(request: NextRequest) {
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 
   if (!user && !isPublicRoute && !isApiRoute) {
+    // Keep the requested page as `next` so emailed/ICS links (a session's
+    // video room) survive sign-in instead of landing on /dashboard.
+    const login = loginUrlFor(request.nextUrl.pathname, request.nextUrl.search)
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    url.search = login.includes('?') ? login.slice(login.indexOf('?')) : ''
     return applySecurityHeaders(NextResponse.redirect(url))
   }
 

@@ -9,6 +9,8 @@ import { Button } from '@/components/Button'
 import Link from 'next/link'
 import { isDepartmentModerator } from '@/lib/auth'
 import { meetingDisplayName } from '@/lib/contacts'
+import { buildMeetingRoomView } from '@/lib/meeting/view'
+import { loginUrlFor } from '@/lib/safe-next-path'
 import { getApprovedAudioRecap } from '@/app/actions/audio-recaps'
 import { AudioRecapPlayer } from '@/components/AudioRecapPlayer'
 import * as onboardingDb from '@/lib/db/onboarding'
@@ -23,7 +25,8 @@ export default async function SessionPage(
   const user = await getCurrentUser()
 
   if (!user) {
-    redirect('/login')
+    // Back to this session (and its video room) after sign-in.
+    redirect(loginUrlFor(`/sessions/${params.id}`))
   }
 
   const orgId = await getCurrentOrgId()
@@ -34,8 +37,9 @@ export default async function SessionPage(
 
   // Stage 1: the reads below key off session fields; then fetch concurrently.
   const session = await getSession(params.id)
-  const isVideoSession =
-    session.location_type === 'JITSI' && session.status === 'PUBLISHED'
+  // Petrios Meet: every JITSI session shows its room panel; the panel itself
+  // explains a draft, cancelled, not-yet-open or ended room.
+  const isVideoSession = session.location_type === 'JITSI'
 
   const [teachers, attendance, canManage, approvedRecap, videoProfile, documents, canUploadDocuments] =
     await Promise.all([
@@ -48,8 +52,18 @@ export default async function SessionPage(
       canUploadSessionDocuments(params.id),
     ])
 
-  // Petrios Meet sessions embed their video room; name shown to the room.
-  const videoDisplayName = isVideoSession ? meetingDisplayName(videoProfile) : null
+  // Mode, room window and availability are resolved on the server; the name
+  // is what the room shows (never an email).
+  // Hosts (department moderators, ACCEPTED teachers) moderate the room and
+  // are not self-checked-in on joining (the same rule getMeetingJoin signs).
+  const meetingView = isVideoSession
+    ? buildMeetingRoomView({
+        session,
+        displayName: meetingDisplayName(videoProfile),
+        viewerIsModerator:
+          canManage || teachers.some((teacher) => teacher.user_id === user.id && teacher.status === 'ACCEPTED'),
+      })
+    : null
 
   return (
     <div className="min-h-screen">
@@ -74,15 +88,7 @@ export default async function SessionPage(
           </div>
         </div>
 
-        {videoDisplayName !== null && (
-          <JitsiMeetingPanel
-            sessionId={session.id}
-            sessionTitle={session.title}
-            dateStart={session.date_start}
-            dateEnd={session.date_end}
-            displayName={videoDisplayName}
-          />
-        )}
+        {meetingView && <JitsiMeetingPanel view={meetingView} audience={{ kind: 'member' }} />}
 
         {approvedRecap ? (
           <div className="mb-6">

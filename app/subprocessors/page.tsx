@@ -1,7 +1,7 @@
 import { CompliancePage, ComplianceSection, MissingDisclosure } from '@/components/CompliancePage'
 import { StatusChip } from '@/components/hud/StatusChip'
 import s from '@/components/hud/hud.module.css'
-import { getComplianceConfig } from '@/lib/compliance'
+import { getComplianceConfig, meetingRegisterEntry } from '@/lib/compliance'
 import { complianceSectionId } from '@/lib/compliance-sections'
 
 export const metadata = {
@@ -59,6 +59,7 @@ export default function SubprocessorsPage() {
     : config.speechEnabled
       ? { status: 'Enabled', tone: 'ok' }
       : { status: 'Disabled', tone: 'off' }
+  const meeting = meetingRegisterEntry(config)
 
   return (
     <CompliancePage
@@ -99,7 +100,7 @@ export default function SubprocessorsPage() {
                 tone={config.aiEnabled ? 'ok' : 'off'}
               />
               <ServiceRow service={config.speechProvider} purpose="Optional text-to-speech for moderator-reviewed Audio Recaps" data="The current draft recap script and speech-generation request metadata; the speech step does not receive uploaded document files or research queries" status={speech.status} tone={speech.tone} />
-              <ServiceRow service={config.meetingProvider} purpose="Optional live video rooms" data="Display name pre-filled from the Petrios profile name (“Attendee” when no name is set; editable before joining), the session title as the room subject, and audio/video exchanged directly with the Jitsi service" status="Available when a user opens a video room" />
+              <ServiceRow service={config.meetingProvider} purpose={meeting.purpose} data={meeting.data} status={meeting.status} tone={meeting.tone} />
             </tbody>
           </table>
         </div>

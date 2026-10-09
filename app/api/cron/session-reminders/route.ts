@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { unauthorizedCronResponse } from '@/lib/cron-auth'
-import { sessionMeetingUrl } from '@/lib/jitsi'
+import { reminderLinksFor } from '@/lib/session-reminder-links'
+import { getMeetingConfig } from '@/lib/meeting/config'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildSessionReminderEmailHtml, sessionEmailTimes } from '@/lib/email-templates'
 import { getAppUrl } from '@/lib/app-url'
@@ -30,6 +31,8 @@ interface ReminderRecipient {
   userId: string | null
   name: string
   logLabel: string
+  /** ACCEPTED invitation code for an external teacher; null for registered members. */
+  inviteCode: string | null
 }
 
 /**
@@ -54,6 +57,7 @@ export async function GET(request: NextRequest) {
   const mailer = getEmailClient()
   const fromAddress = getFromAddress()
   const appUrl = getAppUrl()
+  const meetingConfig = getMeetingConfig()
   const budget = createRunBudget({
     maxUnits: CRON_SUBREQUEST_BUDGET,
     maxDurationMs: CRON_TIME_BUDGET_MS,
@@ -122,6 +126,7 @@ export async function GET(request: NextRequest) {
                 userId: profile.user_id,
                 name: profileDisplayName(profile, profile.email),
                 logLabel: profile.user_id,
+                inviteCode: null,
               }]
             : []
         ),
@@ -130,6 +135,7 @@ export async function GET(request: NextRequest) {
           userId: null,
           name: contactDisplayName(teacher),
           logLabel: `external teacher ${teacher.email}`,
+          inviteCode: teacher.invite_code,
         })),
       ]
       const pending = pendingReminderRecipients(recipients, ledger)
@@ -166,6 +172,10 @@ export async function GET(request: NextRequest) {
           }
           claimedDeliveryId = delivery.id
 
+          // Members get the session page; external teachers get their RSVP
+          // page (they cannot open /sessions/<id>, and token-protected rooms
+          // are joined from there).
+          const { meetingUrl, sessionUrl } = reminderLinksFor(session, recipient, appUrl, meetingConfig)
           const html = buildSessionReminderEmailHtml({
             recipientName: recipient.name,
             sessionTitle: session.title,
@@ -175,8 +185,8 @@ export async function GET(request: NextRequest) {
             endTime,
             locationLabel:
               LOCATION_TYPE_LABELS[session.location_type as LocationType] ?? session.location_type,
-            meetingUrl: sessionMeetingUrl(session),
-            sessionUrl: `${appUrl}/sessions/${session.id}`,
+            meetingUrl,
+            sessionUrl,
           })
 
           const sendResult = await mailer.emails.send({

@@ -15,7 +15,7 @@ The implemented location values are:
 | `MS_TEAMS` | Remote Teams meeting | Stored `teams_meeting_url` |
 | `IN_PERSON` | Physical attendance | No remote URL |
 | `HYBRID` | In-person plus Teams | Stored `teams_meeting_url` |
-| `JITSI` | Petrios Meet video room | Derived Jitsi URL |
+| `JITSI` | Petrios Meet video room | Derived room `Petrios-<session UUID>`; embedded with JaaS or self-hosted Jitsi, opened in a new tab on meet.jit.si (see Petrios Meet) |
 
 The optional session-type vocabulary is `STEPP`, `CLINICAL_SKILLS`,
 `SIMULATION`, and `ACADEMIC`. It is classification metadata, not authorization
@@ -141,34 +141,228 @@ Publication makes the session eligible for reminder, feedback, calendar, Recall,
 Ops, and reporting selectors, subject to each selector's time and watermark
 rules. It does not automatically invite teachers or recipients.
 
-## Meeting URL contract
+## Petrios Meet
 
-All outbound surfaces should use `sessionMeetingUrl`:
+`JITSI` sessions get a video room derived from the session id: the room is
+`Petrios-<session UUID>` (never stored, so every `JITSI` session has a room with
+zero setup). A UUID-derived room is hard to guess but is not an access control
+on its own; access control comes from room passes in the token modes below.
 
-- `JITSI`: `https://<NEXT_PUBLIC_JITSI_DOMAIN>/Petrios-<session UUID>`;
-- `MS_TEAMS`/`HYBRID`: the stored Teams link;
-- `IN_PERSON`: null.
+### Meeting modes
 
-The Jitsi domain defaults to `meet.jit.si`. A UUID-derived room is difficult to
-guess but is still a bearer-style URL; Petrios does not provision Jitsi users,
-passwords, or lobby policy.
+`lib/meeting/config.ts` (`resolveMeetingConfig`/`getMeetingConfig`) is the one
+place that decides the backend. It reads server environment at request time
+(never a browser bundle), trims every value, treats an empty value as unset, and
+returns no secret. Client components never import it.
 
-The in-app Petrios Meet room is displayed from 30 minutes before session start
-through 30 minutes after session end. Opening the room attempts best-effort self
-check-in, whose independent attendance window may reject it. A raw Jitsi URL can
-be joined outside the Petrios UI window if the meeting provider permits it.
-The embedded room is pre-filled with the session title as its subject and a
-display name from the viewer's profile name (`meetingDisplayName`); it falls
-back to "Attendee", never to the email address, because the name reaches the
-Jitsi service and every participant. The prejoin screen lets the viewer edit it.
+| Mode | Selected by | Behaviour |
+|---|---|---|
+| `jaas` | `JAAS_APP_ID`, `JAAS_API_KEY_ID` and `JAAS_PRIVATE_KEY` all set (with `JITSI_DOMAIN` unset, `meet.jit.si` or `8x8.vc`) | 8x8 Jitsi as a Service on `8x8.vc`, embedded; the room is `<AppID>/Petrios-<UUID>`; every participant joins with an RS256 room pass whose header `kid` is `JAAS_API_KEY_ID` |
+| `self-hosted` | `JITSI_DOMAIN` (alias `NEXT_PUBLIC_JITSI_DOMAIN`) names another host, optionally with a port | The operator's Jitsi, embedded. With `JITSI_APP_ID` + `JITSI_APP_SECRET`, every participant joins with an HS256 Prosody token-auth pass (`iss` = app id, `aud` = `JITSI_JWT_AUDIENCE` or `jitsi`, `sub` = `JITSI_JWT_SUBJECT` or the domain host); without them the room is open |
+| `public` | Nothing set, or `JITSI_DOMAIN=meet.jit.si` | The free meet.jit.si service. **Never embedded**: since 2023 meet.jit.si disconnects embedded (iframe API) calls after 5 minutes and requires the person who starts a room to sign in. The panel links out in a new tab |
+
+Anything partial or contradictory is a configuration error and makes meetings
+**unavailable** (no silent fallback to meet.jit.si, no embedding, no meeting
+origin in the CSP): one or two of the three `JAAS_*` variables; JaaS plus a
+different `JITSI_DOMAIN` or any `JITSI_APP_*`/`JITSI_JWT_*` variable; a malformed
+AppID, key id (it must start with `<AppID>/`), or private key (it must be an RSA
+PEM, PKCS#8 `BEGIN PRIVATE KEY` or PKCS#1 `BEGIN RSA PRIVATE KEY`; literal `\n`
+escapes, CRLF and surrounding quotes are accepted); `8x8.vc` without JaaS; a
+`JITSI_DOMAIN` with a scheme, path or invalid port; exactly one of
+`JITSI_APP_ID`/`JITSI_APP_SECRET`; audience/subject overrides without both; or
+token variables with meet.jit.si. The private key's DER structure is checked
+when the configuration resolves (an EC, encrypted, truncated or corrupted key is
+a configuration error, not a failure at first join); a key that passes that
+check but still fails WebCrypto import makes the join `unavailable`.
+`meet.jit.si` with any port still counts as public. The error message names variables and may
+include the non-secret domain, never a key or secret. `getMeetingConfig` logs
+it once per distinct environment the first time anything resolves it (the proxy
+does so on the first request, so a bad deployment is visible in the logs before
+anyone clicks Join); joins do not repeat it. It is shown on the moderator-only
+manage card and on the super-admin installation page
+(`/settings/installation`, "Video (Petrios Meet)", via
+`lib/meeting/status.ts`); members see a generic "Video rooms are unavailable
+right now" message.
+
+### Room window and room passes
+
+The room is open from 30 minutes before `date_start` through 30 minutes after
+`date_end`, inclusive, on the **server** clock (`lib/meeting/window.ts`). The
+panel receives the server time and corrects for client clock skew; the server
+re-checks the window on every pass request.
+
+Room passes (`app/actions/meetings.ts`, claims in `lib/meeting/claims.ts`,
+WebCrypto signing in `lib/meeting/jwt.ts`, so the same code runs on Node and
+Workers):
+
+- `getMeetingJoin(sessionId)` requires a signed-in user and reads the session
+  with the RLS-honouring `findSession(id, currentOrgId)`, so only users who may
+  read the session get a pass. `getExternalTeacherMeetingJoin(sessionId, code)`
+  requires an `ACCEPTED` invitation matched on both invite code and session id,
+  then reads the session with the service-role
+  `findSessionForInvitationAsSystem` pinned to the invitation's organization.
+  It mints nothing (non-retryable `unavailable`, one operator warning per
+  process, no database lookup) unless `TEACHER_INVITATIONS_RLS_LOCKED` is
+  exactly `true` (`lib/teacher-invitation-capability.ts`): migration 017's
+  public `teacher_invitations` policies make every invite code world-readable
+  and every row world-writable, so a code is a capability only after they are
+  dropped (spec/13 "External teacher invite codes").
+- Both require `location_type = 'JITSI'`, status `PUBLISHED` (draft and
+  cancelled rooms are closed) and the room window. Denials are returned, never
+  thrown: `not_signed_in`, `not_found`, `invalid_invitation`, `not_accepted`,
+  `not_video`, `not_published`, `cancelled`, `too_early` (with the open time,
+  retryable), `ended`, `not_embedded` (public mode), and `unavailable`
+  (configuration or signing error, retryable). Unexpected failures are logged
+  without token, key, or email and returned as `unavailable`.
+- A pass is restricted to that one room (`room` claim = the lower-cased
+  `petrios-<uuid>`, without the JaaS AppID), `nbf` = now − 30 s, and
+  `exp` = min(now + 4 h, room close). Every Join or Rejoin mints a fresh pass;
+  passes are never cached, so a participant who stays past `exp` and reconnects
+  rejoins with a new one. No pass is minted when `exp` would not be after
+  `iat` in whole seconds (a request exactly at the room close answers `ended`,
+  not a logged `unavailable`). The 4-hour ceiling, rather than a connect-time
+  lifetime, is deliberate: Jitsi re-authenticates with the same pass on a full
+  in-call reconnect, which the iframe cannot refresh (spec/13 explains the
+  trade-off).
+- Moderator = department moderator (`isDepartmentModerator`, which includes org
+  admins and super admins in the current organization) or an `ACCEPTED`
+  registered teacher of the session; an accepted external teacher always
+  moderates; everyone else is a participant. JaaS and the claims use the strings
+  `"true"`/`"false"`. JaaS enforces the flag; a self-hosted server does only
+  with guest access off, Jicofo auto-owner off and a Prosody module that applies
+  the claim (docs/self-hosting.md), and the manage card and installation page
+  say so.
+- Data minimisation: the pass carries only a display name (`meetingDisplayName`
+  from the profile; "Attendee" fallback; an external teacher's invitation name
+  with a "Guest teacher" fallback), a per-session pseudonymous id
+  (`SHA-256("petrios-meet:" + sessionId + ":" + subject)`, 32 hex), and the
+  moderator flag. Never an email address or avatar.
+- Features: recording, live streaming, transcription, inbound/outbound and SIP
+  calls, and file upload are `"false"` in every pass. JaaS enforces these; a
+  self-hosted server enforces them only if its configuration does.
+
+An open self-hosted room needs no pass: the action returns the room with
+`jwt: null`, and the room itself stays open outside the Petrios window.
+
+### Join surfaces
+
+- **Session page** (`/sessions/[id]`, members): `JitsiMeetingPanel` shows the
+  room for every `JITSI` session. States: opens-at (local time), Join, getting a
+  room pass, loading, in the room, left/Rejoin, ended, not published/cancelled,
+  unavailable, room-pass error with Retry, and a load failure with Reload.
+  Embedded rooms use `MeetingEmbed` (`@jitsi/react-sdk` `JitsiMeeting` loaded
+  client-only with `domain`, `roomName` and `jwt`; configuration from
+  `lib/meeting/embed-config.ts`: prejoin on, audio muted at start, deep linking,
+  invite functions and third-party requests (e.g. gravatar) off, the display
+  name locked to the room pass in token modes, and the session title as
+  subject; plus an iframe `title` and a responsive `min(75vh, 680px)` height). In public mode the
+  panel shows an "Open video room" link (`<a target="_blank" rel="noopener
+  noreferrer">`, so no popup blocker and no referrer) to
+  `https://meet.jit.si/Petrios-<uuid>` and explains that the first person to
+  arrive (usually the teacher) signs in to Jitsi to start the room. Joining
+  attempts self check-in (spec 03) and announces the outcome; the room's hosts
+  (`viewerIsModerator` on the view, the pass's moderator flag when embedded)
+  are not checked in and see "You're hosting this room". A member who joined
+  before check-in opened is checked in automatically once, when it opens
+  (`checkInRetryDelay`, skew-corrected, up to 5 s jitter), while still in the
+  room or on the page after opening the meet.jit.si tab; a failed check-in
+  offers "Try check-in again". A member whose profile has no name sees that the
+  room will show "Attendee" (locked in token modes) and is asked to have their
+  organiser add it. Embedded-room behaviour (event wiring in
+  `lib/meeting/embed-events.ts`, unit-tested): a "Leave video room" button sits
+  outside the iframe; `readyToClose` closes the room at once while
+  `videoConferenceLeft` closes it only if no rejoin follows within 4 s (Jitsi
+  emits it during an in-room reconnect); only `errorOccurred` with
+  `isFatal === true` counts; a 30 s script-load watchdog and an SDK error
+  boundary lead to "Reload page". A fatal error after entering the room offers
+  "Rejoin video room", which mints a fresh pass ("Your room pass expired"
+  wording after expiry); a fatal error BEFORE entering (typically a refused
+  pass: wrong JaaS public key or key id, or self-hosted claim/secret mismatch)
+  says the video service did not accept the connection, offers "Try again", and
+  reports the provider error name to the server (`reportMeetingConnectError`,
+  identifier-only, embedded modes only) so it reaches the operator's logs.
+  Every mount gets a new React key and the External API is disposed on
+  unmount; focus moves into the room on mount and back to the next action on
+  close. A signed-out member is offered `/login?next=/sessions/<id>`; the proxy
+  and the session page also redirect signed-out visitors to
+  `/login?next=<requested path>` (`loginUrlFor`, same-origin only, `_rsc`
+  dropped), so an emailed or calendar room link survives sign-in.
+- **External teacher RSVP page** (`/sessions/[id]/teacher-rsvp/[code]`): with
+  `TEACHER_INVITATIONS_RLS_LOCKED=true` it reads the session through
+  `findSessionForInvitationAsSystem` after matching code and session id
+  (anonymous visitors cannot read `sessions` through RLS); otherwise it uses the
+  RLS read, so signed-out visitors see the RSVP form (always shown for a
+  PENDING invitation) without session details. An `ACCEPTED` invitation for a
+  `JITSI` session shows "Your teaching room": the embedded room with a moderator
+  pass in token and open self-hosted modes (token modes only with the flag on;
+  otherwise a notice to contact the organiser), the meet.jit.si link in public
+  mode. The page asks the teacher to keep its link. External teachers get no
+  check-in.
+- **Calendar** (`SessionCalendar`, client): Petrios Meet sessions route to the
+  session page; Teams links come from `storedMeetingUrl` in the client-safe
+  `lib/meeting/location.ts`.
+
+Guests without a Petrios account or an accepted teacher invitation cannot join a
+token-protected room. Invite them as external teachers instead.
+
+### Meeting URL contract
+
+All outbound surfaces use `sessionMeetingUrl(session, audience, config?)` in the
+server-only `lib/jitsi.ts`, where `audience` is `{ kind: 'member' }` or
+`{ kind: 'external_teacher', inviteCode }`:
+
+| Location | Mode | Member | External teacher |
+|---|---|---|---|
+| `MS_TEAMS` / `HYBRID` | any | Stored Teams link (may be null) | Same |
+| `IN_PERSON` | any | null | null |
+| `JITSI` | `public` | `<APP_URL>/sessions/<id>` | `https://meet.jit.si/Petrios-<UUID>` |
+| `JITSI` | open `self-hosted` | `<APP_URL>/sessions/<id>` | `https://<domain>/Petrios-<UUID>` |
+| `JITSI` | `jaas` / self-hosted with JWT | `<APP_URL>/sessions/<id>` | `<APP_URL>/sessions/<id>/teacher-rsvp/<code>` |
+| `JITSI` | unavailable (configuration error) | `<APP_URL>/sessions/<id>` | RSVP URL |
+
+Members always get the session page, in every mode: it mints the pass (token
+modes), explains the meet.jit.si new tab and first-arrival sign-in (public
+mode), and attempts their check-in, none of which a raw room URL would do; the
+link survives sign-in (`next`). External teachers have no check-in and cannot
+read the session page, so they get the raw room where it works without a pass
+and their RSVP page (which mints one) otherwise. Token-mode links stay valid
+once an operator fixes a broken configuration. The invite code is URL-encoded.
+`sessionMeetingUrl` never throws: without a resolvable public app URL
+(`getAppUrl()` throws in production when none is configured) it logs once and
+returns the raw room where one works without a pass, otherwise null, so one
+`JITSI` session cannot fail the ICS feed, the API or an email batch (the manage
+page then links the relative session page). Callers: the ICS feed,
+teacher invitation/reminder emails and session reminders (members), session
+reminders to external teachers (their RSVP page, via
+`lib/session-reminder-links.ts`), the RSVP page, the manage page, and the
+`/api/v1` `meeting_url` (member audience; spec 09). `lib/meeting/location.ts`
+holds the client-safe `storedMeetingUrl`/`sessionHasOnlineJoin`. Emails sent
+before a mode change keep their old links: raw meet.jit.si room URLs still open
+meet.jit.si rooms. Moderators who need a raw room link for an account-less guest
+(public or open self-hosted only) copy it from the manage card.
+
+### Manage card
 
 The session-management **Overview** tab contains the meeting control. Jitsi
-sessions show the derived guest URL; Teams/hybrid sessions use the editable
-stored URL form. Interactive creation and the main edit form also accept the
-optional Teams URL when the chosen location is Teams or hybrid, so organisers
-do not need a second edit after creation. User-supplied meeting links are
-trimmed, capped, and must be valid HTTPS URLs. There is no separate Meeting Link
-tab.
+sessions show a Petrios Meet card for the active mode: token modes explain that
+every participant joins with a Petrios room pass (members on the session page,
+accepted external teachers from their invitation link), that there is no public
+room link, and (JaaS) that recording, live streaming and transcription are off
+and guests without an account must be invited as teachers; public mode explains
+the new-tab meet.jit.si room and the first-arrival sign-in and shows the room
+URL; an open self-hosted server shows the guest room URL; both of those say the
+session page offers the room only within the window while the raw link works at
+any time (the window note proper is shown only for token modes, where it is
+enforced); a self-hosted token-mode card says hosts moderate only if the Jitsi
+server applies the moderator flag; a configuration error shows the
+configuration message (the page is moderator-only). The overview meeting link
+("Open session room page" for `JITSI`) uses `sessionMeetingUrl(session, {
+kind: 'member' })`, falling back to the relative session page.
+Teams/hybrid sessions use the editable stored URL form. Interactive creation and
+the main edit form also accept the optional Teams URL when the chosen location
+is Teams or hybrid, so organisers do not need a second edit after creation.
+User-supplied meeting links are trimmed, capped, and must be valid HTTPS URLs.
+There is no separate Meeting Link tab.
 
 ## Registered teacher assignments
 
@@ -199,13 +393,19 @@ created attendance evidence or certificates.
 1. A moderator supplies an email and optional names.
 2. Email is normalized. A second pending invite for the same session/email is
    rejected.
-3. An 8-character invite code is stored and an invitation row is durable before
-   email is attempted.
+3. An 8-character invite code (from the CSPRNG via `lib/codes.ts`, never
+   `Math.random`, because an accepted code also unlocks a moderator room pass)
+   is stored and an invitation row is durable before email is attempted.
 4. The address book is best-effort upserted, filling blank names only.
 5. Invitation email is attempted. Failure is returned as `emailSent: false` but
    does not remove the invitation.
-6. The public RSVP page resolves the code. A pending invite can be accepted or
-   declined once, with self-reported names that both the RSVP form and the
+6. The public RSVP page resolves the code: the invitation must match both
+   `invite_code` and the URL's session id, and only then is the session read
+   with the service-role `findSessionForInvitationAsSystem` pinned to the
+   invitation's organization (signed-out visitors cannot read `sessions`
+   through RLS, so an RLS read showed them no session card or form). A
+   pending invite can be accepted or declined once, with self-reported names
+   that both the RSVP form and the
    server action require. `respondToInvitation` returns
    `{ ok: true, status } | { ok: false, message, final?: true }` (spec 07): an
    unknown code returns "This invitation link is invalid or has expired.",
@@ -216,13 +416,20 @@ created attendance evidence or certificates.
    recorded and the other receives the already-responded failure. The
    unknown-code and already-responded failures are `final: true`: the form
    shows the message in a `role="alert"` block and refreshes, so the page
-   renders "Already Responded" (with the join link for an accepted teacher) or
-   "Invitation Not Found" instead of buttons that can no longer work.
+   renders "Already Responded" or "Invitation Not Found" instead of buttons
+   that can no longer work. A successful accept also refreshes the page. For an
+   accepted invitation the page shows the teaching room for a `JITSI` session
+   (see Petrios Meet: embedded with a moderator room pass, or the meet.jit.si
+   link) and the stored Teams link (from `sessionMeetingUrl` with the
+   external-teacher audience) otherwise.
 7. RSVP names overwrite address-book names because the contact is treated as the
    authoritative source.
 
 An accepted external teacher is included in session reminders and selected
-teacher-release flows. Acceptance does not create an internal user, department
+teacher-release flows; their reminder links point at their RSVP page. The
+accepted invitation is also the capability for a moderator room pass in that
+session's Petrios Meet room, within the room window, once
+`TEACHER_INVITATIONS_RLS_LOCKED=true` (Petrios Meet above). Acceptance does not create an internal user, department
 membership, or attendance evidence. After an ended session is finalized, the
 matching accepted invitation is sufficient teaching-certificate identity and
 assignment evidence. External identities are primarily joined by normalized
@@ -251,6 +458,14 @@ snapshot described below.
 
 After token validation, it returns published organization sessions (optionally
 filtered by department), title, description, times, location, and meeting URL.
+The feed is for organisation members, so `lib/ics-event-links.ts` resolves each
+meeting URL with `sessionMeetingUrl(session, { kind: 'member' })` (the meeting
+configuration is resolved once per feed): every Petrios Meet room appears as
+the Petrios session page (in every mode, so opening it attempts check-in and
+survives sign-in); without a resolvable public app URL a room that works
+without a pass falls back to its raw URL and a token-mode room to the plain
+"Petrios Meet (Video)" label.
+`JITSI` events also carry that link as the VEVENT `URL`.
 It uses `PUBLISH`, one-hour TTL metadata, and response headers that disable HTTP
 caching.
 
@@ -282,7 +497,14 @@ Recipients are:
 
 Registered profiles and external invitations are deduplicated by lower-cased
 email, with the registered profile winning. The email includes date/time,
-location, resolved meeting URL, and session link.
+location, resolved meeting URL, and session link, both resolved per recipient
+by `reminderLinksFor` (`lib/session-reminder-links.ts`): members get
+`sessionMeetingUrl(session, { kind: 'member' })` and the session page; external
+teachers get `sessionMeetingUrl` with their invite code (the raw meet.jit.si or
+open self-hosted room, else their RSVP page) and their RSVP page as the session
+link, because they cannot open `/sessions/<id>` and token-protected rooms are
+joined from the RSVP page. The meeting configuration is resolved once
+per run.
 
 Each recipient has a `session_deliveries` row with
 `delivery_type = 'SESSION_REMINDER'` and `related_id` = the session id (non-null
@@ -670,8 +892,11 @@ without attempting the claim.
 The winning operation is one database update with predicates `status = OPEN` and
 `date_start > now`. It records claimant identity/name/topic and changes the slot
 to `CLAIMED`. `claimSlotByCode` and `claimSlotAsMember` return
-`ClaimSlotResult`, `{ ok: true, sessionId } | { ok: false, message,
-slotUnavailable?: true }` (spec 07). A slot that no longer exists or is
+`ClaimSlotResult`, `{ ok: true, sessionId, rsvpPath? } | { ok: false, message,
+slotUnavailable?: true }` (spec 07). A fresh external claim returns `rsvpPath`
+(`/sessions/<id>/teacher-rsvp/<code>`), and the confirmation asks the claimer to
+keep that page: it is where they join the video room (their 24-hour reminder
+links to it too). A retried claim does not repeat it. A slot that no longer exists or is
 unavailable ("This slot is no longer available."), or a compare-and-set lost to
 a concurrent claimant ("Sorry — this slot was just claimed by someone else."),
 returns `slotUnavailable: true`, and the claim UIs refresh to drop the slot. An invalid link, a blank name, or a
@@ -720,7 +945,9 @@ index. Reopening remains a separate, explicitly authorized workflow.
   is advisory.
 - Decide how edits affect already-sent reminders, invites, ICS caches, Recall,
   and report watermarks.
-- Use `sessionMeetingUrl` for new outbound surfaces.
+- Use `sessionMeetingUrl(session, audience)` for new outbound surfaces and
+  choose the audience deliberately (external teachers cannot open session
+  pages); never put a raw `8x8.vc` or token-protected room URL in a message.
 - State teacher status filters explicitly (`PENDING`, `ACCEPTED`, `DECLINED`).
 - Keep slot claim concurrency in a database predicate and document compensation.
 - Treat invite, claim, and calendar codes as capabilities and avoid logs.

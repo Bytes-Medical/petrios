@@ -38,6 +38,8 @@ export function TeacherRsvpForm({ inviteCode }: TeacherRsvpFormProps) {
         ? 'Thank you! You have accepted the invitation.'
         : 'You have declined the invitation.'
       )
+      // The accepted page is where the session's video room (or join link) lives.
+      if (response.status === 'ACCEPTED') router.refresh()
     } catch {
       // Production masks unexpected action errors, so their text is never useful here.
       setError('Something went wrong while sending your response. Please try again in a moment.')

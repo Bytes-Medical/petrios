@@ -14,11 +14,15 @@ departments; trainees need accounts, external teachers don't.
 - **Session management**: create, edit, publish, and cancel teaching
   sessions (30 min–4 h plus a full-day option, typed: STEPP / Clinical Skills / Simulation /
   Academic), with an org-wide calendar and a subscribable ICS feed.
-- **Petrios Meet video**: sessions can use a built-in Jitsi video room —
-  auto-generated per session (nothing to paste), embedded on the session
-  page, joinable by external guests via a plain link. Joining the embedded
-  room records attendance automatically. Microsoft Teams links are equally
-  supported for orgs that live in Teams.
+- **Petrios Meet video**: sessions can use a built-in Jitsi video room,
+  auto-generated per session (nothing to paste). With 8x8 Jitsi as a Service
+  (JaaS) or your own Jitsi server the room is embedded on the session page,
+  and members and accepted external teachers (from their invitation link, no
+  account) join with a short-lived room pass that never carries an email
+  address. Without either, rooms open on the free meet.jit.si service in a new
+  tab. Joining attempts the member's self check-in and shows whether it was
+  recorded. Microsoft Teams links are equally supported for orgs that live in
+  Teams.
 - **Evidence-based attendance**: an append-only evidence pipeline
   (teacher marking > Teams > feedback > group code > self check-in) computes
   PRESENT/LATE/ABSENT with configurable windows, locking, CSV export, and a
@@ -65,7 +69,8 @@ departments; trainees need accounts, external teachers don't.
 - Tailwind CSS with cva-based UI primitives (neo-brutalist design system)
 - Anthropic Claude via the official `@anthropic-ai/sdk` for AI features (an OpenAI-compatible
   adapter is optional), with ElevenLabs or OpenAI speech generation for Audio Recaps — degrades gracefully
-- Jitsi Meet (`@jitsi/react-sdk`) for built-in video rooms
+- Jitsi (`@jitsi/react-sdk`) for built-in video rooms on 8x8 JaaS or a self-hosted
+  Jitsi, with room passes signed by WebCrypto (no extra dependency)
 - Resend REST API for transactional email (console log-sink in dev)
 - `@react-pdf/renderer` for certificates, Schedule-X for the calendar,
   Vitest for tests
@@ -75,10 +80,11 @@ departments; trainees need accounts, external teachers don't.
 Petrios is built to run on **your own infrastructure**: Docker image +
 compose file, SMTP email, an OpenAI-compatible `OPENAI_BASE_URL` (pinned with `LLM_PROVIDER=openai`) for
 in-network text AI (or none; Audio Recap and Recall still need `/responses` file inputs and
-hosted web search, which reach public sites), self-hosted Jitsi, a plain-Postgres migration
+hosted web search, which reach public sites), self-hosted Jitsi with token auth, a plain-Postgres migration
 runner, and a health endpoint — see [docs/self-hosting.md](./docs/self-hosting.md).
 A Cloudflare Workers staging build is also available — see
-[docs/cloudflare-workers.md](./docs/cloudflare-workers.md).
+[docs/cloudflare-workers.md](./docs/cloudflare-workers.md). Embedded video
+(8x8 JaaS) setup and its rollout impact are in [docs/petrios-meet.md](./docs/petrios-meet.md).
 
 Integrate anything via the **org-scoped REST API** (`/api/v1`, tokens with
 scopes, [OpenAPI schema](./public/openapi.json)) and **signed webhooks** —

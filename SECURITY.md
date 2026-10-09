@@ -13,7 +13,8 @@ actions updated.
 
 Browser responses also receive the global HSTS, Content Security Policy,
 anti-framing, MIME-sniffing, referrer, permissions, and cross-domain-policy
-baseline in `next.config.js`. The allowed provider origins, current inline-script
+baseline from `proxy.ts` (`lib/security-headers.ts`). The allowed provider origins
+(including the per-mode Petrios Meet origin), current inline-script
 limitation, and Jitsi regression requirements are documented in
 `spec/13-privacy-security-and-compliance.md`.
 

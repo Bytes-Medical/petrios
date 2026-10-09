@@ -45,16 +45,17 @@ const FEATURES: Feature[] = [
     id: 'petrios-meet',
     label: 'Petrios Meet',
     title: 'Video built in, not bolted on',
-    body: 'Give any session a video room with zero setup — no links to paste, ever. Rooms are generated per session, embedded in the session page for members, and joinable by external guests with a plain link. Swap the backend for your own Jitsi server with one environment variable.',
+    body: 'Give any session a video room with zero setup — no links to paste, ever. Rooms are generated per session and embedded in the session page with 8x8 Jitsi as a Service or your own Jitsi server. With JaaS, or your own server set up for token sign-in, members and accepted external teachers join with a short-lived room pass that carries their name but never their email address; on JaaS it also keeps recording and live streaming off. Without either, rooms open on the free meet.jit.si service in a new tab.',
     points: [
-      'Auto-generated rooms on Jitsi (self-hostable)',
-      'Embedded joining attempts windowed self check-in',
+      'Embedded rooms on 8x8 JaaS or your own Jitsi server; meet.jit.si opens in a new tab',
+      'Accepted external teachers join from their invitation link, no account needed',
+      'Joining attempts windowed self check-in and shows whether it was recorded',
       'Microsoft Teams links equally supported for Teams-first trusts',
     ],
     spec: [
       { label: 'Rooms', value: 'One per session', source: 'lib/jitsi.ts (room derived from the session id)' },
-      { label: 'Video server', value: 'Jitsi, self-hostable', source: 'NEXT_PUBLIC_JITSI_DOMAIN' },
-      { label: 'Joining', value: 'Attempts self check-in', source: 'components/JitsiMeetingPanel.tsx fires checkIn' },
+      { label: 'Video server', value: 'JaaS or self-hosted Jitsi', source: 'lib/meeting/config.ts (JAAS_* / JITSI_DOMAIN)' },
+      { label: 'Joining', value: 'Attempts self check-in', source: 'components/JitsiMeetingPanel.tsx calls checkInFromMeeting' },
     ],
   },
   {

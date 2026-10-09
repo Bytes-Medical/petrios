@@ -154,9 +154,13 @@ shows a generic friendly message there and never `error.message`. A failure
 that retrying cannot fix carries `final: true` (the claim actions use
 `slotUnavailable: true`), and the client calls `router.refresh()` so the
 server page replaces the form with the record's current state. Current examples: `submitFeedback` (spec 05),
-`respondToInvitation`, and `claimSlotByCode`/`claimSlotAsMember` (spec 04;
-the member claim shares the public claim path). A malformed-input `TypeError`
-stays a thrown error rather than a returned message.
+`respondToInvitation`, `claimSlotByCode`/`claimSlotAsMember` (spec 04;
+the member claim shares the public claim path), and the Petrios Meet actions
+`getMeetingJoin`/`getExternalTeacherMeetingJoin`/`checkInFromMeeting` (spec 04
+"Petrios Meet"; these go further and also return unexpected failures as a
+retryable `{ ok: false, reason: 'unavailable' | 'failed' }`, logged without any
+token, key, or email). A malformed-input `TypeError` stays a thrown error rather
+than a returned message.
 
 ### Work after the response
 
@@ -512,8 +516,8 @@ Every mutation click is at least two server round trips (action, then
   the nested `startTransition` around `router.refresh()` is required
   (React 19 async-transition rule), don't remove it.
 - **Heavy client-only libraries load via a dynamic client wrapper**
-  (`SessionCalendarLazy`, `JitsiMeetingPanel` pattern), never statically
-  from a page.
+  (`SessionCalendarLazy`, and `MeetingEmbed`, which loads `@jitsi/react-sdk`
+  with `ssr: false` inside `JitsiMeetingPanel`), never statically from a page.
 - **Signed-in pages get the utility footer automatically** — `AppFooter`
   renders once from the root layout on app-area routes (© / AGPL / Source /
   Privacy; the Source link is the AGPL section-13 route every self-hosted
@@ -597,7 +601,8 @@ The security workflow runs on pushes, PRs, and weekly schedule:
 
 Browser-facing responses additionally receive the HSTS, CSP, anti-framing,
 MIME, referrer, permissions, and cross-domain-policy baseline from `proxy.ts`
-(`lib/security-headers.ts`). Matcher exclusions, CSP origin, and Jitsi
+(`lib/security-headers.ts`). Matcher exclusions, the per-mode meeting origin
+(8x8.vc for JaaS, the self-hosted Jitsi host, none for meet.jit.si), and Jitsi
 regression requirements are in spec 13.
 
 PR findings gate merges. Main/scheduled scanner findings are generally reported

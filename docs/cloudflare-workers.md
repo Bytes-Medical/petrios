@@ -154,18 +154,54 @@ value as a secret, even a public one such as `MAIL_FROM`.
 Public configuration is read at **runtime** by `lib/runtime-config.ts`, so the
 build needs no real values. On Workers, use the unprefixed names (`APP_URL`,
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `JITSI_DOMAIN`). The `NEXT_PUBLIC_*` aliases
-still work at runtime but are not declared for local preview.
+still work at runtime but are not declared for local preview. The Petrios Meet
+variables are read at runtime, server-side only, by `lib/meeting/config.ts`
+(see [Petrios Meet on Workers](#petrios-meet-on-workers)).
 
 | Kind | Names |
 |---|---|
 | `vars` in `wrangler.jsonc` | `APP_URL` (empty in config; set per deploy), `CRON_ENABLED` (`"false"` at top level, `"true"` only in `env.production`), `OUTBOUND_EMAIL_ENABLED` (`"false"` at top level, `"true"` in `env.production`; see [Outbound email on staging](#outbound-email-on-staging)), `TRUSTED_CLIENT_IP_HEADER` (`"cf-connecting-ip"` in both: Cloudflare overwrites it, while the first `x-forwarded-for` hop is client-supplied, so the login-link and group-code rate limits must not use it), `HOSTING_PROVIDER` (`"cloudflare-workers"` in both, so `/privacy` and `/subprocessors` name Cloudflare Workers as the application host) |
 | Required secrets: deploy fails without them | Staging: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`. Production adds `RESEND_API_KEY` |
-| Optional secrets (set when used) | `ATTENDANCE_RATE_LIMIT_SECRET`, `INSTANCE_SIGNING_KEY`, `RESEND_API_KEY` and `MAIL_FROM` (staging: only reach `OUTBOUND_EMAIL_ALLOWLIST` addresses), `OUTBOUND_EMAIL_ALLOWLIST` (staging only), `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_FALLBACKS`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `TTS_PROVIDER`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `OPS_ENABLED`, `OPS_ASSISTANT_ENABLED`, `JITSI_DOMAIN`, `GOOGLE_SITE_VERIFICATION`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL`, `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` |
+| Optional secrets (set when used) | `ATTENDANCE_RATE_LIMIT_SECRET`, `INSTANCE_SIGNING_KEY`, `RESEND_API_KEY` and `MAIL_FROM` (staging: only reach `OUTBOUND_EMAIL_ALLOWLIST` addresses), `OUTBOUND_EMAIL_ALLOWLIST` (staging only), `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_FALLBACKS`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `TTS_PROVIDER`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `OPS_ENABLED`, `OPS_ASSISTANT_ENABLED`, Petrios Meet: `JAAS_APP_ID`, `JAAS_API_KEY_ID`, `JAAS_PRIVATE_KEY` (all three or none; the private key is a critical secret), or `JITSI_DOMAIN` with optional `JITSI_APP_ID` + `JITSI_APP_SECRET` (critical secret), `JITSI_JWT_AUDIENCE`, `JITSI_JWT_SUBJECT`, `TEACHER_INVITATIONS_RLS_LOCKED` (exactly `true` only after the spec 13 database fix), `GOOGLE_SITE_VERIFICATION`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL`, `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` |
 | Not secret, usually unset | `APP_TIME_ZONE` (IANA zone for server-rendered dates and teaching-slot wall times; default `Europe/London`, so a UK deployment sets nothing). To change it, add it to `vars` in `wrangler.jsonc` at the top level **and** in `env.production` (environments do not inherit `vars`), which also lets `cf:preview` read it from `.dev.vars`; or store it as a secret like `MAIL_FROM`. `TZ` has no effect: the Workers clock is always UTC |
 | Never set on Workers | `SUPABASE_INTERNAL_URL`, `AUTH_INTERNAL_URL`, `STORAGE_INTERNAL_URL`: Docker-network hostnames, which `global_fetch_strictly_public` blocks. Also `SELF_HOSTED_SETUP`/`SETUP_TOKEN` (self-host setup depends on unapplied migration 061), `DATABASE_URL`, and `NEXTJS_ENV` |
 | Build-time only | `NODE_ENV` is inlined as `production` by `next build` |
 
 SMTP (`SMTP_*`) has not been verified on Workers. Use Resend.
+
+### Petrios Meet on Workers
+
+The meeting mode (spec 04 "Petrios Meet") is resolved per request from the
+Worker's environment, so it can differ between Render and the staging Worker.
+Store every meeting variable as a secret, like `MAIL_FROM`, because deploys
+remove dashboard-only plain variables:
+
+```bash
+npx wrangler secret put JAAS_APP_ID --env=""
+npx wrangler secret put JAAS_API_KEY_ID --env=""
+# Pipe the multi-line PEM from the downloaded file (the interactive prompt reads
+# one line). A one-line value with literal \n escapes also works.
+npx wrangler secret put JAAS_PRIVATE_KEY --env="" < /path/to/jaas-private-key.pem
+# Only after the teacher_invitations policy fix (spec 13); same database as production.
+echo true | npx wrangler secret put TEACHER_INVITATIONS_RLS_LOCKED --env=""
+```
+
+Full JaaS walkthrough (console, Render, verification): `docs/petrios-meet.md`.
+
+- `JAAS_PRIVATE_KEY` and `JITSI_APP_SECRET` are critical secrets. Never put them
+  in `wrangler.jsonc`, `.dev.vars`, or a repository file.
+- With none set, the Worker runs in public mode: rooms open on meet.jit.si in a
+  new tab and the CSP names no meeting origin. A partial JaaS set makes video
+  unavailable on that host (the manage card shows the configuration message).
+- Room passes are signed with WebCrypto (`crypto.subtle`), so no Node-only
+  crypto is involved; PKCS#1 keys are wrapped to PKCS#8 in code.
+- The staging Worker serves the **production** database. Configuring the same
+  JaaS app on staging lets real sessions' rooms open from `workers.dev`, and
+  JaaS monthly active users are counted across both hosts. Use a separate JaaS
+  app for staging tests if you want separate usage, and remember that 8x8 then
+  also processes data reached through staging (record it in the DPA register).
+- Local preview (`cf:preview`) ignores these variables because `wrangler.jsonc`
+  does not declare them; test embedded rooms with `npm run dev` or on staging.
 
 ### Outbound email on staging
 

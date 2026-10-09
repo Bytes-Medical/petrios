@@ -8,7 +8,7 @@ import type { SessionCalendar } from './SessionCalendar'
  * Code-split wrapper for SessionCalendar: Schedule-X, its CSS, and the
  * temporal polyfill are heavy and client-only, so they load as their own
  * chunk after the page paints instead of blocking the dashboard bundle.
- * Same pattern as JitsiMeetingPanel (ssr:false needs a client wrapper).
+ * Same pattern as MeetingEmbed (ssr:false needs a client wrapper).
  */
 const LazyCalendar = dynamic(
   () => import('./SessionCalendar').then((m) => m.SessionCalendar),

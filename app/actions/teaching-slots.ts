@@ -310,7 +310,11 @@ interface ClaimContext {
 // expected failures for the UI to show; only unexpected ones throw.
 // `slotUnavailable` tells the UI to refresh so the lost slot disappears.
 export type ClaimSlotResult =
-  | { ok: true; sessionId: string }
+  /**
+   * `rsvpPath` (external claims only): the claimer's own RSVP page, where an
+   * external teacher later joins the session's video room. Relative path.
+   */
+  | { ok: true; sessionId: string; rsvpPath?: string }
   | { ok: false; message: string; slotUnavailable?: true }
 
 const SLOT_GONE: ClaimSlotResult = {
@@ -511,7 +515,7 @@ export async function claimSlotByCode(
   // Same shape as teacher-invitations' session-scoped RSVP codes.
   const inviteCode = generateCode(8)
 
-  return performClaim({
+  const result = await performClaim({
     slotId: slot.id,
     orgId: link.org_id,
     claimerName: contactDisplayName(contact),
@@ -531,6 +535,11 @@ export async function claimSlotByCode(
       })
     },
   })
+  // The external teacher has no dashboard: their RSVP page is where they will
+  // join the video room, so hand it back to show on the confirmation.
+  return result.ok
+    ? { ...result, rsvpPath: `/sessions/${result.sessionId}/teacher-rsvp/${encodeURIComponent(inviteCode)}` }
+    : result
 }
 
 // -----------------------------------------------------------------------------

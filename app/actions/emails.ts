@@ -115,7 +115,9 @@ function buildEmailHtml(
          <p style="font-size:12px;color:#666;">Sign in and accept the invitation to confirm you are teaching this session.</p>`
       : ''
 
-  const meetingUrl = sessionMeetingUrl(session)
+  // Recipients are registered teachers (members): token-protected rooms
+  // resolve to the session page, where they get a room pass.
+  const meetingUrl = sessionMeetingUrl(session, { kind: 'member' })
   const meetingSection = meetingUrl
     ? `<tr>
          <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Join link:</td>

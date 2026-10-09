@@ -246,6 +246,34 @@ export async function listEvidenceForAttendee(input: {
   return (data as AttendanceEvidence[] | null) ?? []
 }
 
+/**
+ * Service-role, pinned to ONE user: has this user already checked themselves
+ * in (SELF_CHECKIN or GROUP_CODE evidence) for this session? Used by the
+ * video-room check-in (app/actions/meetings.ts) so a trainee who entered the
+ * session code is told they are checked in instead of being asked for the
+ * code again, and a rejoin appends no duplicate evidence. The caller has
+ * already read the session through RLS in its own organization and passes
+ * its own authenticated user id.
+ */
+export async function userHasCheckInEvidence(input: {
+  orgId: string
+  sessionId: string
+  userId: string
+}): Promise<boolean> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('attendance_evidence')
+    .select('id')
+    .eq('session_id', input.sessionId)
+    .eq('org_id', input.orgId)
+    .eq('user_id', input.userId)
+    .in('source', ['SELF_CHECKIN', 'GROUP_CODE'])
+    .limit(1)
+
+  if (error) throw toDbError('Failed to check existing check-in evidence', error)
+  return ((data as { id: string }[] | null) ?? []).length > 0
+}
+
 export async function listSessionEvidence(
   orgId: string,
   sessionId: string

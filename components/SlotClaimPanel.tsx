@@ -33,6 +33,7 @@ export function SlotClaimPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [claimed, setClaimed] = useState<TeachingSlot | null>(null)
+  const [rsvpPath, setRsvpPath] = useState<string | null>(null)
 
   async function handleClaim() {
     if (!selectedId) return
@@ -42,6 +43,7 @@ export function SlotClaimPanel({
       const result = await claimSlotByCode(code, selectedId, firstName, lastName, topic || undefined)
       if (result.ok) {
         setClaimed(slots.find((s) => s.id === selectedId) ?? null)
+        setRsvpPath(result.rsvpPath ?? null)
         return
       }
       setError(result.message)
@@ -73,6 +75,16 @@ export function SlotClaimPanel({
           The organiser has been notified and will confirm the topic and
           session details with you by email.
         </p>
+        {rsvpPath ? (
+          <p className="font-mono text-sm">
+            Keep{' '}
+            <a href={rsvpPath} className="underline">
+              your session page
+            </a>{' '}
+            (bookmark it): it is where you join the video room on the day. Your reminder email
+            links to it too.
+          </p>
+        ) : null}
       </div>
     )
   }

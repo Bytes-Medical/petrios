@@ -256,10 +256,12 @@ describe('respondToInvitation', () => {
 })
 
 describe('claimSlotByCode', () => {
-  it('claims the slot and returns the new session id', async () => {
-    await expect(claimSlotByCode('CLAIMCODE123', 'slot-1', 'Grace', 'Hopper')).resolves.toEqual({
+  it('claims the slot and returns the new session id and the claimer\'s own RSVP page', async () => {
+    const result = await claimSlotByCode('CLAIMCODE123', 'slot-1', 'Grace', 'Hopper')
+    expect(result).toEqual({
       ok: true,
       sessionId: 'new-session-1',
+      rsvpPath: expect.stringMatching(/^\/sessions\/new-session-1\/teacher-rsvp\/[A-Za-z0-9]{8}$/),
     })
   })
 

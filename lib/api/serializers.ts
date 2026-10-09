@@ -5,6 +5,9 @@ import { sessionMeetingUrl } from '@/lib/jitsi'
  * Stable public JSON shapes for /api/v1. Only fields listed here are part of
  * the API contract (public/openapi.json) — adding is fine, removing/renaming
  * is a breaking change requiring a new API version.
+ *
+ * Keep the single parameter: routes call `sessions.map(serializeSession)`, so
+ * a second parameter would receive the array index.
  */
 export function serializeSession(session: Session) {
   return {
@@ -15,7 +18,9 @@ export function serializeSession(session: Session) {
     date_start: session.date_start,
     date_end: session.date_end,
     location_type: session.location_type,
-    meeting_url: sessionMeetingUrl(session),
+    // API clients act for organisation members: a token-protected room
+    // (JaaS, self-hosted JWT) resolves to the Petrios session page.
+    meeting_url: sessionMeetingUrl(session, { kind: 'member' }),
     status: session.status,
     session_type: session.session_type,
     created_at: session.created_at,

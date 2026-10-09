@@ -90,7 +90,11 @@ Serialized session fields are stable v1 contract:
 - id and department id;
 - title and nullable description;
 - start/end;
-- location type and resolved `meeting_url`;
+- location type and resolved `meeting_url` (`sessionMeetingUrl` with the
+  member audience: the stored Teams link for Teams/hybrid; for `JITSI` the
+  Petrios session page URL in every video mode (without a configured public app
+  URL: the raw meet.jit.si / open self-hosted room, else null; the serializer
+  never throws); null in person);
 - status and nullable session type; and
 - created/updated timestamps.
 
@@ -547,8 +551,41 @@ and [ElevenLabs text-to-speech reference](https://elevenlabs.io/docs/api-referen
 
 ### Meetings
 
-`NEXT_PUBLIC_JITSI_DOMAIN` defaults to `meet.jit.si`; Petrios derives session
-room URLs and does not configure provider authentication.
+Petrios Meet resolves one of three modes from server environment at request
+time (`lib/meeting/config.ts`; full contract in spec 04 "Petrios Meet"):
+
+- **JaaS** (recommended for production): set `JAAS_APP_ID`, `JAAS_API_KEY_ID`
+  and `JAAS_PRIVATE_KEY`. Rooms are embedded from `8x8.vc` and every participant
+  joins with an RS256 room pass minted by Petrios (WebCrypto; PKCS#8 or PKCS#1
+  PEM, literal `\n` escapes accepted). Setup: create an app in the JaaS console
+  (jaas.8x8.vc), generate or upload an API key, copy the AppID and the key id
+  (it starts with `<AppID>/`), and store the private key as a server secret.
+  8x8 is then a subprocessor (spec 13). Step-by-step operator guide (JaaS
+  console, Render, Workers, verification, rollout): `docs/petrios-meet.md`.
+- **Self-hosted**: set `JITSI_DOMAIN` to your Jitsi host (optionally `:port`).
+  Rooms are embedded from that origin. With `JITSI_APP_ID` + `JITSI_APP_SECRET`
+  (Prosody token auth, HS256; docker-jitsi-meet `ENABLE_AUTH=1`,
+  `AUTH_TYPE=jwt`, `JWT_APP_ID`, `JWT_APP_SECRET`) every participant needs a
+  room pass; `JITSI_JWT_AUDIENCE` (default `jitsi`) and `JITSI_JWT_SUBJECT`
+  (default the domain host; docker-jitsi-meet needs its XMPP domain, for example
+  `meet.jitsi`) adjust the claims. Without the pair the room is open. The
+  moderator and pass-only guarantees also need guest access and Jicofo
+  auto-owner off and a Prosody module that applies the moderator claim
+  (docs/self-hosting.md).
+- **External teachers** join token-protected rooms from their RSVP link only
+  with `TEACHER_INVITATIONS_RLS_LOCKED=true`, set after the
+  `teacher_invitations` policy fix (spec 13 "External teacher invite codes").
+- **Public** (default, nothing set): rooms open on meet.jit.si in a new tab and
+  are never embedded, because meet.jit.si disconnects embedded calls after 5
+  minutes and requires the first participant to sign in.
+
+Partial or contradictory configuration makes meetings unavailable with a
+message naming the variables (never a silent fallback to meet.jit.si); see the
+resolution rules in spec 04. The error is logged once per distinct
+environment when the configuration first resolves, and the super-admin
+installation page (`/settings/installation`) shows a "Video (Petrios Meet)"
+row with the mode and any configuration error (variable names only).
+`/api/health` does not check meetings.
 
 ## Deployment architecture
 
@@ -707,7 +744,15 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `OPENAI_TTS_MODEL` | Default `gpt-4o-mini-tts` | Speech model |
 | `OPENAI_TTS_VOICE` | Default `alloy` | Speech voice |
 | `OPS_ENABLED` | Disabled only by exact `false` | Ops execution kill switch |
-| `NEXT_PUBLIC_JITSI_DOMAIN` | Default `meet.jit.si` | Browser-visible meeting host |
+| `JAAS_APP_ID` | Optional; all three `JAAS_*` or none | Petrios Meet on 8x8 JaaS: AppID (`vpaas-magic-cookie-…`), also the JWT `sub` and room prefix. Not secret (it appears in room names) |
+| `JAAS_API_KEY_ID` | Required with JaaS | JaaS API key id, the JWT header `kid`; must start with `<AppID>/`. Low sensitivity |
+| `JAAS_PRIVATE_KEY` | Required with JaaS | RSA private key PEM (PKCS#8 `BEGIN PRIVATE KEY` or PKCS#1 `BEGIN RSA PRIVATE KEY`; real newlines or literal `\n`; surrounding quotes stripped). Critical secret, server-only, never in an error message or log |
+| `JITSI_DOMAIN` | Optional; unset = `meet.jit.si` (public link-out mode) | Self-hosted Jitsi `host[:port]` (no scheme or path) for embedded rooms; `meet.jit.si` = public mode; `8x8.vc` only together with JaaS. Read server-side at request time |
+| `NEXT_PUBLIC_JITSI_DOMAIN` | Legacy alias | Fallback for `JITSI_DOMAIN`, read the same way at runtime; no longer sent to the browser |
+| `JITSI_APP_ID` | Optional; with `JITSI_APP_SECRET` or neither | Self-hosted Prosody token auth `app_id`, the JWT `iss` |
+| `JITSI_APP_SECRET` | Optional; with `JITSI_APP_ID` | Prosody `app_secret` for HS256 room passes. Critical secret, server-only |
+| `JITSI_JWT_AUDIENCE` | Default `jitsi`; needs the app id/secret pair | Self-hosted JWT `aud` |
+| `JITSI_JWT_SUBJECT` | Default the `JITSI_DOMAIN` host without port; needs the pair | Self-hosted JWT `sub`; docker-jitsi-meet needs its XMPP domain (e.g. `meet.jitsi`) |
 | `INSTANCE_SIGNING_KEY` | Optional | Ed25519 PKCS#8 DER base64 private key; critical secret |
 | `DATABASE_URL` | Migration runner only | Direct database credential |
 | `GOOGLE_SITE_VERIFICATION` | Optional | Search Console meta content |
@@ -727,9 +772,14 @@ test/development behavior. Only `NEXT_PUBLIC_*` variables may be intentionally
 bundled into browser code.
 
 On Cloudflare Workers, public configuration is read at request time by
-`lib/runtime-config.ts`; set the unprefixed names `APP_URL`, `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, and `JITSI_DOMAIN` (the `NEXT_PUBLIC_*` names remain runtime
-fallbacks). Never set `SUPABASE_INTERNAL_URL`, `AUTH_INTERNAL_URL`, or
+`lib/runtime-config.ts`; set the unprefixed names `APP_URL`, `SUPABASE_URL`, and
+`SUPABASE_ANON_KEY` (the `NEXT_PUBLIC_*` names remain runtime fallbacks). The
+meeting variables are read at request time by `lib/meeting/config.ts` and,
+like every environment-specific value there, are stored as Worker secrets
+(`JAAS_PRIVATE_KEY` and `JITSI_APP_SECRET` are critical); `wrangler.jsonc`
+declares none of them, so local preview runs in public mode. The staging Worker
+serves the production database, so a JaaS app configured on both hosts counts
+monthly active users across both (docs/cloudflare-workers.md). Never set `SUPABASE_INTERNAL_URL`, `AUTH_INTERNAL_URL`, or
 `STORAGE_INTERNAL_URL` there: they name Docker-network hosts that a Worker cannot
 reach. A Worker serving the production database must use byte-for-byte copies of
 Render's `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,

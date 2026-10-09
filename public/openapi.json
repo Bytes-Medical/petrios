@@ -20,8 +20,11 @@
           "description": { "type": ["string", "null"] },
           "date_start": { "type": "string", "format": "date-time" },
           "date_end": { "type": "string", "format": "date-time" },
-          "location_type": { "type": "string", "enum": ["MS_TEAMS", "IN_PERSON", "HYBRID", "JITSI"] },
-          "meeting_url": { "type": ["string", "null"] },
+          "location_type": { "type": "string", "enum": ["MS_TEAMS", "IN_PERSON", "HYBRID", "JITSI"], "description": "JITSI is a Petrios Meet video room derived from the session id." },
+          "meeting_url": {
+            "type": ["string", "null"],
+            "description": "Join URL. MS_TEAMS/HYBRID: the stored Teams link (null when none is stored). JITSI: the Petrios session page URL (<app>/sessions/<id>) in every video mode, because members join from the session page (it mints the room pass for 8x8 JaaS or self-hosted Jitsi with JWT, explains the meet.jit.si new-tab room, and attempts the member's check-in). Only when the deployment has no public app URL configured: the raw room URL on meet.jit.si or an open self-hosted server, otherwise null. Null for IN_PERSON."
+          },
           "status": { "type": "string", "enum": ["DRAFT", "PUBLISHED", "CANCELLED"] },
           "session_type": { "type": ["string", "null"] },
           "created_at": { "type": "string", "format": "date-time" },

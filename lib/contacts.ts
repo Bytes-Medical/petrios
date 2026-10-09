@@ -67,6 +67,13 @@ export function contactDisplayName(contact: {
  * only, never the email address, which would otherwise reach the Jitsi
  * service and every participant.
  */
+export const MEETING_FALLBACK_DISPLAY_NAME = 'Attendee'
+
+/** True when meetingDisplayName had no profile name to use. */
+export function isFallbackMeetingDisplayName(name: string): boolean {
+  return name === MEETING_FALLBACK_DISPLAY_NAME
+}
+
 export function meetingDisplayName(
   profile: {
     full_name?: string | null
@@ -77,7 +84,7 @@ export function meetingDisplayName(
   return (
     profile?.full_name?.trim() ||
     [profile?.first_name?.trim(), profile?.last_name?.trim()].filter(Boolean).join(' ') ||
-    'Attendee'
+    MEETING_FALLBACK_DISPLAY_NAME
   )
 }
 

@@ -4,6 +4,7 @@
 |---|---|
 | [api.md](./api.md) | Public REST API v1: `pt_` tokens, scopes, endpoints, webhooks |
 | [self-hosting.md](./self-hosting.md) | Running Petrios on your own infrastructure (Docker, SMTP, migrations, health) |
+| [petrios-meet.md](./petrios-meet.md) | Petrios Meet video: JaaS setup on Render and Workers, external-teacher prerequisite, verification, rollout impact |
 | [cloudflare-workers.md](./cloudflare-workers.md) | Cloudflare Workers staging build, preview, deploy, cron safety and limits |
 | [compliance/dpia-template.md](./compliance/dpia-template.md) | Data Protection Impact Assessment template for deployments |
 | [compliance/dtac.md](./compliance/dtac.md) | DTAC (Digital Technology Assessment Criteria) mapping |

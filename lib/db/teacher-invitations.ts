@@ -175,20 +175,23 @@ export async function findDepartmentName(
 /**
  * Service-role: used by the session-reminder cron, which runs without a user
  * session. External teachers who accepted their invitation for this session.
+ * `invite_code` is the recipient's RSVP capability: their reminder links
+ * point at their own RSVP page, which hosts their video room.
  */
 export async function listAcceptedInvitationRecipientsAsSystem(
   sessionId: string
-): Promise<{ email: string; first_name: string | null; last_name: string | null }[]> {
+): Promise<{ email: string; first_name: string | null; last_name: string | null; invite_code: string }[]> {
   const db = await getServiceDb()
   const { data, error } = await db
     .from('teacher_invitations')
-    .select('email, first_name, last_name')
+    .select('email, first_name, last_name, invite_code')
     .eq('session_id', sessionId)
     .eq('status', 'ACCEPTED')
 
   if (error) throw toDbError('Failed to list accepted invitations', error)
   return (
-    (data as { email: string; first_name: string | null; last_name: string | null }[] | null) ??
-    []
+    (data as
+      | { email: string; first_name: string | null; last_name: string | null; invite_code: string }[]
+      | null) ?? []
   )
 }

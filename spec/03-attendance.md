@@ -196,7 +196,7 @@ database trigger, even if a client bypasses the disabled UI button.
 | `TEAMS` | 4 | Department moderator/integration action | No time limit | Reserved meeting-platform observation; no importer currently ships |
 | `FEEDBACK` | 3 | None in v2 | Policy v1 only | Historical feedback-derived evidence |
 | `GROUP_CODE` | 2 | Authenticated subject after secure-code verification | Check-in window inclusive | Possession of the active session code |
-| `SELF_CHECKIN` | 1 | Authenticated subject for themself; Jitsi join attempts it | Check-in window inclusive | Participant self-attestation |
+| `SELF_CHECKIN` | 1 | Authenticated subject for themself; joining (embedded) or opening (meet.jit.si) a Petrios Meet room attempts it | Check-in window inclusive | Participant self-attestation |
 | `RECALL` | 0 | `complete_recall_catchup_v2` only | Policy v1: end through end + 21 days. Policy v2: published set deadline is enforced at insertion, then evidence stays valid for future recomputation | Approved Audio Recap catch-up; `PRESENT` recognition without a physical-presence claim |
 
 For a subject, derivation:
@@ -237,9 +237,35 @@ configuration because runtime logic uses nullish rather than truthy fallback.
 ### Self check-in
 
 The caller must be authenticated and the target user must equal the caller.
-Server time is authoritative. Joining a Petrios Meet/Jitsi room attempts this
-same path as a best-effort side effect; room visibility does not widen the
-attendance window and a displayed meeting is not proof that check-in succeeded.
+Server time is authoritative. Joining a Petrios Meet room attempts this same
+path: the room panel calls `checkInFromMeeting` (`app/actions/meetings.ts`) when
+an embedded room reports `videoConferenceJoined`, or when a member clicks the
+meet.jit.si link in public mode (without delaying the navigation). That wrapper
+calls the unchanged `checkIn` action and returns the outcome instead of
+throwing, and the panel announces it in an `aria-live` status: recorded ("You're
+checked in", still provisional until finalization), outside the check-in window
+(with the window's local times), session code required (an active group code
+still disables plain self check-in), attendance finalized, or not recorded.
+External teachers get no check-in from the room, and neither do the room's
+hosts (department moderators and `ACCEPTED` registered teachers: the pass's
+moderator flag, or the server-computed `viewerIsModerator` in public mode);
+they see "You're hosting this room; attendance is managed from Manage
+Session". The wrapper answers "not available" for a session that is not a
+`PUBLISHED` `JITSI` session. Before calling `checkIn` it looks for the caller's
+own `SELF_CHECKIN` or `GROUP_CODE` evidence (`userHasCheckInEvidence`); if any
+exists it answers "You're already checked in" and appends nothing, so a
+trainee who entered the session code is not asked for it again (this check
+precedes the window check; finalized attendance is still reported first).
+Rejoining re-attempts check-in unless the previous attempt on that page was
+recorded or hit finalized attendance. Because the room opens 30 minutes before
+the start and self check-in (by default) 15 minutes before, a member who joins
+early gets "not opened yet"; while they stay in the room (or on the page after
+opening the meet.jit.si tab) the panel retries once automatically when the
+window opens (skew-corrected clock, up to 5 s jitter) and says so. A failed
+(not recorded / unreachable) attempt offers "Try check-in again". Policy-v2
+deduplication (`SELF_CHECKIN:<user>`) keeps any repeat idempotent. The room
+window (start − 30 minutes to end + 30 minutes) does not widen the attendance
+window, and an open room is not proof that check-in succeeded.
 When an enabled, unexpired group-code verifier exists, plain self check-in is
 disabled and the participant must submit the active code. This makes moderator
 activation of the stronger shared-presence signal meaningful instead of leaving

@@ -7,7 +7,7 @@ import {
 } from '@/lib/session-duration'
 import { appDayKey, appWallClockToIso, formatInAppTimeZone } from '@/lib/datetime'
 import { normalizeContactEmail } from '@/lib/contacts'
-import { generateCode } from '@/lib/codes'
+import { cryptoRandom, generateCode } from '@/lib/codes'
 import type { SlotDisplayStatus, SlotStatus } from '@/lib/types'
 
 /**
@@ -252,6 +252,6 @@ export const CLAIM_CODE_LENGTH = 12
 
 /** Capability token for public claim links (longer than session-scoped RSVP
  *  codes because /claim/[code] has no other scoping). */
-export function generateClaimCode(random: () => number = Math.random): string {
+export function generateClaimCode(random: () => number = cryptoRandom): string {
   return generateCode(CLAIM_CODE_LENGTH, random)
 }

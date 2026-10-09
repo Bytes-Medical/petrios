@@ -130,6 +130,30 @@ export async function findSessionById(id: string): Promise<Session | null> {
 }
 
 /**
+ * Service-role: the public teacher-RSVP page and getExternalTeacherMeetingJoin
+ * read the session for a VALID invite code (the capability) — anonymous
+ * visitors cannot read sessions through RLS (can_view_session needs
+ * auth.uid()). Callers must have matched invite_code + session_id first;
+ * org_id pins the row to the invitation's organization.
+ */
+export async function findSessionForInvitationAsSystem(input: {
+  sessionId: string
+  orgId: string
+}): Promise<Session | null> {
+  const { getServiceDb } = await import('./client')
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('sessions')
+    .select('*')
+    .eq('id', input.sessionId)
+    .eq('org_id', input.orgId)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to fetch invited session', error)
+  return (data as Session | null) ?? null
+}
+
+/**
  * Public read of a session with the embedded department's feedback form
  * fields. Used from the public, accountless feedback page so attendees can submit
  * feedback without being signed in.

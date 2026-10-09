@@ -11,7 +11,7 @@ import { createEventsServicePlugin } from '@schedule-x/events-service'
 import '@schedule-x/theme-default/dist/index.css'
 import { formatTimeHM } from '@/lib/date-picker'
 import { exactDurationFromDates, formatDuration } from '@/lib/session-duration'
-import { sessionMeetingUrl } from '@/lib/jitsi'
+import { sessionHasOnlineJoin, storedMeetingUrl } from '@/lib/meeting/location'
 import type { Session, SlotEvent } from '@/lib/types'
 
 type ExpandedDay = {
@@ -188,7 +188,9 @@ export function SessionCalendar({
   const router = useRouter()
   const [copied, setCopied] = useState(false)
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
-  const selectedMeetingUrl = selectedSession ? sessionMeetingUrl(selectedSession) : null
+  // Stored Teams link only: Petrios Meet rooms are joined from the session
+  // page (room pass + check-in), so the calendar never links a raw room.
+  const selectedMeetingUrl = selectedSession ? storedMeetingUrl(selectedSession) : null
   const [selectedSlot, setSelectedSlot] = useState<SlotEvent | null>(null)
   const [expandedDay, setExpandedDay] = useState<ExpandedDay | null>(null)
   const [eventsService] = useState(() => createEventsServicePlugin())
@@ -453,8 +455,9 @@ export function SessionCalendar({
               </div>
 
               <div className="mb-5 flex flex-wrap gap-3">
-                {/* Petrios Meet joins go via the session page: the embedded room
-                    there also records the member's self check-in. */}
+                {/* Petrios Meet joins go via the session page: its room panel
+                    issues the room pass (or opens meet.jit.si in public mode)
+                    and attempts the member's self check-in. */}
                 {selectedSession.location_type === 'JITSI' ? (
                   <button
                     type="button"
@@ -632,7 +635,7 @@ export function SessionCalendar({
                         </p>
                         <div className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-gray-500">
                           <span className="truncate">{getLocationLabel(session)}</span>
-                          {sessionMeetingUrl(session) ? <span className="shrink-0">↗</span> : null}
+                          {sessionHasOnlineJoin(session) ? <span className="shrink-0">↗</span> : null}
                         </div>
                       </div>
                     </button>
