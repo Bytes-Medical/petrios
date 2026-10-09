@@ -1,6 +1,7 @@
 import type { UserRole } from '@/lib/types'
 import { getDb, getServiceDb } from './client'
-import { toDbError } from './errors'
+import { DbConflictError, DbNotFoundError, toDbError } from './errors'
+import { DEPARTMENT_NAME_CONFLICT_MESSAGE } from '@/lib/tenant-names'
 
 /**
  * Super-admin DAL. Everything here uses the service-role client because
@@ -92,6 +93,38 @@ export async function listAllDepartments(): Promise<
 
   if (error) throw toDbError('Failed to fetch departments', error)
   return (data as { id: string; name: string; org_id: string }[] | null) ?? []
+}
+
+export async function updateOrganizationNameById(orgId: string, name: string): Promise<void> {
+  const db = await getDb()
+  const { data, error } = await db
+    .from('organizations')
+    .update({ name })
+    .eq('id', orgId)
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to rename organization', error)
+  if (!data) throw new DbNotFoundError(`Organization ${orgId} not found`)
+}
+
+export async function updateDepartmentNameById(departmentId: string, name: string): Promise<void> {
+  const db = await getDb()
+  const { data, error } = await db
+    .from('departments')
+    .update({ name })
+    .eq('id', departmentId)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    const dbError = toDbError('Failed to rename department', error)
+    if (dbError instanceof DbConflictError) {
+      throw new DbConflictError(DEPARTMENT_NAME_CONFLICT_MESSAGE, error)
+    }
+    throw dbError
+  }
+  if (!data) throw new DbNotFoundError(`Department ${departmentId} not found`)
 }
 
 export async function deleteOrganizationById(orgId: string): Promise<void> {

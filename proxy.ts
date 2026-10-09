@@ -1,3 +1,6 @@
+import { applySecurityHeaders } from '@/lib/security-headers'
+
+import { getPublicRuntimeConfig } from '@/lib/runtime-config'
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -7,10 +10,11 @@ export async function proxy(request: NextRequest) {
   })
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_INTERNAL_URL || getPublicRuntimeConfig().supabaseUrl,
+    getPublicRuntimeConfig().supabaseAnonKey,
     {
-        cookies: {
+        cookieOptions: { name: `sb-${new URL(getPublicRuntimeConfig().supabaseUrl).hostname.split('.')[0]}-auth-token` },
+      cookies: {
           get(name: string) {
             return request.cookies.get(name)?.value
           },
@@ -51,6 +55,7 @@ export async function proxy(request: NextRequest) {
     '/login',
     '/trainee-login',
     '/signup',
+    '/setup',
     '/verify',
     '/join',
     '/join/callback',
@@ -90,10 +95,10 @@ export async function proxy(request: NextRequest) {
   if (!user && !isPublicRoute && !isApiRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    return NextResponse.redirect(url)
+    return applySecurityHeaders(NextResponse.redirect(url))
   }
 
-  return supabaseResponse
+  return applySecurityHeaders(supabaseResponse)
 }
 
 export const config = {

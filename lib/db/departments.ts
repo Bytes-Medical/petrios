@@ -5,7 +5,8 @@ import type {
   UserRole,
 } from '@/lib/types'
 import { getDb, getServiceDb } from './client'
-import { DbNotFoundError, toDbError } from './errors'
+import { DbConflictError, DbNotFoundError, toDbError } from './errors'
+import { DEPARTMENT_NAME_CONFLICT_MESSAGE } from '@/lib/tenant-names'
 
 // -----------------------------------------------------------------------------
 // Departments
@@ -162,6 +163,36 @@ export async function findDepartmentSettings(
     coordinatorNames: row.certificate_coordinator_names ?? [],
     feedbackFormFields: row.feedback_form_fields ?? null,
   }
+}
+
+/**
+ * Service role: department moderators have no RLS UPDATE policy on
+ * `departments`, so the RLS client would silently update zero rows. The
+ * action gates on `requireDepartmentModerator` and the query is scoped to the
+ * department id and organization, matching the other settings writes here.
+ */
+export async function updateDepartmentName(
+  departmentId: string,
+  orgId: string,
+  name: string
+): Promise<void> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('departments')
+    .update({ name })
+    .eq('id', departmentId)
+    .eq('org_id', orgId)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    const dbError = toDbError('Failed to rename department', error)
+    if (dbError instanceof DbConflictError) {
+      throw new DbConflictError(DEPARTMENT_NAME_CONFLICT_MESSAGE, error)
+    }
+    throw dbError
+  }
+  if (!data) throw new DbNotFoundError(`Department ${departmentId} not found`)
 }
 
 export async function updateDepartmentCertificateCoordinators(

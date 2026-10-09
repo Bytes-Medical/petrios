@@ -4,6 +4,10 @@ import { ToastProvider } from '@/components/ToastProvider'
 import { AppFooter } from '@/components/AppFooter'
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from '@/lib/site'
 import './globals.css'
+import { RuntimeConfigProvider } from '@/components/runtime/RuntimeConfigProvider'
+import { getPublicRuntimeConfig, serializePublicRuntimeConfig } from '@/lib/runtime-config'
+
+export const dynamic = 'force-dynamic'
 
 const plexMono = IBM_Plex_Mono({
   subsets: ['latin'],
@@ -70,10 +74,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${plexMono.variable} flex min-h-screen flex-col font-mono`}>
+        <script id="petrios-runtime-config" type="application/json" dangerouslySetInnerHTML={{ __html: serializePublicRuntimeConfig(getPublicRuntimeConfig()) }} />
+        <RuntimeConfigProvider config={getPublicRuntimeConfig()}>
         <ToastProvider>
           {children}
           <AppFooter />
         </ToastProvider>
+        </RuntimeConfigProvider>
       </body>
     </html>
   )

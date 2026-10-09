@@ -13,6 +13,7 @@ import * as onboardingDb from '@/lib/db/onboarding'
 import { DbNotFoundError } from '@/lib/db'
 import type { TraineeGrade, UserRole } from '@/lib/types'
 import { validateTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
+import { validateDepartmentName } from '@/lib/tenant-names'
 
 export async function createDepartment(name: string) {
   const userId = await requireAuth()
@@ -135,6 +136,20 @@ export async function updateDepartmentCertificateSettings(
   revalidatePath('/dashboard')
   revalidatePath('/settings')
   revalidatePath(`/departments/${departmentId}`)
+}
+
+export async function updateDepartmentName(departmentId: string, name: string) {
+  await requireDepartmentModerator(departmentId)
+  const orgId = await requireOrg()
+  const normalizedName = validateDepartmentName(name)
+
+  await departmentsDb.updateDepartmentName(departmentId, orgId, normalizedName)
+
+  revalidatePath('/dashboard')
+  revalidatePath('/settings')
+  revalidatePath('/departments')
+  revalidatePath(`/departments/${departmentId}`)
+  revalidatePath('/admin')
 }
 
 export async function leaveDepartment(departmentId: string) {

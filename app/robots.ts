@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import type { MetadataRoute } from 'next'
 import { SITE_URL } from '@/lib/site'
 
@@ -14,6 +15,7 @@ export default function robots(): MetadataRoute.Robots {
         allow: '/',
         disallow: [
           '/api/',
+          '/setup',
           '/dashboard',
           '/ops',
           '/settings',

@@ -387,6 +387,30 @@ reader semantics, focus order/visibility, 200%/400% zoom and reflow, errors and
 status announcements, motion, timeouts, touch targets, PDFs, emails, charts,
 calendar, video, and content authored by users.
 
+### Homepage motion and progressive enhancement
+
+The homepage's headline, content, links, and illustrative product previews are
+server-rendered. The hero diagram retains readable HTML labels and a static
+HTML/CSS/SVG presentation when JavaScript or GPU rendering is unavailable. The
+decorative canvas is hidden from assistive technology; the figure describes the
+workflow, and the substantive walkthrough remains ordinary document content.
+
+Three.js is imported only after the hero becomes visible and an idle callback
+(or short timer fallback), with a viewport of at least 1,024 CSS pixels, a fine
+pointer, `prefers-reduced-motion: no-preference`, no reported data-saving
+preference, and a visible document. Other visitors do not request the scene
+module. Eligibility changes tear down the scene and restore the static diagram.
+An import/rendering initialization failure or WebGL context loss also leaves the
+static diagram usable; it does not display an error or block navigation.
+
+The scene caps device pixel ratio at 1.5, uses a 600ms two-degree entrance tilt
+and at most three-degree pointer tilt, and renders only until motion settles.
+Leaving the viewport or hiding the document disposes the scene. Unmounting cancels pending
+work and releases listeners, observers, geometry, materials, and the renderer.
+The reserved desktop square prevents the enhancement from moving content;
+mobile cards reflow into a two-column static grid with readable labels.
+No external model, browser service, analytics, or new CSP origin is introduced.
+
 ## Compliance evidence pack
 
 `docs/compliance/` contains:

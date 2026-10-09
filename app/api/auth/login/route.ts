@@ -1,3 +1,5 @@
+
+import { getPublicRuntimeConfig } from '@/lib/runtime-config'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
@@ -8,10 +10,11 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({ success: true })
 
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      process.env.SUPABASE_INTERNAL_URL || getPublicRuntimeConfig().supabaseUrl,
+      getPublicRuntimeConfig().supabaseAnonKey,
       {
-        cookies: {
+        cookieOptions: { name: `sb-${new URL(getPublicRuntimeConfig().supabaseUrl).hostname.split('.')[0]}-auth-token` },
+      cookies: {
           get(name: string) {
             return request.cookies.get(name)?.value
           },

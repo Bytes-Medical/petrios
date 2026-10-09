@@ -1,0 +1,5 @@
+ARG STORAGE_IMAGE=supabase/storage-api:v1.74.0@sha256:f1546fac6d1c7e345428ac904bfaa7be7cecd50a1f549fe1cf38c628a7b15c85
+FROM ${STORAGE_IMAGE}
+COPY scripts/self-hosting/keys.mjs /petrios/keys.mjs
+COPY deploy/supabase/storage-start.mjs /petrios/storage-start.mjs
+ENTRYPOINT ["node", "/petrios/storage-start.mjs"]

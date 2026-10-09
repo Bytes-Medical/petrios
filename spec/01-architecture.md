@@ -180,6 +180,20 @@ appropriate HTTP responses.
 
 ### Public page families
 
+The signed-out homepage presents an organiser-focused product walkthrough. Its
+primary link targets the on-page `#how-it-works` section; department-code joining,
+features, self-hosting, and the shared navigation retain their existing routes.
+Signed-in visitors still redirect to `/dashboard`, and the individual entry is
+shown only when `INDIVIDUAL_SIGNUP_ENABLED` is true. Homepage typography and layout
+are scoped to the page rather than changing the shared public shell or app.
+
+The schedule, attendance, evidence, and newsletter previews use labelled,
+fictional local examples. They fetch no application data and perform no mutations.
+Feedback is depicted separately from attendance, certificates follow finalized
+governance and eligibility, and the newsletter is a draft awaiting human approval.
+The optional Three.js hero only enhances decorative surfaces; its complete HTML
+fallback, loading eligibility, and motion behavior are specified in spec 13.
+
 The public surface includes:
 
 - marketing, project, privacy/choice, DPA/subprocessor, news, and authentication pages;

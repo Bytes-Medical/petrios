@@ -5,6 +5,7 @@ import { NavShell } from '@/components/NavShell'
 import { Card } from '@/components/Card'
 import { SettingsSection } from '@/components/SettingsSection'
 import { CertificateSettingsPanel } from '@/components/CertificateSettingsPanel'
+import { DepartmentNamePanel } from '@/components/DepartmentNamePanel'
 import { FeedbackTemplatePanel } from '@/components/FeedbackTemplatePanel'
 import { DepartmentInviteLinksPanel } from '@/components/DepartmentInviteLinksPanel'
 import { OrgMembersPanel } from '@/components/OrgMembersPanel'
@@ -112,6 +113,7 @@ export default async function SettingsPage() {
         <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl sm:text-3xl font-mono font-bold">Settings</h1>
+            {process.env.SELF_HOSTED_SETUP === 'true' && <Link className="mt-2 inline-block text-sm underline" href="/settings/installation">Installation status</Link>}
             <p className="mt-2 font-mono text-sm text-gray-600">
               Manage department access, invite links, and certificate defaults.
             </p>
@@ -215,15 +217,20 @@ export default async function SettingsPage() {
                   title={department.name}
                   description={
                     orgManager
-                      ? 'The public feedback form and certificate coordinators. Members are managed under Organization Members above.'
-                      : 'Members, the public feedback form, and certificate coordinators.'
+                      ? 'Department name, the public feedback form, and certificate coordinators. Members are managed under Organization Members above.'
+                      : 'Department name, members, the public feedback form, and certificate coordinators.'
                   }
                 >
                   <div className="space-y-6">
+                    <DepartmentNamePanel
+                      departmentId={department.id}
+                      initialName={department.name}
+                    />
+
                     {/* Org managers already have the full member list above —
                         showing it again per department read as duplication. */}
                     {!orgManager ? (
-                      <div>
+                      <div className="border-t border-black pt-6">
                         <h3 className="mb-3 font-mono text-sm font-bold uppercase tracking-wider text-gray-500">
                           Members
                         </h3>
@@ -237,7 +244,7 @@ export default async function SettingsPage() {
                       </div>
                     ) : null}
 
-                    <div className={orgManager ? '' : 'border-t border-black pt-6'}>
+                    <div className="border-t border-black pt-6">
                       <FeedbackTemplatePanel
                         departmentId={department.id}
                         initialFields={settings.feedbackFormFields}

@@ -1,0 +1,15 @@
+# APP_URL=https://your-domain; point DNS to this server, then compose -f docker-compose.yml -f deploy/compose.https.yml up -d.
+services:
+  https:
+    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    restart: unless-stopped
+    environment:
+      APP_URL: ${APP_URL:?Set APP_URL to your HTTPS origin}
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - tls:/data
+      - caddy-config:/config
+volumes:
+  tls:
+  caddy-config:

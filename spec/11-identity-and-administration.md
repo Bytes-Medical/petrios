@@ -342,21 +342,36 @@ removal path should be the reference.
 ## Department and organization administration
 
 - Organization admins create/update departments through RLS-backed actions/UI.
-- Department moderators manage lead name, feedback template, sessions, attendance,
-  member directory, invites, contacts, and relevant reports.
+- Department moderators manage the department name, lead name, feedback
+  template, sessions, attendance, member directory, invites, contacts, and
+  relevant reports.
+- Department renaming lives in the Settings tab (`updateDepartmentName`). The
+  action gates on `requireDepartmentModerator`, normalizes the name (trim,
+  collapse whitespace, at most 120 characters), then writes through the
+  service-role DAL scoped to the department id and organization, because
+  `department_admin` has no RLS UPDATE policy on `departments`. A name already
+  used in the same organization is rejected with a friendly conflict message
+  (`departments(org_id, name)` unique index). Renaming never changes the
+  department code or invite URL, and names are read live by certificates,
+  emails, and session pages rather than snapshotted.
 - Department code and invite URL are enrollment capabilities and should be shown
   only on organizer surfaces, despite API exposure under an admin-issued scope.
 - Deleting organization/department is super-admin-only in the dedicated global
   surface and cascades dependent data according to foreign keys.
 
 Any action relying on UI gating still needs a server check. RLS helps for
-request-scoped writes but cannot protect a service-role DAL call.
+request-scoped writes but cannot protect a service-role DAL call; the
+department settings writes (name, certificate coordinators, feedback fields)
+are exactly such calls and rely on the action-level moderator check.
 
 ## Super administration
 
 A super admin can:
 
-- list/create/delete all organizations and departments;
+- list/create/rename/delete all organizations and departments (renames use
+  the same 120-character normalized name rule as the Settings rename and
+  the super-admin RLS UPDATE policies; a missing row raises not-found
+  rather than silently updating zero rows);
 - list up to 1,000 GoTrue users and all membership rows;
 - grant/revoke `super_admins` rows;
 - grant/revoke a department moderator;

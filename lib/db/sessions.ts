@@ -54,19 +54,38 @@ export async function insertSessions(inputs: InsertSessionInput[]): Promise<Sess
   return (data as Session[] | null) ?? []
 }
 
+export interface ListSessionsByOrgOptions {
+  departmentId?: string
+  /**
+   * `true` lists sessions whose end has passed (`date_end <= now`), most
+   * recent start first. `false` lists sessions that have not ended yet
+   * (`date_end > now`), ascending. Omitted lists every session ascending.
+   */
+  ended?: boolean
+  /** Reference instant for `ended`; defaults to the request time. */
+  now?: Date
+}
+
 export async function listSessionsByOrg(
   orgId: string,
-  options: { departmentId?: string } = {}
+  options: ListSessionsByOrgOptions = {}
 ): Promise<Session[]> {
   const db = await getDb()
+  const nowIso = (options.now ?? new Date()).toISOString()
   let query = db
     .from('sessions')
     .select('*')
     .eq('org_id', orgId)
-    .order('date_start', { ascending: true })
+    .order('date_start', { ascending: options.ended !== true })
 
   if (options.departmentId) {
     query = query.eq('department_id', options.departmentId)
+  }
+
+  if (options.ended === true) {
+    query = query.lte('date_end', nowIso)
+  } else if (options.ended === false) {
+    query = query.gt('date_end', nowIso)
   }
 
   const { data, error } = await query

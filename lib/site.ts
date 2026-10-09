@@ -5,7 +5,9 @@
  * where placeholder env is legitimate.
  */
 
-export const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '')
+import { getPublicRuntimeConfig } from './runtime-config'
+
+export const SITE_URL = typeof window === 'undefined' ? getPublicRuntimeConfig().appUrl : ''
 
 export const SITE_NAME = 'Petrios'
 

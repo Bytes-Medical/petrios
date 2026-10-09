@@ -1,28 +1,137 @@
-# Petrios — self-hosted app container (see docs/self-hosting.md).
-#
-# The database/auth layer is Supabase: either a hosted project (simplest) or
-# Supabase's own self-host stack (https://supabase.com/docs/guides/self-hosting/docker)
-# running alongside — point the SUPABASE_* env vars at whichever you use.
-#
-#   cp .env.example .env.production   # fill in values
-#   docker compose --env-file .env.production up -d --build
-#
-# NEXT_PUBLIC_* values are BUILD-time (inlined into the browser bundle), so
-# they are passed as build args below, read from .env.production by compose.
-# Changing them requires `docker compose up -d --build` again. Everything
-# else in .env.production is runtime-only via env_file.
-
+name: petrios
 services:
   app:
-    build:
-      context: .
-      args:
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-        NEXT_PUBLIC_JITSI_DOMAIN: ${NEXT_PUBLIC_JITSI_DOMAIN:-meet.jit.si}
-    ports:
-      - '3000:3000'
-    env_file:
-      - .env.production
+    image: ghcr.io/bytes-medical/petrios:${PETRIOS_VERSION:-0.1.0}
     restart: unless-stopped
+    init: true
+    env_file: ${PETRIOS_ENV_FILE:-.env}
+    environment:
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      SUPABASE_URL: ${APP_URL:-http://localhost:8080}
+      SUPABASE_INTERNAL_URL: http://gateway:8000
+      AUTH_INTERNAL_URL: http://auth:9999
+      STORAGE_INTERNAL_URL: http://storage:5000
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:?Run ./install.sh first}@db:5432/postgres
+      AUTO_MIGRATE: 'true'
+      SELF_HOSTED_SETUP: 'true'
+    depends_on:
+      db: { condition: service_healthy }
+      auth: { condition: service_healthy }
+      storage: { condition: service_healthy }
+  db:
+    image: ghcr.io/bytes-medical/petrios-postgres:${PETRIOS_VERSION:-0.1.0}
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./install.sh first}
+      POSTGRES_DB: postgres
+      JWT_SECRET: ${JWT_SECRET:?Run ./install.sh first}
+      JWT_EXP: '3600'
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command: [postgres, -c, config_file=/etc/postgresql/postgresql.conf, -c, data_directory=/var/lib/postgresql/data/pgdata, -c, log_min_messages=fatal]
+    volumes:
+      - database:/var/lib/postgresql/data
+      - database-config:/etc/postgresql-custom
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres, -h, localhost]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  auth:
+    image: supabase/gotrue:v2.196.0@sha256:c0c25187a6b835e65a6f6e6c6b39d090e832d40e6de5186f2c038e0411944232
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: '9999'
+      API_EXTERNAL_URL: ${APP_URL:-http://localhost:8080}
+      GOTRUE_SITE_URL: ${APP_URL:-http://localhost:8080}
+      GOTRUE_URI_ALLOW_LIST: ${APP_URL:-http://localhost:8080}/join/callback
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: '3600'
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_ISSUER: ${APP_URL:-http://localhost:8080}/auth/v1
+      GOTRUE_DISABLE_SIGNUP: 'true'
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
+      GOTRUE_MAILER_AUTOCONFIRM: 'false'
+      GOTRUE_EXTERNAL_PHONE_ENABLED: 'false'
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+      GOTRUE_SMTP_SENDER_NAME: Petrios
+      GOTRUE_MAILER_URLPATHS_INVITE: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:9999/health]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  rest:
+    image: postgrest/postgrest:v14.17@sha256:c9dc201e555f5d8e37e7f39cdd4df0229774996e213bfd7de8d10ac609030f2c
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage
+      PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: 'false'
+  storage:
+    image: ghcr.io/bytes-medical/petrios-storage:${PETRIOS_VERSION:-0.1.0}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      rest: { condition: service_started }
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      POSTGREST_URL: http://rest:3000
+      STORAGE_PUBLIC_URL: ${APP_URL:-http://localhost:8080}
+      REQUEST_ALLOW_X_FORWARDED_PATH: 'true'
+      FILE_SIZE_LIMIT: '26214400'
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      GLOBAL_S3_BUCKET: petrios
+      TENANT_ID: petrios
+      REGION: local
+      ENABLE_IMAGE_TRANSFORMATION: 'false'
+    volumes:
+      - uploads:/var/lib/storage
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:5000/status]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  gateway:
+    image: ghcr.io/bytes-medical/petrios-gateway:${PETRIOS_VERSION:-0.1.0}
+    restart: unless-stopped
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+    ports:
+      - '${PETRIOS_BIND:-127.0.0.1}:${PETRIOS_PORT:-8080}:8000'
+  scheduler:
+    image: ghcr.io/bytes-medical/petrios:${PETRIOS_VERSION:-0.1.0}
+    restart: unless-stopped
+    init: true
+    command: [node, scripts/self-hosting/scheduler.mjs]
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?Run ./install.sh first}
+      PETRIOS_INTERNAL_URL: http://app:3000
+    depends_on:
+      app: { condition: service_healthy }
+volumes:
+  database:
+  database-config:
+  uploads:

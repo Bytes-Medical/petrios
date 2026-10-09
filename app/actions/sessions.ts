@@ -76,6 +76,7 @@ export async function createSession(sessionData: {
 
   revalidatePath('/dashboard')
   revalidatePath(`/departments/${sessionData.department_id}/sessions`)
+  revalidatePath(`/departments/${sessionData.department_id}/sessions/past`)
   return { created: sessions.length }
 }
 
@@ -83,9 +84,12 @@ export async function getSessionsForOrg(orgId: string, departmentId?: string) {
   return sessionsDb.listSessionsByOrg(orgId, { departmentId })
 }
 
-export async function getSessions(departmentId?: string) {
+export async function getSessions(
+  departmentId?: string,
+  options: Omit<sessionsDb.ListSessionsByOrgOptions, 'departmentId'> = {}
+) {
   const orgId = await requireOrg()
-  return sessionsDb.listSessionsByOrg(orgId, { departmentId })
+  return sessionsDb.listSessionsByOrg(orgId, { ...options, departmentId })
 }
 
 export async function getSession(id: string) {
@@ -231,6 +235,7 @@ export async function deleteSession(sessionId: string) {
 
   revalidatePath('/dashboard')
   revalidatePath(`/departments/${scope.department_id}/sessions`)
+  revalidatePath(`/departments/${scope.department_id}/sessions/past`)
   revalidatePath(`/departments/${scope.department_id}/schedule`)
   return { success: true }
 }

@@ -1,14 +1,34 @@
+import { getInstallationState } from '@/lib/db/installation'
 import { redirect } from 'next/navigation'
+import { IBM_Plex_Sans } from 'next/font/google'
+import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
-import { Button } from '@/components/Button'
-import { Typewriter } from '@/components/Typewriter'
+import { buttonVariants } from '@/components/Button'
 import { Footer } from '@/components/Footer'
 import { PublicNav } from '@/components/PublicNav'
-import { Wordmark } from '@/components/Wordmark'
-import Link from 'next/link'
+import {
+  HeroWorkflow,
+  SchedulePreview,
+  AttendancePreview,
+  EvidencePreview,
+  NewsletterPreview,
+} from '@/components/landing/Previews'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
 import { NEWS } from '@/lib/news-data'
-import { GITHUB_URL, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from '@/lib/site'
+import {
+  GITHUB_URL,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TAGLINE,
+  SITE_URL,
+} from '@/lib/site'
+import styles from './landing.module.css'
+
+const plexSans = IBM_Plex_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  display: 'swap',
+})
 
 export const metadata = {
   title: { absolute: `${SITE_NAME} — ${SITE_TAGLINE}` },
@@ -42,78 +62,43 @@ const JSON_LD = {
   ],
 }
 
-const AUDIENCES = [
+const audiences = [
   {
-    initial: 'T',
-    title: 'For trainees',
-    lead: 'Turn up, and the evidence takes care of itself.',
-    body: 'Check in with your account or the secure session code; organisers review and finalize a complete attendance roster. Your progress view brings attendance, reflections, certificates, and a verifiable portfolio pack together. Recall quizzes support learning after a missed session without rewriting physical attendance.',
-  },
-  {
-    initial: 'F',
-    title: 'For teachers & faculty',
-    lead: 'Teaching should count for you too.',
-    body: 'Claim a teaching slot in one click — no account needed if you’re external. Teacher reports contain privacy-safe aggregate feedback, teaching certificates follow accepted assignments and finalized session governance, and every session you teach builds an appraisal-ready dossier: sessions, hours, reach, and improvement themes.',
-  },
-  {
-    initial: 'O',
+    number: '01',
     title: 'For organisers',
-    lead: 'Run the programme, not the inbox.',
-    body: 'Publish availability and let teachers claim it. AI drafts speaker chases and thank-yous, while moderators can turn a full week of teaching and its materials into a polished departmental newsletter. Nothing sends until a human reviews and approves it.',
-  },
-]
-
-const CONTRASTS = [
-  {
-    old: 'Sign-in sheets and box-ticking',
-    oldDetail: 'A register that proves someone held a pen.',
-    now: 'Evidence-based attendance',
-    nowDetail: 'Check-ins and reviewed evidence feed one revisioned, finalized roster.',
+    body: 'Keep your programme moving with a clear view of the teaching ahead.',
+    points: [
+      'Shared scheduling and claimable slots',
+      'Attendance oversight and audit reports',
+    ],
   },
   {
-    old: 'Records trapped in one trust',
-    oldDetail: 'Rotate hospitals and your history evaporates.',
-    now: 'Records that travel',
-    nowDetail: 'Signed, portable teaching records any instance can verify.',
+    number: '02',
+    title: 'For teachers',
+    body: 'Make every teaching contribution part of your professional record.',
+    points: [
+      'Teaching certificates and feedback reports',
+      'An appraisal-ready teaching dossier',
+    ],
   },
   {
-    old: 'Per-seat licences and lock-in',
-    oldDetail: 'Your data lives on someone else’s terms.',
-    now: 'Open source, your servers',
-    nowDetail: 'AGPL-3.0. Self-host everything — database, email, video, even the AI.',
-  },
-  {
-    old: 'Admin by inbox-chasing',
-    oldDetail: 'Who’s teaching Thursday? Did anyone reply?',
-    now: 'AI drafts, humans approve',
-    nowDetail: 'The assistant writes the chasing; every email waits for your sign-off.',
-  },
-]
-
-const STEPS = [
-  {
-    step: '01',
-    title: 'Join',
-    body: 'One 6-digit department code for trainees. External teachers need no account at all — email links do the work.',
-  },
-  {
-    step: '02',
-    title: 'Teach',
-    body: 'Schedule sessions or publish claimable slots. Built-in video, QR feedback, private documents, automatic reminders, and certificates after attendance finalization.',
-  },
-  {
-    step: '03',
-    title: 'Evidence',
-    body: 'Attendance records, reflections, certificates, and feedback compound into portfolio packs, dossiers, and audit reports — automatically.',
+    number: '03',
+    title: 'For trainees',
+    body: 'Bring your learning and its evidence together as you progress.',
+    points: [
+      'Attendance, certificates, and reflections',
+      'Verifiable portfolio packs',
+    ],
   },
 ]
 
 export default async function Home() {
-  const user = await getCurrentUser()
-
-  if (user) {
-    redirect('/dashboard')
+  if (process.env.SELF_HOSTED_SETUP === 'true') {
+    const state = await getInstallationState()
+    if (!state.blocked && !state.completed_at) redirect('/setup')
   }
+  const user = await getCurrentUser()
+  if (user) redirect('/dashboard')
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -122,226 +107,235 @@ export default async function Home() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
       />
       <PublicNav />
-      <main className="flex-1 px-4 py-12 sm:py-16 bg-dotgrid">
-        <div className="mx-auto max-w-4xl w-full space-y-8 sm:space-y-10">
-          {/* Announcement strip: always the newest entry in lib/news-data.ts */}
-          {NEWS[0] && (
-            <Link
-              href={`/news#${NEWS[0].slug}`}
-              className="flex items-center justify-center gap-2 border border-black bg-white px-4 py-2.5 font-mono text-xs sm:text-sm transition-all hover:-translate-x-px hover:-translate-y-px hover:shadow-[3px_3px_0_0_#1F1D1A]"
-            >
-              <span className="border border-clay-600 bg-clay-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-                {NEWS[0].tag}
-              </span>
-              <span className="min-w-0 truncate">{NEWS[0].title}</span>
-              <span className="shrink-0 text-clay-700">→</span>
-            </Link>
-          )}
-          <div className="border border-black border-t-4 border-t-clay-600 p-8 sm:p-12 bg-white shadow-[8px_8px_0_rgba(31,29,26,0.08)]">
-            {/* Hero */}
-            <div className="text-center mb-8 sm:mb-12">
-              <div className="flex justify-center mb-6">
-                <Wordmark size="lg" />
-              </div>
-              <h1 className="h-8 sm:h-10 mb-6 font-normal">
-                <Typewriter
-                  text="The operating system for clinical teaching"
-                  speed={30}
-                  className="text-xl sm:text-2xl md:text-3xl font-mono text-gray-800"
-                />
-              </h1>
-              <p className="font-mono text-sm sm:text-base text-gray-700 max-w-2xl mx-auto leading-relaxed">
-                A learning platform stores course content. Petrios runs
-                the live teaching around it — scheduling, attendance evidence,
-                feedback, video, certificates, and the admin in between
-                {INDIVIDUAL_SIGNUP_ENABLED
-                  ? ' — whether you teach on your own or run a whole programme.'
-                  : ', across your trust or teaching programme.'}
-              </p>
-              <p className="mt-4 font-mono text-sm text-gray-600">
-                Evidence-based<span className="text-clay-600"> ▪ </span>
-                Self-hostable<span className="text-clay-600"> ▪ </span>
-                Yours, by design
-              </p>
+      <main className={`${plexSans.className} ${styles.landing}`}>
+        <section
+          className={`${styles.container} ${styles.hero}`}
+          aria-labelledby="hero-title"
+        >
+          <div className={styles.heroCopy}>
+            {NEWS[0] && (
+              <Link
+                className={styles.announcement}
+                href={`/news#${NEWS[0].slug}`}
+              >
+                <span>What’s new</span>
+                <span>{NEWS[0].title}</span>
+                <span aria-hidden="true">↗</span>
+              </Link>
+            )}
+            <p className={styles.eyebrow}>
+              The operating system for clinical teaching
+            </p>
+            <h1 id="hero-title">
+              Run your teaching programme <span>with less admin.</span>
+            </h1>
+            <p className={styles.heroDescription}>
+              Plan sessions, coordinate teachers, review attendance, and bring
+              feedback and certificates together.
+            </p>
+            <div className={styles.actions}>
+              <Link
+                className={buttonVariants({ size: 'lg' })}
+                href="#how-it-works"
+              >
+                See how it works <span aria-hidden="true">↓</span>
+              </Link>
+              <a
+                className={buttonVariants({ variant: 'secondary', size: 'lg' })}
+                href={GITHUB_URL}
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z" />
+                </svg>
+                Star on GitHub
+              </a>
+              <Link className={styles.textLink} href="/join/dept">
+                Join with a department code <span aria-hidden="true">↗</span>
+              </Link>
             </div>
+            {INDIVIDUAL_SIGNUP_ENABLED && (
+              <Link className={styles.individualLink} href="/login/individual">
+                Teach on your own →
+              </Link>
+            )}
+            <ul className={styles.heroFacts} aria-label="Platform principles">
+              <li>Open source</li>
+              <li>Self-hostable</li>
+              <li>Evidence-based</li>
+            </ul>
+          </div>
+          <HeroWorkflow />
+        </section>
 
-            {/* Sign-in paths */}
-            <div
-              className={`grid grid-cols-1 gap-4 sm:gap-6 ${
-                INDIVIDUAL_SIGNUP_ENABLED ? 'sm:grid-cols-2' : 'max-w-md mx-auto'
-              }`}
-            >
-              {/* Individual */}
-              {INDIVIDUAL_SIGNUP_ENABLED && (
-                <div className="flex flex-col border border-black p-6 bg-white transition-all hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_0_#1F1D1A]">
-                  <span className="mb-2 font-mono text-xs uppercase tracking-wide text-clay-700">
-                    Individual
-                  </span>
-                  <h2 className="mb-3 text-lg sm:text-xl font-mono font-bold">
-                    Teach on your own
-                  </h2>
-                  <p className="mb-6 flex-1 font-mono text-sm text-gray-700 leading-relaxed">
-                    Run your own sessions in minutes. QR attendance, automatic
-                    certificates, and feedback reports — no organisation required. We set
-                    up your personal teaching space the moment you sign in.
-                  </p>
-                  <Link href="/login/individual">
-                    <Button className="w-full">Start teaching →</Button>
-                  </Link>
-                </div>
-              )}
+        <section
+          id="how-it-works"
+          className={`${styles.container} ${styles.walkthrough}`}
+          aria-labelledby="workflow-title"
+        >
+          <div className={styles.sectionHeading}>
+            <p className={styles.eyebrow}>
+              From the timetable to the portfolio
+            </p>
+            <h2 id="workflow-title">
+              Good teaching has a lot of moving parts.
+              <br />
+              <span>Bring them together.</span>
+            </h2>
+          </div>
+          <div className={styles.workflowRow}>
+            <div className={styles.stepCopy}>
+              <span className={styles.stepNumber}>01 / PLAN</span>
+              <h3>Plan the programme.</h3>
+              <p>
+                Build the teaching week in one shared schedule. Publish open
+                slots and let teachers claim the sessions they can lead.
+              </p>
+              <ul className={styles.featureList}>
+                <li>Coordinate across departments</li>
+                <li>Invite external teachers with an email link</li>
+              </ul>
+            </div>
+            <SchedulePreview />
+          </div>
+          <div className={`${styles.workflowRow} ${styles.reverse}`}>
+            <div className={styles.stepCopy}>
+              <span className={styles.stepNumber}>02 / REVIEW</span>
+              <h3>Review the session.</h3>
+              <p>
+                Bring check-ins and attendance evidence into one roster.
+                Organisers review and finalize it, keeping a clear record of
+                each decision.
+              </p>
+              <ul className={styles.featureList}>
+                <li>Secure session codes and reviewed evidence</li>
+                <li>Feedback collected separately from attendance</li>
+              </ul>
+            </div>
+            <AttendancePreview />
+          </div>
+          <div className={styles.workflowRow}>
+            <div className={styles.stepCopy}>
+              <span className={styles.stepNumber}>03 / EVIDENCE</span>
+              <h3>Bring the evidence together.</h3>
+              <p>
+                Turn the teaching you run into records people can use. Eligible
+                certificates follow finalized attendance governance; feedback
+                reports and reflections support professional development.
+              </p>
+              <ul className={styles.featureList}>
+                <li>Verifiable certificates and portfolio packs</li>
+                <li>Teaching contributions ready for appraisal</li>
+              </ul>
+            </div>
+            <EvidencePreview />
+          </div>
+          <Link className={styles.textLink} href="/features">
+            Explore all features <span aria-hidden="true">↗</span>
+          </Link>
+        </section>
 
-              {/* Organisation */}
-              <div className="flex flex-col border border-black p-6 bg-white transition-all hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_0_#1F1D1A]">
-                <span className="mb-2 font-mono text-xs uppercase tracking-wide text-clay-700">
-                  Organisation
-                </span>
-                <h2 className="mb-3 text-lg sm:text-xl font-mono font-bold">
-                  For trusts &amp; programmes
-                </h2>
-                <p className="mb-6 flex-1 font-mono text-sm text-gray-700 leading-relaxed">
-                  Coordinate teaching across departments with shared scheduling, audit
-                  reports, member management, and oversight. Join your programme with
-                  the code your teaching lead gave you.
-                </p>
-                <div className="flex flex-col gap-3">
-                  <Link href="/login/organisation">
-                    <Button className="w-full">Sign in</Button>
-                  </Link>
-                  <Link href="/join/dept">
-                    <Button variant="secondary" className="w-full">
-                      Join with a department code
-                    </Button>
-                  </Link>
-                </div>
+        <section className={styles.aiBand} aria-labelledby="ai-title">
+          <div className={`${styles.container} ${styles.aiGrid}`}>
+            <div>
+              <p className={styles.eyebrow}>
+                A little help with the follow-through
+              </p>
+              <h2 id="ai-title">
+                Useful drafts.
+                <br />
+                Human decisions.
+              </h2>
+              <p>
+                Turn a week of teaching and its materials into a departmental
+                newsletter. Review the draft, make it your own, and approve the
+                version your colleagues receive.
+              </p>
+              <div className={styles.approvalNote}>
+                <span aria-hidden="true">↳</span> AI-generated communications
+                wait for human approval before sending.
               </div>
+            </div>
+            <NewsletterPreview />
+          </div>
+        </section>
+
+        <section
+          className={`${styles.container} ${styles.audiences}`}
+          aria-labelledby="people-title"
+        >
+          <div className={styles.sectionHeading}>
+            <p className={styles.eyebrow}>Everyone in the room</p>
+            <h2 id="people-title">One programme. Shared progress.</h2>
+          </div>
+          <div className={styles.audienceGrid}>
+            {audiences.map((audience) => (
+              <article key={audience.number}>
+                <span className={styles.stepNumber}>{audience.number}</span>
+                <h3>{audience.title}</h3>
+                <p>{audience.body}</p>
+                <ul className={styles.featureList}>
+                  {audience.points.map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section
+          className={`${styles.container} ${styles.ownership}`}
+          aria-labelledby="ownership-title"
+        >
+          <div>
+            <p className={styles.eyebrow}>Open by design</p>
+            <h2 id="ownership-title">
+              Your programme.
+              <br />
+              Your platform.
+            </h2>
+          </div>
+          <div>
+            <p>
+              Petrios is open-source software under AGPL-3.0. Self-host it on
+              your infrastructure, connect it to your systems, and keep teaching
+              records portable and verifiable across instances.
+            </p>
+            <div className={styles.actions}>
+              <Link className={styles.textLink} href="/open-source">
+                Explore self-hosting <span aria-hidden="true">↗</span>
+              </Link>
+              <a className={styles.textLink} href={GITHUB_URL}>
+                View on GitHub <span aria-hidden="true">↗</span>
+              </a>
             </div>
           </div>
+        </section>
 
-          {/* Everyone in the room */}
-          <section className="border border-black border-t-4 border-t-clay-600 bg-white p-6 sm:p-8 shadow-[8px_8px_0_rgba(31,29,26,0.08)]">
-            <h2 className="mb-6 text-center font-mono text-xl sm:text-2xl font-bold">
-              Built for everyone in the room
-            </h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {AUDIENCES.map((audience) => (
-                <div key={audience.title} className="border border-black p-5">
-                  <span className="flex h-8 w-8 items-center justify-center border border-black bg-clay-600 font-mono text-sm font-bold text-white">
-                    {audience.initial}
-                  </span>
-                  <h3 className="mt-3 font-mono text-base font-bold">{audience.title}</h3>
-                  <p className="mt-1 font-mono text-sm font-bold text-clay-700">
-                    {audience.lead}
-                  </p>
-                  <p className="mt-2 font-mono text-xs text-gray-700 leading-relaxed">
-                    {audience.body}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Old way / new way */}
-          <section className="border border-black border-t-4 border-t-clay-600 bg-white p-6 sm:p-8 shadow-[8px_8px_0_rgba(31,29,26,0.08)]">
-            <h2 className="text-center font-mono text-xl sm:text-2xl font-bold">
-              A different shape of system
-            </h2>
-            <p className="mx-auto mt-2 mb-6 max-w-xl text-center font-mono text-sm text-gray-600">
-              Why teaching programmes outgrow spreadsheets, sign-in sheets,
-              and content platforms.
-            </p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <p className="mb-3 font-mono text-xs uppercase tracking-wide text-gray-500">
-                  The usual way
-                </p>
-                <div className="space-y-3">
-                  {CONTRASTS.map((row) => (
-                    <div key={row.old} className="border border-gray-300 bg-gray-50 p-4">
-                      <p className="font-mono text-sm font-bold text-gray-600">{row.old}</p>
-                      <p className="mt-1 font-mono text-xs text-gray-500">{row.oldDetail}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-3 font-mono text-xs uppercase tracking-wide text-clay-700">
-                  The Petrios way
-                </p>
-                <div className="space-y-3">
-                  {CONTRASTS.map((row) => (
-                    <div key={row.now} className="border border-black p-4">
-                      <p className="font-mono text-sm font-bold">{row.now}</p>
-                      <p className="mt-1 font-mono text-xs text-gray-700">{row.nowDetail}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* How it works */}
-          <section className="border border-black border-t-4 border-t-clay-600 bg-white p-6 sm:p-8 shadow-[8px_8px_0_rgba(31,29,26,0.08)]">
-            <h2 className="mb-6 text-center font-mono text-xl sm:text-2xl font-bold">
-              How it works
-            </h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {STEPS.map((item) => (
-                <div key={item.step} className="border border-black p-5">
-                  <p className="font-mono text-2xl font-bold text-clay-600">{item.step}</p>
-                  <h3 className="mt-2 font-mono text-base font-bold">{item.title}</h3>
-                  <p className="mt-2 font-mono text-xs text-gray-700 leading-relaxed">
-                    {item.body}
-                  </p>
-                </div>
-              ))}
-            </div>
-            <p className="mt-6 text-center font-mono text-sm">
-              <Link href="/features" className="underline hover:text-clay-700">
-                Explore all features →
-              </Link>
-            </p>
-          </section>
-
-          {/* Open source */}
-          <section className="border border-black border-t-4 border-t-clay-600 bg-white p-6 sm:p-8 shadow-[8px_8px_0_rgba(31,29,26,0.08)]">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="mb-2 text-base sm:text-lg font-mono font-bold">
-                  Open source. Your servers. Your data.
-                </h2>
-                <p className="font-mono text-sm text-gray-700 leading-relaxed max-w-xl">
-                  Petrios is free software (AGPL-3.0). Self-host the whole
-                  platform inside your trust — your own database, mail relay, video
-                  server, even an in-network AI model — and integrate anything through
-                  the org-scoped REST API and signed webhooks. Teaching records are
-                  portable and verifiable across instances, so a trainee&apos;s history
-                  survives every rotation.
-                </p>
-              </div>
-              <div className="flex shrink-0 flex-col gap-2 font-mono text-sm">
-                <a
-                  href="https://github.com/Bytes-Medical/petrios"
-                  className="border border-black bg-black px-4 py-2 text-center text-white hover:bg-gray-800"
-                >
-                  Star on GitHub
-                </a>
-                <Link
-                  href="/open-source"
-                  className="border border-black bg-white px-4 py-2 text-center hover:bg-gray-50"
-                >
-                  Self-host it
-                </Link>
-                <Link
-                  href="/contributors"
-                  className="border border-black bg-white px-4 py-2 text-center hover:bg-gray-50"
-                >
-                  Contributors
-                </Link>
-              </div>
-            </div>
-          </section>
-        </div>
+        <section
+          className={`${styles.container} ${styles.closing}`}
+          aria-labelledby="closing-title"
+        >
+          <p className={styles.eyebrow}>Make room for the teaching</p>
+          <h2 id="closing-title">
+            See what your next teaching
+            <br className={styles.desktopBreak} /> week could look like.
+          </h2>
+          <div className={styles.actions}>
+            <Link className={buttonVariants({ size: 'lg' })} href="/features">
+              Explore Petrios <span aria-hidden="true">↗</span>
+            </Link>
+            <Link className={styles.textLink} href="/join/dept">
+              Join your department <span aria-hidden="true">↗</span>
+            </Link>
+          </div>
+        </section>
       </main>
       <Footer />
     </div>

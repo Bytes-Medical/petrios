@@ -1,0 +1,6 @@
+ARG GATEWAY_IMAGE=envoyproxy/envoy:v1.39.1@sha256:57e14a549d7bd43c8d3f6d03e8cfa653e037d4b38e133acd9b54f38c524401b4
+FROM ${GATEWAY_IMAGE}
+COPY deploy/supabase/gateway-start.sh /petrios/gateway-start.sh
+COPY deploy/supabase/gateway.yaml /petrios/gateway.yaml
+RUN chmod 755 /petrios/gateway-start.sh
+ENTRYPOINT ["/petrios/gateway-start.sh"]

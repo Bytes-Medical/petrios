@@ -48,9 +48,9 @@ guardrail, not a semantic review of every policy.
 | Table | Purpose | Principal ownership/access |
 |---|---|---|
 | `profiles` | Application profile synchronized from `auth.users`; email and display-name source | Authenticated self-read/update plus authorized directory use; synchronization trigger |
-| `organizations` | Root tenant and personal/non-personal organization metadata | Organization members; managers mutate |
+| `organizations` | Root tenant and personal/non-personal organization metadata; `name` is renameable by super admins | Organization members; managers mutate |
 | `organization_members` | User-to-organization role assignment | Member visibility constrained by org; admins mutate |
-| `departments` | Programme partition, join code, configurable attendance/feedback settings, and ordered certificate coordinator defaults | Organization members according to role and publication rules |
+| `departments` | Programme partition, join code, configurable attendance/feedback settings, and ordered certificate coordinator defaults; `name` is unique per organization and renameable by moderators/super admins | Organization members according to role and publication rules |
 | `department_members` | User membership, role, and grade in a department | Department/org scoped; administrators mutate |
 | `super_admins` | Global platform administrator allow-list | Authorization seam/service use; never inferred from org role |
 

@@ -1,3 +1,4 @@
+import { getPublicRuntimeConfig } from './runtime-config'
 import type { LocationType } from '@/lib/types'
 
 /**
@@ -10,14 +11,14 @@ import type { LocationType } from '@/lib/types'
  * unset = free meet.jit.si (note: the first participant may need to sign in
  * to Jitsi to open the room), or point it at a self-hosted Jitsi instance.
  */
-export const JITSI_DOMAIN = process.env.NEXT_PUBLIC_JITSI_DOMAIN || 'meet.jit.si'
+export function getJitsiDomain(): string { return getPublicRuntimeConfig().jitsiDomain }
 
 export function jitsiRoomName(sessionId: string): string {
   return `Petrios-${sessionId}`
 }
 
 export function jitsiMeetingUrl(sessionId: string): string {
-  return `https://${JITSI_DOMAIN}/${jitsiRoomName(sessionId)}`
+  return `https://${getJitsiDomain()}/${jitsiRoomName(sessionId)}`
 }
 
 /**

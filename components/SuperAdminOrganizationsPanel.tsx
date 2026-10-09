@@ -3,7 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from './Button'
-import { deleteDepartment, deleteOrganization } from '@/app/actions/super-admin'
+import { InlineRenameField } from './InlineRenameField'
+import {
+  deleteDepartment,
+  deleteOrganization,
+  renameDepartment,
+  renameOrganization,
+} from '@/app/actions/super-admin'
 
 interface DepartmentItem {
   id: string
@@ -72,8 +78,13 @@ export function SuperAdminOrganizationsPanel({ organizations }: SuperAdminOrgani
         {organizations.map(org => (
           <li key={org.id} className="border border-black p-4">
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-mono font-bold">{org.name}</div>
+              <div className="min-w-0 flex-1">
+                <InlineRenameField
+                  value={org.name}
+                  label="Organisation name"
+                  onSave={(name) => renameOrganization(org.id, name)}
+                  textClassName="font-mono font-bold"
+                />
                 <div className="font-mono text-xs text-gray-600">Departments</div>
               </div>
               <Button
@@ -91,8 +102,13 @@ export function SuperAdminOrganizationsPanel({ organizations }: SuperAdminOrgani
             ) : (
               <ul className="mt-3 space-y-2">
                 {org.departments.map(dept => (
-                  <li key={dept.id} className="flex items-center justify-between gap-4">
-                    <span className="font-mono text-sm">{dept.name}</span>
+                  <li key={dept.id} className="flex items-start justify-between gap-4">
+                    <InlineRenameField
+                      value={dept.name}
+                      label="Department name"
+                      onSave={(name) => renameDepartment(dept.id, name)}
+                      textClassName="font-mono text-sm"
+                    />
                     <Button
                       type="button"
                       variant="secondary"

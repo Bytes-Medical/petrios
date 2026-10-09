@@ -34,7 +34,7 @@ export function getComplianceConfig(): ComplianceConfig {
   const aiEnabled = Boolean(optional('OPENAI_API_KEY'))
   const hasCustomAiEndpoint = Boolean(optional('OPENAI_BASE_URL'))
   const speech = getTtsConfiguration()
-  const jitsiDomain = optional('NEXT_PUBLIC_JITSI_DOMAIN') || 'meet.jit.si'
+  const jitsiDomain = optional('JITSI_DOMAIN') || optional('NEXT_PUBLIC_JITSI_DOMAIN') || 'meet.jit.si'
 
   return {
     controllerName: optional('PRIVACY_CONTROLLER_NAME'),
@@ -44,7 +44,7 @@ export function getComplianceConfig(): ComplianceConfig {
       ? 'Render'
       : process.env.VERCEL
         ? 'Vercel'
-        : 'Operator-managed application host',
+        : process.env.RAILWAY_PROJECT_ID ? 'Railway' : 'Operator-managed application host',
     hostingRegion: optional('DATA_HOSTING_REGION'),
     transferSafeguards: optional('DATA_TRANSFER_SAFEGUARDS'),
     emailProvider: optional('SMTP_HOST')

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { checkIn } from '@/app/actions/attendance'
-import { JITSI_DOMAIN, jitsiMeetingUrl, jitsiRoomName } from '@/lib/jitsi'
+import { getJitsiDomain, jitsiMeetingUrl, jitsiRoomName } from '@/lib/jitsi'
 import { Button } from './Button'
 import { Card } from './Card'
 
@@ -96,7 +96,7 @@ export function JitsiMeetingPanel({
       {joined && (
         <div className="mt-4 border border-black">
           <JitsiMeeting
-            domain={JITSI_DOMAIN}
+            domain={getJitsiDomain()}
             roomName={jitsiRoomName(sessionId)}
             userInfo={{ displayName, email: '' }}
             configOverwrite={{
@@ -120,7 +120,7 @@ export function JitsiMeetingPanel({
         <a href={roomUrl} target="_blank" rel="noopener noreferrer" className="underline">
           {roomUrl}
         </a>
-        {JITSI_DOMAIN === 'meet.jit.si' &&
+        {getJitsiDomain() === 'meet.jit.si' &&
           ' — the first person to arrive may be asked to sign in to Jitsi to open the room.'}
       </p>
     </Card>

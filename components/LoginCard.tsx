@@ -24,15 +24,17 @@ export type LoginVariant = 'individual' | 'organisation' | 'neutral'
 export function LoginCard({
   variant,
   nextPath = '/dashboard',
+  initialPassword = false,
 }: {
   variant: LoginVariant
   nextPath?: string
+  initialPassword?: boolean
 }) {
   const isIndividual = variant === 'individual'
   const isOrg = variant === 'organisation'
   const allowPassword = variant !== 'individual'
 
-  const [showPassword, setShowPassword] = useState(false)
+  const [showPassword, setShowPassword] = useState(initialPassword)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)

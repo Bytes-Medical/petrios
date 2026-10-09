@@ -1,78 +1,55 @@
 #!/usr/bin/env node
-/**
- * Migration runner for self-hosted deployments (no Supabase CLI needed).
- *
- *   DATABASE_URL=postgres://postgres:...@host:5432/postgres npm run db:migrate
- *
- * Applies supabase/migrations/*.sql in filename order, tracking applied files
- * in a _bytes_migrations table so reruns are no-ops. Each migration runs in
- * its own transaction EXCEPT files containing ALTER TYPE ... ADD VALUE
- * (which Postgres requires outside an explicit transaction block when the
- * enum is subsequently used).
- *
- * Supabase-CLI users can keep using `supabase db push` instead — both paths
- * are supported; this table only tracks what THIS runner applied.
- */
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import pg from 'pg'
+import { splitSql, isEnumAddition } from './self-hosting/sql-statements.mjs'
 
-const MIGRATIONS_DIR = path.join(process.cwd(), 'supabase', 'migrations')
-
+const client = new pg.Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 })
 async function main() {
-  const url = process.env.DATABASE_URL
-  if (!url) {
-    console.error('DATABASE_URL is required, e.g. postgres://postgres:pass@localhost:5432/postgres')
-    process.exit(1)
-  }
-
-  const client = new pg.Client({ connectionString: url })
+  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
   await client.connect()
-
+  await client.query("SET lock_timeout = '60s'")
+  await client.query("SELECT pg_advisory_lock(hashtext('petrios:migrations'))")
   try {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS public._bytes_migrations (
-        filename TEXT PRIMARY KEY,
-        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `)
-
-    const { rows } = await client.query('SELECT filename FROM public._bytes_migrations')
-    const applied = new Set(rows.map((r) => r.filename))
-
-    const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort()
-
-    let count = 0
+    const { rows: [state] } = await client.query("SELECT to_regclass('public._bytes_migrations') AS ledger, to_regclass('public.organizations') AS existing")
+    if (!state.ledger && state.existing) throw new Error('Unrecognised migration history. Restore a backup and reconcile history before using this runner.')
+    await client.query(`CREATE TABLE IF NOT EXISTS public._bytes_migrations (filename text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now(), checksum text);
+      ALTER TABLE public._bytes_migrations ADD COLUMN IF NOT EXISTS checksum text;
+      ALTER TABLE public._bytes_migrations ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON public._bytes_migrations FROM anon, authenticated;`)
+    const { rows } = await client.query('SELECT filename, checksum FROM public._bytes_migrations')
+    const applied = new Map(rows.map(row => [row.filename, row.checksum]))
+    const dir = path.join(process.cwd(), 'supabase', 'migrations')
+    const files = (await readdir(dir)).filter(file => /^\d{3}_[a-z0-9_]+\.sql$/.test(file)).sort()
+    if (!files.length) throw new Error('No migrations packaged in image')
+    for (const name of applied.keys()) if (!files.includes(name)) throw new Error(`Database contains a newer or unknown migration: ${name}`)
+    // Supabase installs extensions in its extensions schema. 000 predates the explicit extension in 001.
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions; SET search_path = public, extensions;')
     for (const file of files) {
-      if (applied.has(file)) continue
-      const sql = await readFile(path.join(MIGRATIONS_DIR, file), 'utf8')
-      const needsNoTx = /ALTER TYPE\s+\S+\s+ADD VALUE/i.test(sql)
-
-      console.log(`→ applying ${file}${needsNoTx ? ' (no transaction: enum change)' : ''}`)
-      if (needsNoTx) {
-        await client.query(sql)
-        await client.query('INSERT INTO public._bytes_migrations (filename) VALUES ($1)', [file])
-      } else {
-        await client.query('BEGIN')
-        try {
-          await client.query(sql)
-          await client.query('INSERT INTO public._bytes_migrations (filename) VALUES ($1)', [file])
-          await client.query('COMMIT')
-        } catch (err) {
-          await client.query('ROLLBACK')
-          throw err
-        }
+      const sql = await readFile(path.join(dir, file), 'utf8')
+      const checksum = createHash('sha256').update(sql).digest('hex')
+      if (applied.has(file)) {
+        if (applied.get(file) && applied.get(file) !== checksum) throw new Error(`Applied migration changed: ${file}`)
+        if (!applied.get(file)) await client.query('UPDATE public._bytes_migrations SET checksum=$1 WHERE filename=$2', [checksum, file])
+        continue
       }
-      count++
+      console.log(`Applying ${file}`)
+      const statements = splitSql(sql)
+      // Commit enum additions first: later SQL may use the new value. Historical SQL stays untouched.
+      for (const statement of statements.filter(isEnumAddition)) {
+        if (!/ADD\s+VALUE\s+IF\s+NOT\s+EXISTS/i.test(statement)) throw new Error(`Non-retryable enum addition in ${file}`)
+        await client.query(statement)
+      }
+      await client.query('BEGIN')
+      try {
+        for (const statement of statements.filter(s => !isEnumAddition(s))) await client.query(statement)
+        await client.query('INSERT INTO public._bytes_migrations(filename,checksum) VALUES ($1,$2)', [file, checksum])
+        await client.query('COMMIT')
+      } catch (error) { await client.query('ROLLBACK'); throw error }
     }
-
-    console.log(count === 0 ? 'Already up to date.' : `Applied ${count} migration(s).`)
-  } finally {
-    await client.end()
-  }
+    await client.query("NOTIFY pgrst, 'reload schema'")
+    console.log('Schema is up to date.')
+  } finally { await client.query("SELECT pg_advisory_unlock(hashtext('petrios:migrations'))") }
 }
-
-main().catch((err) => {
-  console.error('Migration failed:', err.message)
-  process.exit(1)
-})
+main().catch(error => { console.error('Migration failed:', error.message); process.exitCode = 1 }).finally(() => client.end())

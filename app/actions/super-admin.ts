@@ -9,6 +9,7 @@ import { getAppUrl } from '@/lib/app-url'
 import * as superAdminsDb from '@/lib/db/super-admins'
 import * as onboardingDb from '@/lib/db/onboarding'
 import { DbNotFoundError } from '@/lib/db'
+import { validateDepartmentName, validateOrganizationName } from '@/lib/tenant-names'
 
 export async function createOrganizationAsSuperAdmin(name: string) {
   const userId = await requireAuth()
@@ -58,6 +59,32 @@ export async function deleteDepartment(departmentId: string) {
   await requireSuperAdmin()
   await superAdminsDb.deleteDepartmentById(departmentId)
   revalidatePath('/super-admin')
+  return { success: true }
+}
+
+export async function renameOrganization(orgId: string, name: string) {
+  await requireSuperAdmin()
+  const normalizedName = validateOrganizationName(name)
+  await superAdminsDb.updateOrganizationNameById(orgId, normalizedName)
+
+  revalidatePath('/super-admin')
+  revalidatePath('/dashboard')
+  revalidatePath('/settings')
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function renameDepartment(departmentId: string, name: string) {
+  await requireSuperAdmin()
+  const normalizedName = validateDepartmentName(name)
+  await superAdminsDb.updateDepartmentNameById(departmentId, normalizedName)
+
+  revalidatePath('/super-admin')
+  revalidatePath('/dashboard')
+  revalidatePath('/settings')
+  revalidatePath('/departments')
+  revalidatePath(`/departments/${departmentId}`)
+  revalidatePath('/admin')
   return { success: true }
 }
 

@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 const LOCAL_APP_URL = 'http://localhost:3000'
 
 const APP_URL_ENV_KEYS = [
+  'APP_URL',
   'NEXT_PUBLIC_APP_URL',
   'NEXT_PUBLIC_BASE_URL',
   'NEXTAUTH_URL',

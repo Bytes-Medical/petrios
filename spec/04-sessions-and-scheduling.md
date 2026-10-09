@@ -64,6 +64,22 @@ vocabulary. The general update action continues to enforce valid dates and
 Editing preserves an existing off-grid duration and also offers Full day.
 Teaching slots retain their separate duration rules below.
 
+### Department session lists
+
+The department sessions page (`/departments/[id]/sessions`) lists only sessions
+that have not yet ended (`date_end > now` at request time, ascending by start),
+so a session in progress stays on the main list. A separate previous-sessions
+page (`/departments/[id]/sessions/past`), linked from the main page header,
+lists sessions with `date_end <= now`, most recent start first. This is the same
+edge and inclusivity as the publish rule above. Both predicates are applied in
+the DAL query (`listSessionsByOrg` with `ended: true | false`) rather than in
+memory; the dashboard calendar and the schedule page continue to load the
+unfiltered set. Any member who can open the department list can open the
+previous list; Manage and Delete remain moderator-only on both. Creating or
+deleting a session revalidates both list paths. Session creation has no
+past-date guard, so a back-dated session lands directly on the previous list;
+the post-creation banner points there.
+
 ## Repeating session creation
 
 Interactive creation can materialize up to 52 draft sessions in one operation:

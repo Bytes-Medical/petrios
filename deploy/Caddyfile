@@ -1,0 +1,3 @@
+{$APP_URL} {
+  reverse_proxy gateway:8000
+}

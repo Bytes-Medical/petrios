@@ -1,21 +1,12 @@
-import { createRequire } from 'node:module'
-import { describe, expect, it } from 'vitest'
-
-type Header = { key: string; value: string }
-type HeaderRule = { source: string; headers: Header[] }
-
-const require = createRequire(import.meta.url)
-const nextConfig = require('../next.config.js') as {
-  headers: () => Promise<HeaderRule[]>
-}
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { NextResponse } from 'next/server'
+import { applySecurityHeaders } from './security-headers'
+afterEach(() => vi.unstubAllEnvs())
 
 describe('global browser security headers', () => {
   it('covers every route with the required baseline', async () => {
-    const rules = await nextConfig.headers()
-    expect(rules).toHaveLength(1)
-    expect(rules[0].source).toBe('/(.*)')
-
-    const headers = new Map(rules[0].headers.map(({ key, value }) => [key, value]))
+    vi.stubEnv('APP_URL', 'https://teaching.example.org')
+    const headers = applySecurityHeaders(NextResponse.next()).headers
     expect(headers.get('Strict-Transport-Security')).toBe('max-age=31536000; includeSubDomains')
     expect(headers.get('X-Content-Type-Options')).toBe('nosniff')
     expect(headers.get('X-Frame-Options')).toBe('DENY')

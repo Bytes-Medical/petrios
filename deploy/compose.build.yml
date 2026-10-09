@@ -1,0 +1,10 @@
+# Development/CI override; end users pull prebuilt images.
+services:
+  app:
+    build: { context: ., dockerfile: Dockerfile }
+  db:
+    build: { context: ., dockerfile: deploy/supabase/Dockerfile.postgres }
+  storage:
+    build: { context: ., dockerfile: deploy/supabase/Dockerfile.storage }
+  gateway:
+    build: { context: ., dockerfile: deploy/supabase/Dockerfile.gateway }

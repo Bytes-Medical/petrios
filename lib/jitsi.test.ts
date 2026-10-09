@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { JITSI_DOMAIN, jitsiMeetingUrl, jitsiRoomName, sessionMeetingUrl } from './jitsi'
+import { getJitsiDomain, jitsiMeetingUrl, jitsiRoomName, sessionMeetingUrl } from './jitsi'
 
 const SESSION_ID = '3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b'
 
@@ -13,9 +13,9 @@ describe('jitsiRoomName', () => {
 describe('jitsiMeetingUrl', () => {
   it('builds an https URL on the configured domain', () => {
     expect(jitsiMeetingUrl(SESSION_ID)).toBe(
-      `https://${JITSI_DOMAIN}/Petrios-${SESSION_ID}`
+      `https://${getJitsiDomain()}/Petrios-${SESSION_ID}`
     )
-    expect(JITSI_DOMAIN).toBe('meet.jit.si') // default when env unset (tests)
+    expect(getJitsiDomain()).toBe('meet.jit.si') // default when env unset (tests)
   })
 })
 
