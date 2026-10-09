@@ -314,9 +314,11 @@ body.
 ## UI conventions
 
 Petrios uses a restrained monochrome, monospaced visual language with clear
-borders, compact status chips, and responsive server-rendered pages. Continue to
-use the shared primitives (cards, buttons, wordmark, form controls, navigation)
-and existing label maps instead of one-off styling/status strings.
+borders, compact status chips, and responsive server-rendered pages. In the
+signed-in app, continue to use the shared primitives (cards, buttons, wordmark,
+form controls, navigation) and existing label maps instead of one-off
+styling/status strings; the public site uses its own `components/hud` system
+(below).
 
 Dropdowns are the custom themed listbox in `components/Select.tsx`, not
 native `<select>` — a native select's open menu is OS-rendered and cannot
@@ -345,6 +347,95 @@ Client components should receive minimal serializable data. Secrets, service
 credentials, raw audit rows, and server-only provider configuration never enter
 client props.
 
+### Public site design system (`components/hud`)
+
+The signed-out marketing and legal pages (`/`, `/features`, `/news`,
+`/open-source`, `/contributors`, `/privacy`, `/privacy/choices`,
+`/subprocessors`, `/data-processing-agreement`) use the Clinical HUD system in
+`components/hud/`. The signed-in app does not use it and renders exactly as
+before.
+
+- **Scope.** Every public page renders inside `HudShell`, an async server
+  component that outputs `<div data-hud-root data-display>` with the skip link,
+  `PublicNav`, one `<main id="main">` (a 56rem `page` or 48rem `prose` column),
+  and `Footer`. Pages never render `PublicNav` or `Footer` themselves. All styles
+  live in one CSS module, `components/hud/hud.module.css`; the `--hud-*` tokens
+  exist only on its root class, and the additive Tailwind `hud.*` colours are
+  `var(--hud-*)`, so outside a HUD subtree they inherit or go transparent. Never
+  import `components/hud` from app routes (dashboard, sessions, departments,
+  settings, ops, admin, super-admin, certificates, audit). The only global
+  selectors are the `:global(html):has(.hud[data-display=…])` overscroll rules,
+  which match only while a HUD root is mounted.
+- **Anatomy versus placement.** Element-level rules are written inside
+  `:where()`, so any component class or Tailwind utility outranks them. The one
+  deliberate lift is the `.prose` 12px block gap, written with `:is()` at
+  specificity (0,0,2) so it beats Tailwind preflight's `p { margin: 0 }` while
+  classes and utilities still win. Component
+  classes own anatomy (colour, border, type role, internal padding); utilities own
+  placement (outer margin, grid placement, max width). Never set the same property
+  from both. No `dark:` utilities: Night comes only from `data-display`. Type roles
+  are module classes rather than Tailwind `text-*` sizes, which tailwind-merge
+  would misread as colours. `.hud` inherits IBM Plex Mono from the root layout's
+  next/font and never redeclares the family.
+- **Chips by shape.** `StatusChip` kinds are `info`, `ok` ●, `off` ○,
+  `attention` ▲, `pending` ◌, and `live` ●. State is a glyph plus words, never
+  colour alone (IEC 60601-1-8 practice). The chip owns its aria-hidden glyph and
+  callers pass only the words. Callers choose the kind explicitly; never derive it
+  by matching status text (the subprocessors register passes a `tone`).
+- **Readout truth rule.** `Readout` and `SpecStrip` show verified product facts
+  only. Every item carries a `source` string (a spec section or code constant)
+  that the type checker requires and the page never renders. No invented metrics,
+  uptime, percentages, or counts; counts are computed from data (“People listed”
+  on /contributors). Changing a cited fact (for example
+  `SESSION_DOCUMENT_MAX_BYTES`, `SLOT_SPLIT_OPTIONS`, `MAX_TEACHING_COORDINATORS`,
+  the Recall attempt limit, or the 6-digit join code) must update the strip in the
+  same change. The /open-source `TerminalBlock` mirrors the `docs/self-hosting.md`
+  quick start and must move with it. Its `HealthCheck` fetches same-origin
+  `/api/health` only when the visitor presses “Run health check” (no request on
+  page view, no polling, a 10-second timeout, and `lib/health-check.ts`
+  classifies the response). The button is disabled only until hydrated; while a
+  check runs it is `aria-disabled` and ignores presses, so keyboard focus stays
+  on it.
+- **Display modes.** Day (the default, no cookie), Night, and Match device
+  (follows `prefers-color-scheme`). `HudShell` reads the `petrios-display` cookie
+  on the server (`lib/public-display.ts`), so every server and RSC render is
+  already correct, with no inline script and no hydration warning.
+  `DisplayControl`, the footer fieldset, and the `PublicNav` menu button are
+  disabled until hydrated, so without JavaScript they honestly do nothing. A
+  duplicated cookie name resolves to its last occurrence on both sides (Next's
+  `cookies()` rule), so server and client never disagree. A choice
+  writes or deletes the cookie, sets `data-display` on the root at once (no
+  transition), and calls `router.refresh()` so client-cached pages pick it up; the
+  control also reconciles the root with the cookie on mount and on a bfcache
+  `pageshow`. The cookie contract and its PECR rationale are in spec 13.
+- **Frozen shared primitives.** Public CTAs are links styled with `hudLink`
+  (primary, secondary, or ink; md or sm), imported from
+  `@/components/hud/HudLink`. The variants live in `hudLinkVariants.ts`, because a
+  `hudLink.ts` beside `HudLink.tsx` would resolve to the wrong file on
+  case-insensitive file systems. `HudLink` marks off-site links with an
+  aria-hidden ↗, and no link uses →. `HudWordmark` and `hudLink` exist so that
+  `Wordmark`, `Button`/`buttonVariants`, `Badge`, `Card`, `Nav`/`NavShell`,
+  `AppFooter`, `LoginCard`, and `app/globals.css` stay unchanged for the app.
+  `/login*`, `/join/dept`, `/signup`, and `/verify/*` keep the app look until they
+  adopt `HudShell`.
+- **Landmarks and contents.** The public nav is the only `<nav>` named “Main”;
+  the footer is deliberately not a `<nav>`. `OnThisPage` takes an explicit
+  `SECTIONS` constant per page (never `React.Children`): `chips` on /features and
+  a `rail` on the legal pages, sticky beside the prose from 1024px (on
+  /subprocessors it stays above the body so the register gets the full width).
+  It never contains “Features” or “Sign in”.
+- **Drawn marks, not missing glyphs.** The self-hosted Plex Mono subset has no
+  arrows or geometric shapes, so they fall back to a size-adjusted Arial face.
+  Marks whose size or position matters are drawn instead: the hero ▪ separators
+  (CSS squares), the comparison connector and the `MissingDisclosure` ▲ (inline
+  aria-hidden SVG in `currentColor`). Decorative `::before` markers use
+  `content: "▸" / ""` (after a plain fallback declaration) so screen readers do
+  not announce them; drawn CSS marks get `CanvasText` under forced colours.
+- **Motion and contrast.** The landing calibration strip is the only load motion
+  on the site, and it is CSS-only. Its contract, the HUD token values and ratios,
+  and the placement rules are in spec 13 (“Homepage motion” and “Public HUD
+  tokens”).
+
 ### Latency conventions
 
 Every mutation click is at least two server round trips (action, then
@@ -369,8 +460,8 @@ Every mutation click is at least two server round trips (action, then
 - **Signed-in pages get the utility footer automatically** — `AppFooter`
   renders once from the root layout on app-area routes (© / AGPL / Source /
   Privacy; the Source link is the AGPL section-13 route every self-hosted
-  instance inherits). Public pages keep the marketing `Footer`; don't add
-  either per-page.
+  instance inherits). Public pages get `PublicNav` and the marketing
+  `Footer` from `HudShell`; don't add any of them per-page.
 - **Dense management pages use collapsible sections**
   (`components/SettingsSection.tsx` — a native <details> styled like Card,
   server-renderable, counts in the header, optional internal scroll)
@@ -398,6 +489,24 @@ exact boundaries and negative cases, not only representative success.
 Playwright starts the public app with placeholder Supabase/config and Chromium.
 The current suite is unauthenticated and focuses on public/responsive surfaces;
 it is not proof of authenticated RLS or end-to-end email/database behavior.
+
+- `smoke.spec.ts`: routing, exact public headings, health and well-known JSON,
+  the auth wall, and the security-header baseline.
+- `landing.spec.ts`: the calibration-strip h1 and its accessible name, the
+  no-JavaScript render and inert controls, section order, CTA targets, the
+  typewriter at 700ms with no layout shift, reduced motion, keyboard focus,
+  overflow from 320px to 1440px, the tagline under WCAG 1.4.12 text spacing,
+  decorative list markers absent from the accessibility tree, no canvas, and
+  Display cookie persistence across reload, client navigation, and back.
+- `public-pages.spec.ts`: one Main nav and one `main` per public route, the
+  footer ownership line and legal links, contents anchors, the cookie and GPC
+  disclosures, the subprocessors register width and status chips, the
+  user-triggered health check (focus kept on keyboard activation), and
+  the contributors head count.
+- `contrast.spec.ts`: an in-page WCAG contrast probe over the nine public routes
+  in Day and Night (spec 13 “Public HUD tokens”), with no extra dependency.
+- `mobile.spec.ts`: the 390px menu contract and horizontal overflow on the inner
+  and legal pages.
 
 ### Required risk-based cases
 

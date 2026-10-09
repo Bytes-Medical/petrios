@@ -1,4 +1,4 @@
-import { CompliancePage, ComplianceSection, MissingDisclosure } from '@/components/CompliancePage'
+import { CompliancePage, ComplianceSection, FactList, MissingDisclosure } from '@/components/CompliancePage'
 import { getComplianceConfig } from '@/lib/compliance'
 
 export const metadata = {
@@ -8,6 +8,29 @@ export const metadata = {
 
 export const dynamic = 'force-dynamic'
 
+const SECTIONS = [
+  '1. Scope and instructions',
+  '2. Processing details',
+  '3. Confidentiality and people',
+  '4. Security measures',
+  '5. Subprocessors',
+  '6. International transfers',
+  '7. Rights and compliance assistance',
+  '8. Personal-data breaches',
+  '9. Return, deletion, and continuity',
+  '10. Audit and precedence',
+] as const
+
+const PROCESSING_DETAILS = [
+  { label: 'Subject matter', value: 'Hosting and operation of a teaching-management platform.' },
+  { label: 'Duration', value: 'The service term plus an agreed secure return/deletion period and any legally required retention.' },
+  { label: 'Nature', value: 'Collection, storage, organisation, retrieval, display, communication, analysis, backup, export, restriction, and deletion.' },
+  { label: 'Purposes', value: 'Authentication, teaching administration and private session documents, attendance evidence/finalization, feedback, certificates, portfolio/Recall, communications, reporting, security, and optional AI assistance.' },
+  { label: 'People', value: 'Trainees, faculty, organisers, external teachers, administrators, and support/security contacts.' },
+  { label: 'Data', value: 'Identity/contact, employment/training, membership/role, session documents/attendance, identified feedback, certificates, reflections, communications/delivery metadata, audit, and technical data described in the privacy notice.' },
+  { label: 'Special data', value: 'Not required by design. Free text may nevertheless contain health, welfare, conduct, or other sensitive information and must be treated accordingly.' },
+] as const
+
 export default function DataProcessingAgreementPage() {
   const config = getComplianceConfig()
 
@@ -15,14 +38,18 @@ export default function DataProcessingAgreementPage() {
     <CompliancePage
       title="Data processing agreement framework"
       description="This page is a transparent Article 28 contracting framework, not a signed agreement or legal advice. A controller and processor must complete, review, and execute terms that match their deployment before relying on them."
+      sections={SECTIONS}
     >
-      <div className="mb-8 border border-gray-300 bg-white p-4 font-mono text-sm leading-relaxed">
-        <p><strong>Controller:</strong> {config.controllerName || <MissingDisclosure>legal name</MissingDisclosure>}</p>
-        <p><strong>Processor:</strong> <MissingDisclosure>contracting service operator and legal name</MissingDisclosure></p>
-        <p><strong>Effective date and term:</strong> <MissingDisclosure>date and service term</MissingDisclosure></p>
-      </div>
+      <FactList
+        className="mb-8"
+        items={[
+          { label: 'Controller', value: config.controllerName || <MissingDisclosure>legal name</MissingDisclosure> },
+          { label: 'Processor', value: <MissingDisclosure>contracting service operator and legal name</MissingDisclosure> },
+          { label: 'Effective date and term', value: <MissingDisclosure>date and service term</MissingDisclosure> },
+        ]}
+      />
 
-      <ComplianceSection title="1. Scope and instructions">
+      <ComplianceSection title={SECTIONS[0]}>
         <p>
           The processor may process personal data only on the controller’s documented instructions
           to provide, secure, support, back up, and delete the configured Petrios service. If an
@@ -32,19 +59,11 @@ export default function DataProcessingAgreementPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="2. Processing details">
-        <dl className="grid gap-3 border border-gray-300 bg-white p-4 sm:grid-cols-[11rem_1fr]">
-          <dt className="font-semibold">Subject matter</dt><dd>Hosting and operation of a teaching-management platform.</dd>
-          <dt className="font-semibold">Duration</dt><dd>The service term plus an agreed secure return/deletion period and any legally required retention.</dd>
-          <dt className="font-semibold">Nature</dt><dd>Collection, storage, organisation, retrieval, display, communication, analysis, backup, export, restriction, and deletion.</dd>
-          <dt className="font-semibold">Purposes</dt><dd>Authentication, teaching administration and private session documents, attendance evidence/finalization, feedback, certificates, portfolio/Recall, communications, reporting, security, and optional AI assistance.</dd>
-          <dt className="font-semibold">People</dt><dd>Trainees, faculty, organisers, external teachers, administrators, and support/security contacts.</dd>
-          <dt className="font-semibold">Data</dt><dd>Identity/contact, employment/training, membership/role, session documents/attendance, identified feedback, certificates, reflections, communications/delivery metadata, audit, and technical data described in the privacy notice.</dd>
-          <dt className="font-semibold">Special data</dt><dd>Not required by design. Free text may nevertheless contain health, welfare, conduct, or other sensitive information and must be treated accordingly.</dd>
-        </dl>
+      <ComplianceSection title={SECTIONS[1]}>
+        <FactList dtWidth="11rem" items={PROCESSING_DETAILS} />
       </ComplianceSection>
 
-      <ComplianceSection title="3. Confidentiality and people">
+      <ComplianceSection title={SECTIONS[2]}>
         <p>
           The processor must limit personal-data access to authorised people who need it for the
           service, bind them to confidentiality, train them for their role, promptly remove access
@@ -53,7 +72,7 @@ export default function DataProcessingAgreementPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="4. Security measures">
+      <ComplianceSection title={SECTIONS[3]}>
         <p>
           Contract schedules should record the deployment’s actual measures, including encryption
           in transit and at rest, Supabase Row Level Security, server-only privileged credentials,
@@ -64,7 +83,7 @@ export default function DataProcessingAgreementPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="5. Subprocessors">
+      <ComplianceSection title={SECTIONS[4]}>
         <p>
           The controller gives general authorisation only for subprocessors listed in the public
           register or a signed schedule. The processor must impose materially equivalent
@@ -74,7 +93,7 @@ export default function DataProcessingAgreementPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="6. International transfers">
+      <ComplianceSection title={SECTIONS[5]}>
         <p>
           Personal data may leave the UK only on documented instructions and with a valid transfer
           mechanism and assessment where required. Deployment location:{' '}
@@ -83,7 +102,7 @@ export default function DataProcessingAgreementPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="7. Rights and compliance assistance">
+      <ComplianceSection title={SECTIONS[6]}>
         <p>
           Taking account of the processing, the processor must provide reasonable technical and
           organisational help with access, correction, deletion, restriction, portability,
@@ -93,7 +112,7 @@ export default function DataProcessingAgreementPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="8. Personal-data breaches">
+      <ComplianceSection title={SECTIONS[7]}>
         <p>
           The processor must notify the controller without undue delay after becoming aware of a
           personal-data breach and provide available information about its nature, affected people
@@ -103,7 +122,7 @@ export default function DataProcessingAgreementPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="9. Return, deletion, and continuity">
+      <ComplianceSection title={SECTIONS[8]}>
         <p>
           At the controller’s choice and subject to law, the processor must return or securely delete
           personal data after service termination, remove remaining copies on the agreed backup
@@ -113,7 +132,7 @@ export default function DataProcessingAgreementPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="10. Audit and precedence">
+      <ComplianceSection title={SECTIONS[9]}>
         <p>
           The processor must provide information reasonably necessary to demonstrate these duties
           and permit proportionate audits or inspections under agreed confidentiality, security,

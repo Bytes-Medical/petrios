@@ -56,6 +56,10 @@ its architecture, contracts, policies, users, and intended use.
   substituting invented controller or location details.
 - Petrios does not ship advertising, behavioural tracking, or non-essential
   analytics cookies. Supabase authentication uses essential first-party storage.
+  The public Display control sets one first-party preference cookie
+  (`petrios-display`) only when a visitor chooses Night or Match device; it is
+  disclosed on `/privacy`, and spec 13 records the PECR rationale for operators
+  to review.
 - Optional AI can be disabled or directed to an operator-controlled compatible
   endpoint. The Ops audit stores hashes and operational metadata, not raw prompt
   text; this does not override an AI provider's own logging or retention.

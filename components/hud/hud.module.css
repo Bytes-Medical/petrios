@@ -1,0 +1,755 @@
+/* ==========================================================================
+   Clinical HUD: the public-site design system (spec/07, spec/13).
+   Tokens exist only on .hud, which HudShell renders as [data-hud-root], so
+   the signed-in app never sees them. Element rules use :where() so any
+   component class or Tailwind utility wins. Component classes own anatomy
+   (colour, border, type, internal padding); utilities own placement.
+   lib/hud-tokens.test.ts parses the three token blocks below.
+   ========================================================================== */
+
+/* Day (default when there is no petrios-display cookie) */
+.hud {
+  color-scheme: light;
+  --hud-bg: #F0EEE6;
+  --hud-surface: #FAF9F5;
+  --hud-sunk: #F5F4EF;
+  --hud-ink: #1F1D1A;
+  --hud-ink-hover: #2E2A25;
+  --hud-graphite: #5D5749;
+  --hud-caption: #6D6759;
+  --hud-clay: #A95134;
+  --hud-clay-strong: #A04A30;
+  --hud-clay-fill: #A95134;
+  --hud-clay-fill-hover: #A04A30;
+  --hud-on-clay: #FAF9F5;
+  --hud-clay-wash: #FBF3EF;
+  --hud-edge: #1F1D1A;
+  --hud-hairline: #CBC6BA;
+  --hud-focus: #A04A30;
+  --hud-panel-shadow: rgb(31 29 26 / 0.08);
+  --hud-dot: rgb(31 29 26 / 0.14);
+  --hud-tick: rgb(31 29 26 / 0.30);
+  --hud-grid-minor: rgb(169 81 52 / 0.09);
+  --hud-grid-major: rgb(169 81 52 / 0.20);
+  --hud-glow: rgb(217 119 87 / 0.55);
+  --hud-glow-soft: rgb(217 119 87 / 0.18);
+  --hud-term-bg: #1F1D1A;
+  --hud-term-ink: #F0EEE6;
+  --hud-term-prompt: #DF9377;
+  --hud-term-dim: #A8A292;
+}
+
+/* Night: the same block twice, explicit choice and Match device */
+.hud[data-display="night"] {
+  color-scheme: dark;
+  --hud-bg: #1F1D1A;
+  --hud-surface: #282520;
+  --hud-sunk: #211E19;
+  --hud-ink: #F0EEE6;
+  --hud-ink-hover: #CBC6BA;
+  --hud-graphite: #CBC6BA;
+  --hud-caption: #A8A292;
+  --hud-clay: #DF9377;
+  --hud-clay-strong: #E5AE97;
+  --hud-clay-fill: #D97757;
+  --hud-clay-fill-hover: #DF9377;
+  --hud-on-clay: #1F1D1A;
+  --hud-clay-wash: #413028;
+  --hud-edge: #A8A292;
+  --hud-hairline: #4A453D;
+  --hud-focus: #DF9377;
+  --hud-panel-shadow: rgb(0 0 0 / 0.45);
+  --hud-dot: rgb(240 238 230 / 0.10);
+  --hud-tick: rgb(240 238 230 / 0.30);
+  --hud-grid-minor: rgb(217 119 87 / 0.07);
+  --hud-grid-major: rgb(217 119 87 / 0.15);
+  --hud-glow: rgb(223 147 119 / 0.75);
+  --hud-glow-soft: rgb(223 147 119 / 0.22);
+  --hud-term-bg: #141210;
+  --hud-term-ink: #F0EEE6;
+  --hud-term-prompt: #DF9377;
+  --hud-term-dim: #A8A292;
+}
+@media (prefers-color-scheme: dark) {
+  .hud[data-display="auto"] {
+    color-scheme: dark;
+    --hud-bg: #1F1D1A;
+    --hud-surface: #282520;
+    --hud-sunk: #211E19;
+    --hud-ink: #F0EEE6;
+    --hud-ink-hover: #CBC6BA;
+    --hud-graphite: #CBC6BA;
+    --hud-caption: #A8A292;
+    --hud-clay: #DF9377;
+    --hud-clay-strong: #E5AE97;
+    --hud-clay-fill: #D97757;
+    --hud-clay-fill-hover: #DF9377;
+    --hud-on-clay: #1F1D1A;
+    --hud-clay-wash: #413028;
+    --hud-edge: #A8A292;
+    --hud-hairline: #4A453D;
+    --hud-focus: #DF9377;
+    --hud-panel-shadow: rgb(0 0 0 / 0.45);
+    --hud-dot: rgb(240 238 230 / 0.10);
+    --hud-tick: rgb(240 238 230 / 0.30);
+    --hud-grid-minor: rgb(217 119 87 / 0.07);
+    --hud-grid-major: rgb(217 119 87 / 0.15);
+    --hud-glow: rgb(223 147 119 / 0.75);
+    --hud-glow-soft: rgb(223 147 119 / 0.22);
+    --hud-term-bg: #141210;
+    --hud-term-ink: #F0EEE6;
+    --hud-term-prompt: #DF9377;
+    --hud-term-dim: #A8A292;
+  }
+}
+
+/* Overscroll and canvas follow Night. Matches only while a HUD root is in the DOM. */
+:global(html):has(.hud[data-display="night"]) { background-color: #1F1D1A; }
+@media (prefers-color-scheme: dark) {
+  :global(html):has(.hud[data-display="auto"]) { background-color: #1F1D1A; }
+}
+
+/* --------------------------------------------------------------- shell */
+.hud {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--hud-bg);
+  color: var(--hud-ink);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+:where(.hud) :where(h1, h2, h3, h4, p, ul, ol, dl, dd, figure, pre, blockquote) { margin: 0; }
+:where(.hud) :where(ul, ol) { padding: 0; list-style: none; }
+:where(.hud) :where(h1, h2, h3, h4) { font-size: inherit; line-height: inherit; font-weight: 700; }
+:where(.hud) a { color: inherit; }
+:where(.hud) :where(button, input) { font: inherit; color: inherit; }
+:where(.hud) code { font: inherit; }
+:where(.hud) :focus-visible { outline: 2px solid var(--hud-focus); outline-offset: 3px; }
+:where(.hud) ::selection { background: var(--hud-clay-fill); color: var(--hud-on-clay); }
+
+.srOnly {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+.skip {
+  position: absolute; top: 12px; left: 12px; z-index: 20;
+  padding: 8px 12px;
+  background: var(--hud-ink); color: var(--hud-surface);
+  font-size: 14px; line-height: 20px; font-weight: 500; text-decoration: none;
+}
+.skip:not(:focus) { width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.main {
+  flex: 1;
+  padding: 48px 16px 64px;
+  /* dot grid at a 20px pitch = one 5 mm major square; dot columns at x = 10, 30, 50… */
+  background-image: radial-gradient(var(--hud-dot) 1px, transparent 1.2px);
+  background-size: 20px 20px;
+  background-position: 0 0;
+}
+.main:focus-visible { outline: none; }
+@media (min-width: 640px) { .main { padding: 64px 24px 80px; } }
+
+.column { max-width: 56rem; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; }
+.columnProse { max-width: 48rem; }
+@media (min-width: 640px) { .column { gap: 40px; } }
+
+/* Text under 18px never sits directly on the dot grid or the ECG grid (spec §4.3 rule 3) */
+.backed { background: var(--hud-bg); box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 0 4px; }
+
+/* ---------------------------------------------------------- type roles */
+.caption { font-size: 12px; line-height: 18px; font-weight: 400; color: var(--hud-caption); }
+.body { max-width: 68ch; font-size: 15px; line-height: 24px; color: var(--hud-graphite); }
+.code { padding: 0 4px; border: 1px solid var(--hud-hairline); background: var(--hud-sunk); color: var(--hud-ink); font: inherit; overflow-wrap: anywhere; }
+
+/* --------------------------------------------------------- HudWordmark */
+.wordmark {
+  display: inline-flex; align-items: baseline; gap: 8px;
+  font-size: 18px; line-height: 1; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--hud-ink);
+}
+.wordmarkBlock { display: block; flex: none; width: 12px; height: 12px; background: var(--hud-clay-fill); }
+@media (min-width: 640px) {
+  .wordmark { font-size: 20px; }
+  .wordmarkBlock { width: 14px; height: 14px; }
+}
+.wordmarkLg { gap: 12px; font-size: 36px; }
+.wordmarkLg .wordmarkBlock { width: 0.698em; height: 0.698em; } /* cap height: the block is the calibration square */
+@media (min-width: 640px) { .wordmarkLg { font-size: 48px; } }
+
+/* ----------------------------------------------------------- PublicNav */
+.nav { position: relative; z-index: 1; background: var(--hud-surface); border-bottom: 1px solid var(--hud-edge); }
+/* Ruler edge: a 5 mm tick every 20px, a tall tick every 1 s at 50 mm/s (200px). Decorative. */
+.nav::after {
+  content: ""; position: absolute; left: 0; right: 0; top: calc(100% + 1px); height: 7px; pointer-events: none;
+  background:
+    linear-gradient(90deg, var(--hud-tick) 1px, transparent 1px) 10px 0 / 20px 3px repeat-x,
+    linear-gradient(90deg, var(--hud-tick) 1px, transparent 1px) 10px 0 / 200px 7px repeat-x;
+}
+.navInner { max-width: 1280px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+.navHome { display: inline-flex; align-items: center; min-height: 36px; margin-right: auto; text-decoration: none; }
+.navLinks { display: none; }
+.navLink { display: inline-block; padding: 6px 0; font-size: 14px; line-height: 20px; color: var(--hud-ink); text-decoration: none; }
+.navLink:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.navLink[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--hud-clay-fill); }
+.navActions { display: flex; align-items: center; gap: 8px; }
+.menuButton {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 40px; height: 40px; padding: 0;
+  border: 1px solid var(--hud-edge); background: var(--hud-surface); color: var(--hud-ink); cursor: pointer;
+}
+.menuButton:hover:not(:disabled) { background: var(--hud-bg); }
+/* Disabled only until hydration; no dimmed styling, which would flash on every mobile load */
+.menuButton:disabled { cursor: not-allowed; }
+.menuButton svg { display: block; width: 16px; height: 16px; }
+.menuButton[aria-expanded="true"] .iconMenu,
+.menuButton[aria-expanded="false"] .iconClose { display: none; }
+.menu { border-top: 1px solid var(--hud-edge); }
+.menu[hidden] { display: none; }
+.menuLink {
+  display: flex; align-items: center; min-height: 44px; padding: 0 16px;
+  font-size: 14px; line-height: 20px; color: var(--hud-ink); text-decoration: none;
+}
+.menu li + li .menuLink { border-top: 1px solid var(--hud-hairline); }
+.menuLink:hover { background: var(--hud-bg); text-decoration: underline; text-underline-offset: 4px; }
+.menuLink:focus-visible { outline-offset: -3px; }
+.menuLink[aria-current="page"] { box-shadow: inset 3px 0 0 var(--hud-clay-fill); }
+@media (min-width: 640px) {
+  .navInner { padding: 12px 24px; }
+  .menuLink { padding: 0 24px; }
+}
+@media (min-width: 768px) {
+  .navInner { gap: 24px; }
+  .navLinks { display: flex; align-items: center; gap: 16px; }
+  .menuButton, .menu { display: none; }
+}
+@media (min-width: 1024px) { .navLinks { gap: 20px; } }
+
+/* ------------------------------------------------------ hudLink (CTAs) */
+.hudLink {
+  display: inline-flex; align-items: center; justify-content: center;
+  text-align: center; white-space: normal;
+  border: 1px solid; font: inherit; font-size: 14px; line-height: 20px; font-weight: 500;
+  text-decoration: none; cursor: pointer;
+  transition: transform 80ms linear, box-shadow 80ms linear;
+}
+.md { min-height: 44px; padding: 10px 16px; box-shadow: 3px 3px 0 var(--hud-edge); }
+.sm { min-height: 36px; padding: 6px 12px; box-shadow: none; }
+.block { display: flex; width: 100%; }
+.primary { background: var(--hud-clay-fill); border-color: var(--hud-clay-fill); color: var(--hud-on-clay); }
+.primary:hover { background: var(--hud-clay-fill-hover); border-color: var(--hud-clay-fill-hover); }
+.secondary { background: var(--hud-surface); border-color: var(--hud-edge); color: var(--hud-ink); }
+.secondary:hover { background: var(--hud-bg); }
+.ink { background: var(--hud-ink); border-color: var(--hud-ink); color: var(--hud-surface); }
+.ink:hover { background: var(--hud-ink-hover); border-color: var(--hud-ink-hover); }
+.md:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--hud-edge); }
+.hudLink:disabled, .hudLink[aria-disabled="true"] {
+  background: var(--hud-sunk); border-color: var(--hud-caption); border-style: dashed;
+  color: var(--hud-caption); box-shadow: none; transform: none; cursor: not-allowed;
+}
+
+/* Inline text link. ↗ is aria-hidden and only marks links that leave the site. */
+.textLink {
+  color: var(--hud-ink);
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+  transition: color 120ms linear, text-decoration-thickness 120ms linear;
+}
+.textLink:hover { color: var(--hud-clay-strong); text-decoration-thickness: 2px; }
+
+/* --------------------------------------------------------------- Panel */
+.panel {
+  background: var(--hud-surface);
+  border: 1px solid var(--hud-edge);
+  border-top: 4px solid var(--hud-clay-fill);
+  box-shadow: 8px 8px 0 var(--hud-panel-shadow);
+  scroll-margin-top: 24px;
+}
+.panelPlain { border-top: 1px solid var(--hud-edge); }
+.panelBody { padding: 24px 20px; }
+.panelFooter { border-top: 1px solid var(--hud-edge); }
+@media (min-width: 640px) { .panelBody { padding: 32px; } }
+
+.panelTitle { font-size: 20px; line-height: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.panelLabel { display: block; margin-bottom: 4px; font-size: 12px; line-height: 18px; font-weight: 500; letter-spacing: 0; color: var(--hud-clay); }
+@media (min-width: 640px) { .panelTitle { font-size: 22px; line-height: 28px; } }
+
+/* ------------------------------------------- SectionHeading / PageHeader */
+.sectionHeading { margin-bottom: 24px; text-align: center; }
+.sectionTitle { font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.01em; }
+.sectionLede { max-width: 56ch; margin: 8px auto 0; font-size: 14px; line-height: 22px; color: var(--hud-graphite); }
+@media (min-width: 640px) { .sectionTitle { font-size: 26px; line-height: 32px; } }
+
+.pageHeader { text-align: center; }
+.pageTitle { font-size: 30px; line-height: 36px; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; }
+.pageLede { max-width: 64ch; margin: 12px auto 0; font-size: 15px; line-height: 24px; color: var(--hud-graphite); text-wrap: balance; }
+.headerFacts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; margin-top: 16px; }
+.headerFacts div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 0 8px; }
+.headerFacts dt { padding: 0 4px; background: var(--hud-bg); font-size: 12px; line-height: 18px; color: var(--hud-caption); }
+.headerFacts dd { padding: 0 4px; background: var(--hud-bg); font-size: 14px; line-height: 20px; font-weight: 600; color: var(--hud-ink); overflow-wrap: anywhere; }
+@media (min-width: 640px) { .pageTitle { font-size: 40px; line-height: 44px; } }
+
+/* ----------------------------------------------------- AnnouncementBar */
+.announce {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--hud-edge); background: var(--hud-surface); color: var(--hud-ink);
+  font-size: 14px; line-height: 20px; text-decoration: none;
+  transition: transform 120ms linear, box-shadow 120ms linear;
+}
+.announce:hover, .announce:focus-visible { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--hud-edge); }
+.announceTitle { flex: 1 1 12rem; min-width: 0; }
+.announceDate, .date { font-size: 12px; line-height: 18px; color: var(--hud-caption); white-space: nowrap; }
+
+/* ---------------------------------------------------------- StatusChip */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 1px 7px; border: 1px solid;
+  font-size: 12px; line-height: 18px; font-weight: 500; white-space: nowrap;
+}
+.chipWrap { white-space: normal; }
+.chipGlyph { font-size: 10px; line-height: 1; }
+.chipInfo { background: var(--hud-clay-fill); border-color: var(--hud-clay-fill); color: var(--hud-on-clay); }
+.chipOk { background: var(--hud-surface); border-color: var(--hud-ink); color: var(--hud-ink); }
+.chipOff, .chipPending { background: var(--hud-surface); border-color: var(--hud-caption); border-style: dashed; color: var(--hud-caption); }
+.chipAttention { background: var(--hud-clay-wash); border-color: var(--hud-clay); color: var(--hud-clay); }
+.chipLive { background: var(--hud-surface); border-color: var(--hud-ink); color: var(--hud-ink); }
+.chipLive .chipGlyph { color: var(--hud-clay-fill); text-shadow: 0 0 6px var(--hud-glow); }
+
+/* ----------------------------------------------- Readout and SpecStrip */
+.readout dt { font-size: 12px; line-height: 18px; color: var(--hud-caption); }
+.readout dd { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-height: 30px; margin-top: 4px; }
+.readout dd.readoutRowText { align-items: flex-end; }
+.readoutValue { font-size: 30px; line-height: 30px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--hud-ink); }
+/* 12px line height keeps the unit's descent inside the value's, so the row is exactly 30px */
+.readoutUnit { font-size: 12px; line-height: 12px; color: var(--hud-caption); }
+.readoutText { font-size: 16px; line-height: 22px; font-weight: 600; color: var(--hud-ink); }
+/* Row variant: label and value on one baseline (contributors ledger header) */
+.readoutRow > div { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
+.readoutRow dd { min-height: 0; margin-top: 0; }
+
+.spec { display: grid; grid-template-columns: minmax(0, 1fr); }
+.spec > div { padding: 12px 20px; }
+.spec > div + div { border-top: 1px solid var(--hud-hairline); }
+.spec dt { font-size: 12px; line-height: 18px; color: var(--hud-caption); }
+.spec dd { margin-top: 2px; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--hud-ink); overflow-wrap: anywhere; }
+.specFramed { border: 1px solid var(--hud-edge); background: var(--hud-surface); }
+@media (min-width: 640px) {
+  .spec { grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); }
+  .spec > div + div { border-top: 0; border-left: 1px solid var(--hud-edge); }
+}
+
+/* ------------------------------------------------- Hero: panel + strip */
+.hero { container: hero / inline-size; }
+
+.strip {
+  --hud-mm: 4px;
+  --hud-trace: calc(var(--hud-mm) / 2);
+  position: relative;
+  padding: calc(var(--hud-mm) * 15) 0 calc(var(--hud-mm) * 3);
+  border-bottom: 1px solid var(--hud-edge);
+  background-color: var(--hud-surface);
+  /* ECG paper: 5 mm major and 1 mm minor squares, in clay */
+  background-image:
+    linear-gradient(var(--hud-grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hud-grid-major) 1px, transparent 1px),
+    linear-gradient(var(--hud-grid-minor) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hud-grid-minor) 1px, transparent 1px);
+  background-size:
+    calc(var(--hud-mm) * 5) calc(var(--hud-mm) * 5),
+    calc(var(--hud-mm) * 5) calc(var(--hud-mm) * 5),
+    var(--hud-mm) var(--hud-mm),
+    var(--hud-mm) var(--hud-mm);
+  background-position: 0 -1px;
+}
+@container hero (max-width: 479px) { .strip { --hud-mm: 3px; } }
+/* registration ticks */
+.strip::before, .strip::after {
+  content: ""; position: absolute; top: 8px; width: 12px; height: 12px;
+  border: 0 solid var(--hud-caption); pointer-events: none;
+}
+.strip::before { left: 8px; border-width: 1px 0 0 1px; }
+.strip::after { right: 8px; border-width: 1px 1px 0 0; }
+
+.heroTitle { font-weight: 400; }
+/* Only the drawing is clipped, never the tagline: under WCAG 1.4.12 text spacing
+   the tagline may run wider than the strip and must stay readable. */
+.trace {
+  display: flex; align-items: flex-end; height: calc(var(--hud-mm) * 10); font-weight: 700;
+  overflow-x: clip; overflow-clip-margin: calc(var(--hud-mm) * 4);
+}
+.seg {
+  flex: 1 1 0; min-width: calc(var(--hud-mm) * 3); height: 0;
+  margin-bottom: -1px;
+  border-bottom: var(--hud-trace) solid var(--hud-clay-fill);
+}
+.segOut { position: relative; margin-right: calc(var(--hud-mm) * 5); }
+/* phosphor write-head: the only glow on the site */
+.head {
+  position: absolute; right: -4px; bottom: -4px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--hud-clay-fill);
+  box-shadow: 0 0 0 3px var(--hud-glow-soft), 0 0 14px 2px var(--hud-glow);
+}
+.pulse, .cx { display: block; flex: none; overflow: visible; height: calc(var(--hud-mm) * 10); }
+.pulse { width: calc(var(--hud-mm) * 10); }
+.cxFull { width: calc(var(--hud-mm) * 26.5); }
+.cxQrs { display: none; width: calc(var(--hud-mm) * 4.5); }
+@container hero (max-width: 479px) {
+  .cxFull { display: none; }
+  .cxQrs { display: block; }
+}
+.pulse path, .cx path { fill: none; stroke: var(--hud-clay-fill); stroke-width: 0.5; stroke-linejoin: miter; }
+.pulse rect { fill: var(--hud-clay-fill); }
+/* Cap height (698/1000 in Plex Mono) equals the 10 mm calibration square */
+.word {
+  margin: 0 calc(var(--hud-mm) * 2.5) -0.125em;
+  font-size: calc(var(--hud-mm) * 10 / 0.698);
+  line-height: 1; font-weight: 700; letter-spacing: -0.03em; text-transform: uppercase;
+}
+
+.tagline {
+  display: block; margin: calc(var(--hud-mm) * 8) 20px 0;
+  font-size: 18px; line-height: 1.4; font-weight: 400; letter-spacing: 0; text-align: center;
+  color: var(--hud-ink);
+}
+@container hero (min-width: 480px) { .tagline { font-size: 20px; } }
+@container hero (min-width: 680px) { .tagline { font-size: 24px; } }
+@container hero (min-width: 880px) { .tagline { font-size: 28px; } }
+
+.cal {
+  width: max-content; margin: calc(var(--hud-mm) * 6) 12px 0 auto; padding: 0 6px;
+  font-size: 12px; line-height: 18px; color: var(--hud-caption);
+  background: var(--hud-surface); /* caption on the grid fails AA, so it is backed */
+}
+.cal span + span { margin-left: 2ch; }
+
+/* ------------------------------------- Typewriter: chunked clip reveal */
+/* One step must reveal exactly one monospace advance, so no ligatures. */
+.tw { font-variant-ligatures: none; }
+.twChunk { position: relative; display: inline-block; white-space: nowrap; vertical-align: bottom; }
+.twText { display: inline-block; }
+.twCursor { display: inline-block; width: 1ch; height: 1.1em; vertical-align: -0.2em; background: var(--hud-clay-fill); }
+
+/* --------------------------------------------------------- Hero body */
+.heroBody { padding: 28px 20px 32px; text-align: center; }
+.heroLede { max-width: 62ch; margin: 0 auto; font-size: 15px; line-height: 24px; color: var(--hud-graphite); text-align: left; }
+.facts {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  margin-top: 16px; font-size: 14px; line-height: 20px; color: var(--hud-graphite);
+}
+.facts li { white-space: nowrap; }
+/* Drawn rather than typed: ▪ is outside the Plex Mono subset and fell back to a
+   size-adjusted Arial. A .39em square centred in a 1ch cell, 1ch either side. */
+.facts li + li::before {
+  content: ""; display: inline-block; width: .39em; height: .39em;
+  margin: 0 calc(1.5ch - .195em); vertical-align: .066em;
+  background: var(--hud-clay);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+@container hero (max-width: 459px) {
+  .facts { flex-direction: column; align-items: center; gap: 2px; }
+  .facts li + li::before { content: none; }
+}
+@container hero (min-width: 600px) {
+  .heroBody { padding: 36px 48px 48px; }
+  .heroLede { text-align: center; }
+}
+.doors { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; max-width: 448px; margin: 32px auto 0; text-align: left; }
+@container hero (min-width: 640px) { .doorsTwo { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 896px; } }
+.door { display: flex; flex-direction: column; padding: 24px 20px; border: 1px solid var(--hud-edge); background: var(--hud-surface); }
+.doorLabel { margin-bottom: 6px; font-size: 12px; line-height: 18px; color: var(--hud-clay); }
+.doorTitle { margin-bottom: 10px; font-size: 20px; line-height: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.doorBody { flex: 1; margin-bottom: 20px; font-size: 14px; line-height: 22px; color: var(--hud-graphite); }
+.doorActions { display: flex; flex-direction: column; gap: 12px; }
+
+/* ------------------------------------------------------ AudienceCards */
+.audiences { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.audience { padding: 20px; border: 1px solid var(--hud-edge); background: var(--hud-surface); }
+.initial {
+  display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  background: var(--hud-clay-fill); color: var(--hud-on-clay);
+  font-size: 14px; line-height: 1; font-weight: 700;
+}
+.cardTitle { margin-top: 12px; font-size: 16px; line-height: 22px; font-weight: 700; }
+.lead { margin-top: 4px; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--hud-clay); }
+.cardBody { margin-top: 8px; font-size: 13px; line-height: 21px; color: var(--hud-graphite); }
+@media (min-width: 768px) { .audiences { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* -------------------------------------------------------- CompareRows */
+.compareHead { display: none; }
+.pairs { display: grid; gap: 12px; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.usual, .better { padding: 14px 16px; }
+.usual { background: var(--hud-sunk); border: 1px dashed var(--hud-caption); }
+.better { background: var(--hud-surface); border: 1px solid var(--hud-edge); box-shadow: inset 3px 0 0 var(--hud-clay-fill); padding-left: 19px; }
+.usual strong, .better strong { display: block; font-size: 14px; line-height: 20px; }
+.usual strong { font-weight: 600; color: var(--hud-graphite); }
+.better strong { font-weight: 700; color: var(--hud-ink); }
+.usual p, .better p { margin-top: 4px; font-size: 13px; line-height: 20px; }
+.usual p { color: var(--hud-caption); }
+.better p { color: var(--hud-graphite); }
+.lbl { display: block; margin-bottom: 4px; font-size: 12px; line-height: 18px; }
+.usual .lbl { color: var(--hud-caption); }
+.better .lbl { color: var(--hud-clay); }
+.connector { display: none; }
+@media (min-width: 640px) {
+  .compareHead {
+    display: grid; grid-template-columns: minmax(0, 1fr) 2rem minmax(0, 1fr); column-gap: 8px;
+    margin-bottom: 8px; font-size: 12px; line-height: 18px;
+  }
+  .compareHead span:first-child { color: var(--hud-caption); }
+  .compareHead span:last-child { grid-column: 3; color: var(--hud-clay); }
+  .pair { grid-template-columns: minmax(0, 1fr) 2rem minmax(0, 1fr); }
+  .connector { display: flex; align-items: center; justify-content: center; color: var(--hud-clay); }
+  .connector svg { display: block; width: 9px; height: 6px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1; }
+  .lbl { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+}
+
+/* ------------------------------------------------------ SequenceSteps */
+.steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.step { display: flex; flex-direction: column; border: 1px solid var(--hud-edge); background: var(--hud-surface); }
+.stepBody { display: flex; flex: 1; flex-direction: column; padding: 20px; }
+.stepN { font-size: 24px; line-height: 24px; font-weight: 700; color: var(--hud-clay); }
+.stepBody .cardTitle { margin-top: 10px; }
+.stepText { flex: 1; margin-top: 8px; font-size: 13px; line-height: 21px; color: var(--hud-graphite); }
+.stepReadout { padding: 10px 20px 12px; border-top: 1px solid var(--hud-edge); }
+.panelLinkRow { margin-top: 24px; text-align: center; font-size: 14px; line-height: 20px; }
+@media (min-width: 640px) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* -------------------------------------------------- Open source block */
+.ossGrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.ossTitle { text-align: left; }
+.ossBody { max-width: 60ch; margin-top: 8px; font-size: 15px; line-height: 24px; color: var(--hud-graphite); }
+.ctaStack { display: flex; flex-direction: column; gap: 12px; }
+@media (min-width: 640px) { .ossGrid { grid-template-columns: minmax(0, 1fr) 13rem; } }
+
+/* ------------------------------------------- Inner pages: panels, CTAs */
+.bullets { display: grid; gap: 6px; font-size: 14px; line-height: 22px; color: var(--hud-graphite); }
+.bullets li { position: relative; padding-left: 2ch; }
+/* `/ ""` keeps the decorative marker out of the accessibility tree; the first
+   declaration is the fallback where alt text for content is unsupported. */
+.bullets li::before { content: "▸"; content: "▸" / ""; position: absolute; left: 0; color: var(--hud-clay); }
+.newsMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.ctaPanel { text-align: center; }
+.ctaPanel .body { margin-left: auto; margin-right: auto; }
+.ctaRow { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+
+/* --------------------------------------------------------- Terminal */
+.terminal figcaption { margin-bottom: 6px; }
+.terminal pre {
+  overflow-x: auto; padding: 16px;
+  border: 1px solid var(--hud-edge); background: var(--hud-term-bg); color: var(--hud-term-ink);
+  font: inherit; font-size: 13px; line-height: 22px;
+}
+.termPrompt { color: var(--hud-term-prompt); }
+.termDim { color: var(--hud-term-dim); }
+.health { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+
+/* ------------------------------------------------- Ledger (contributors) */
+.ledgerHead {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px;
+  padding: 16px 20px; border-bottom: 1px solid var(--hud-edge);
+}
+.ledgerMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.ledgerList > li + li { border-top: 1px solid var(--hud-hairline); }
+.ledgerRow {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
+  padding: 16px 20px; color: var(--hud-ink); text-decoration: none;
+  transition: background-color 120ms linear;
+}
+.ledgerLink:hover { background: var(--hud-clay-wash); }
+.ledgerLink:focus-visible { outline-offset: -3px; }
+.ledgerName { display: block; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--hud-ink); }
+.ledgerDetail { display: block; font-size: 13px; line-height: 20px; color: var(--hud-graphite); }
+.ledgerArrow { font-size: 14px; line-height: 20px; color: var(--hud-caption); }
+.ledgerFoot {
+  padding: 12px 20px; border-top: 1px solid var(--hud-edge); background: var(--hud-clay-wash);
+  font-size: 12px; line-height: 20px; color: var(--hud-graphite);
+}
+.ledgerFoot a { color: var(--hud-ink); text-decoration: underline; text-underline-offset: 3px; }
+.ledgerFoot a:hover { color: var(--hud-clay-strong); text-decoration-thickness: 2px; }
+@media (min-width: 640px) {
+  .ledgerHead, .ledgerRow, .ledgerFoot { padding-left: 28px; padding-right: 28px; }
+  .ledgerMeta { flex-direction: column; align-items: flex-end; }
+}
+
+/* ---------------------------------------------------------- OnThisPage */
+.toc .caption { display: block; }
+.tocChips ul { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tocChips a {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 6px 10px;
+  border: 1px solid var(--hud-edge); background: var(--hud-surface); color: var(--hud-ink);
+  font-size: 13px; line-height: 20px; text-decoration: none;
+}
+.tocChips a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.tocRail ul { display: grid; gap: 6px; margin-top: 8px; padding-left: 12px; border-left: 1px solid var(--hud-edge); }
+.tocRail a { font-size: 13px; line-height: 20px; color: var(--hud-graphite); text-decoration: none; }
+.tocRail a:hover { color: var(--hud-clay-strong); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ------------------------------------------------- Legal page anatomy */
+.legalGrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+@media (min-width: 1024px) {
+  .legalGrid { grid-template-columns: 14rem minmax(0, 1fr); gap: 32px; }
+  .tocRail { position: sticky; top: 24px; align-self: start; }
+  .legalGridStacked { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .legalGridStacked .tocRail { position: static; }
+}
+.legalTitle { padding-top: 32px; border-top: 1px solid var(--hud-hairline); font-size: 18px; line-height: 24px; font-weight: 700; color: var(--hud-ink); scroll-margin-top: 24px; }
+.legalSection:first-child .legalTitle { padding-top: 0; border-top: 0; }
+.legalSection + .legalSection { margin-top: 32px; }
+.legalSection .prose { margin-top: 12px; }
+
+.prose { max-width: 68ch; font-size: 15px; line-height: 25px; color: var(--hud-graphite); }
+/* :is() lifts this to (0,0,2) so it beats Tailwind preflight's `p { margin: 0 }`; margin utilities still win */
+:where(.prose) > :is(p, ul, ol, dl, div, figure, pre, blockquote, table) + :is(p, ul, ol, dl, div, figure, pre, blockquote, table) { margin-top: 12px; }
+:where(.prose) a { color: var(--hud-ink); text-decoration: underline; text-underline-offset: 3px; }
+:where(.prose) a:hover { color: var(--hud-clay-strong); text-decoration-thickness: 2px; }
+:where(.prose) li { position: relative; padding-left: 1.5ch; }
+:where(.prose) li + li { margin-top: 6px; }
+:where(.prose) li::before { content: "▸"; content: "▸" / ""; position: absolute; left: 0; color: var(--hud-clay); }
+:where(.prose) strong { font-weight: 600; color: var(--hud-ink); }
+:where(.prose) code { padding: 0 4px; border: 1px solid var(--hud-hairline); background: var(--hud-sunk); color: var(--hud-ink); }
+.proseWide { max-width: none; }
+.proseWide > :where(p, ul, ol, dl) { max-width: 68ch; }
+
+.factList { border: 1px solid var(--hud-edge); background: var(--hud-surface); }
+.factList > div { display: grid; grid-template-columns: minmax(0, 1fr); padding: 10px 14px; }
+.factList > div + div { border-top: 1px solid var(--hud-hairline); }
+.factList dt { font-size: 13px; line-height: 20px; color: var(--hud-caption); }
+.factList dd { font-size: 14px; line-height: 22px; color: var(--hud-ink); overflow-wrap: anywhere; }
+@media (min-width: 640px) {
+  .factList > div { grid-template-columns: var(--dt, 12rem) minmax(0, 1fr); column-gap: 14px; }
+}
+
+.missing {
+  padding: 1px 6px; border: 1px dashed var(--hud-clay);
+  background: var(--hud-clay-wash); color: var(--hud-clay-strong); font-weight: 600;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+/* ▲ drawn as SVG (one 1ch cell, base on the baseline) because the glyph is outside the Plex Mono subset */
+.missingMark { display: inline-block; width: .6em; height: .6em; vertical-align: -.04em; fill: currentColor; }
+
+/* Register table (subprocessors). The wrapper scrolls; the table keeps its 760px min width (min-w utility). */
+.registerWrap { overflow-x: auto; border: 1px solid var(--hud-edge); background: var(--hud-surface); }
+.register { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+.register caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.register th, .register td { padding: 8px 10px; text-align: left; vertical-align: top; }
+.register thead th { background: var(--hud-sunk); border-bottom: 1px solid var(--hud-edge); font-size: 12px; line-height: 18px; font-weight: 500; color: var(--hud-caption); }
+.register tbody tr + tr > * { border-top: 1px solid var(--hud-hairline); }
+.register tbody th { font-weight: 600; color: var(--hud-ink); }
+.register td { color: var(--hud-graphite); }
+
+/* -------------------------------------------------------------- Footer */
+.footer { border-top: 1px solid var(--hud-edge); background: var(--hud-surface); }
+.footerInner {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px;
+  grid-template-areas: "main" "licences" "display";
+  max-width: 1280px; margin: 0 auto; padding: 24px 16px 28px;
+}
+.footerMain { grid-area: main; }
+.footerLicences { grid-area: licences; }
+.footerDisplay { grid-area: display; }
+.owner { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--hud-ink); }
+.footerTagline { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--hud-graphite); }
+.linkGroups { display: grid; gap: 12px; margin-top: 20px; }
+.linkGroup { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.footerLinks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.footerLinks a {
+  display: inline-block; padding: 2px 0;
+  font-size: 13px; line-height: 20px; color: var(--hud-graphite);
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+}
+.footerLinks a:hover, .footerLicences a:hover { color: var(--hud-clay-strong); text-decoration-thickness: 2px; }
+.footerLicences a { color: var(--hud-ink); text-decoration: underline; text-underline-offset: 3px; }
+@media (min-width: 640px) {
+  .footerInner { padding: 24px 24px 28px; }
+  .linkGroup { grid-template-columns: 5rem minmax(0, 1fr); align-items: baseline; gap: 12px; }
+}
+@media (min-width: 768px) {
+  .footerInner { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main display" "licences licences"; column-gap: 48px; }
+}
+
+/* ------------------------------------------------------ DisplayControl */
+.display { min-width: 0; margin: 0; padding: 0; border: 0; }
+.display legend { float: left; width: 100%; margin-bottom: 6px; padding: 0; }
+.display legend + * { clear: left; }
+.segmented { display: inline-flex; border: 1px solid var(--hud-edge); background: var(--hud-surface); }
+.segmented label { position: relative; display: flex; }
+.segmented input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.segmented span {
+  display: flex; align-items: center; min-height: 36px; padding: 6px 12px;
+  font-size: 12px; line-height: 18px; font-weight: 500; color: var(--hud-ink); white-space: nowrap;
+}
+.segmented label + label span { border-left: 1px solid var(--hud-edge); }
+.segmented input:hover:not(:checked) + span { background: var(--hud-bg); }
+.segmented input:checked + span { background: var(--hud-ink); color: var(--hud-surface); }
+.segmented input:focus-visible + span { position: relative; z-index: 1; outline: 2px solid var(--hud-focus); outline-offset: 2px; }
+.display:disabled .segmented span { color: var(--hud-caption); cursor: not-allowed; }
+.display:disabled .segmented input { cursor: not-allowed; }
+.display:disabled .segmented input:checked + span { background: var(--hud-sunk); color: var(--hud-graphite); box-shadow: inset 0 -2px 0 var(--hud-caption); }
+.displayNote { max-width: 34ch; margin-top: 6px; }
+
+/* ======================================================= Motion (§9) */
+@media (prefers-reduced-motion: no-preference) {
+  /* Chart-recorder physics: constant paper speed, linear left-to-right reveals */
+  .segIn        { animation: hud-reveal 360ms linear both; }
+  .pulse        { animation: hud-reveal 240ms linear 360ms both; }
+  .pulse rect   { animation: hud-snap 0s linear 600ms both; }
+  .cx           { animation: hud-reveal 340ms linear 780ms both; }
+  .segOut       { animation: hud-reveal 400ms linear 1120ms both; }
+  .head         { animation: hud-snap 0s linear 1520ms both; }
+
+  .twAnimated .twText {
+    animation: tw-type calc(var(--n) * var(--tw-step)) steps(var(--n), end)
+               calc(var(--tw-start) + var(--o) * var(--tw-step)) both;
+  }
+  .twAnimated .twChunk::after {
+    content: ""; position: absolute; left: 0; bottom: 0.1em; width: 1ch; height: 1.1em;
+    background: var(--hud-clay-fill); opacity: 0; pointer-events: none;
+    animation:
+      tw-caret calc(var(--n) * var(--tw-step)) steps(var(--n), end) calc(var(--tw-start) + var(--o) * var(--tw-step)) both,
+      tw-on    calc(var(--n) * var(--tw-step)) linear              calc(var(--tw-start) + var(--o) * var(--tw-step));
+  }
+  .twAnimated .twCursor {
+    animation:
+      hud-snap 0s linear calc(var(--tw-start) + var(--tw-total) * var(--tw-step)) both,
+      tw-blink 1s steps(1) calc(var(--tw-start) + var(--tw-total) * var(--tw-step)) 4;
+  }
+}
+@keyframes hud-reveal { from { clip-path: inset(-20px 100% -20px 0); } to { clip-path: inset(-20px -20px -20px 0); } }
+@keyframes hud-snap { from { opacity: 0; } }
+@keyframes tw-type { from { clip-path: inset(-0.3em 100% -0.3em 0); } to { clip-path: inset(-0.3em 0 -0.3em 0); } }
+@keyframes tw-caret { from { transform: translateX(0); } to { transform: translateX(calc(var(--n) * 100%)); } }
+@keyframes tw-on { from, to { opacity: 1; } }
+@keyframes tw-blink { 50% { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .hud *, .hud *::before, .hud *::after { animation: none !important; transition-duration: 0s !important; }
+  .announce:hover, .announce:focus-visible, .md:active { transform: none; }
+}
+
+/* ============================================ Forced colours and print */
+@media (forced-colors: active) {
+  .main, .strip { background-image: none; }
+  .nav::after, .head { display: none; }
+  .panel { border-top-color: CanvasText; }
+  .seg { border-bottom-color: CanvasText; }
+  .pulse path, .cx path { stroke: CanvasText; }
+  .pulse rect { fill: CanvasText; }
+  .twCursor, .twChunk::after, .wordmarkBlock, .initial, .facts li + li::before { forced-color-adjust: none; background: CanvasText; color: Canvas; }
+  .missing, .chip { border-color: CanvasText; }
+  /* Shadows are dropped in forced colours, so state bars become underlines and the checked segment is highlighted */
+  .navLink[aria-current="page"], .menuLink[aria-current="page"] { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  .segmented input:checked + span { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}
+@media print {
+  .nav::after, .strip::before, .strip::after, .head, .display, .health, .menuButton, .skip { display: none; }
+  .main, .strip { background-image: none; }
+  .panel, .md { box-shadow: none; }
+}

@@ -1,6 +1,11 @@
-import Link from 'next/link'
-import { PublicNav } from '@/components/PublicNav'
-import { Footer } from '@/components/Footer'
+import { clsx } from 'clsx'
+import { HudShell } from '@/components/hud/HudShell'
+import { HudLink } from '@/components/hud/HudLink'
+import { OnThisPage } from '@/components/hud/OnThisPage'
+import { PageHeader } from '@/components/hud/PageHeader'
+import { Panel, PanelTitle } from '@/components/hud/Panel'
+import { SpecStrip, type SpecItem } from '@/components/hud/Readout'
+import s from '@/components/hud/hud.module.css'
 
 export const metadata = {
   title: 'Features',
@@ -10,15 +15,18 @@ export const metadata = {
 }
 
 interface Feature {
-  eyebrow: string
+  id: string
+  label: string
   title: string
   body: string
   points: string[]
+  spec: SpecItem[]
 }
 
 const FEATURES: Feature[] = [
   {
-    eyebrow: 'Attendance',
+    id: 'attendance',
+    label: 'Attendance',
     title: 'Evidence, not box-ticking',
     body: 'Attendance is computed from append-only evidence — moderator confirmation, reviewed integrations, secure group codes, and self check-in. Organisers finalize a complete roster into a numbered revision; corrections require a reason and a new revision. Feedback, teacher assignment, and Recall never masquerade as physical attendance.',
     points: [
@@ -27,9 +35,15 @@ const FEATURES: Feature[] = [
       'Missing evidence becomes an explicit absence when the roster is finalized',
       'Append-only evidence, reasoned corrections, numbered revisions, and safe CSV export',
     ],
+    spec: [
+      { label: 'Roster', value: 'Numbered revisions', source: 'spec/03; CLAUDE.md "Evidence-Based Attendance"' },
+      { label: 'Corrections', value: 'Reason required', source: 'spec/03 (reopening requires a reason)' },
+      { label: 'Evidence', value: 'Append-only', source: 'spec/03; attendance_evidence is append-only' },
+    ],
   },
   {
-    eyebrow: 'Petrios Meet',
+    id: 'petrios-meet',
+    label: 'Petrios Meet',
     title: 'Video built in, not bolted on',
     body: 'Give any session a video room with zero setup — no links to paste, ever. Rooms are generated per session, embedded in the session page for members, and joinable by external guests with a plain link. Swap the backend for your own Jitsi server with one environment variable.',
     points: [
@@ -37,9 +51,15 @@ const FEATURES: Feature[] = [
       'Embedded joining attempts windowed self check-in',
       'Microsoft Teams links equally supported for Teams-first trusts',
     ],
+    spec: [
+      { label: 'Rooms', value: 'One per session', source: 'lib/jitsi.ts (room derived from the session id)' },
+      { label: 'Video server', value: 'Jitsi, self-hostable', source: 'NEXT_PUBLIC_JITSI_DOMAIN' },
+      { label: 'Joining', value: 'Attempts self check-in', source: 'components/JitsiMeetingPanel.tsx fires checkIn' },
+    ],
   },
   {
-    eyebrow: 'Scheduling',
+    id: 'scheduling',
+    label: 'Scheduling',
     title: 'Claimable teaching slots',
     body: 'Publish your programme’s empty slots Calendly-style — to contact groups from the address book, to all registered members, or both. First to claim gets the slot, atomically; a draft session is created with the claimer attached as an accepted teacher, and you assign the topic later.',
     points: [
@@ -47,9 +67,15 @@ const FEATURES: Feature[] = [
       'Teacher invitations with accept/decline and automatic 24h reminders',
       'Open slots render as “Available” on the shared calendar (ICS feed included)',
     ],
+    spec: [
+      { label: 'Claims', value: 'First come, first served', source: 'lib/db/teaching-slots.ts (atomic CAS)' },
+      { label: 'Lightning slots', value: '10, 15 or 20 min', source: 'lib/slot-schedule.ts SLOT_SPLIT_OPTIONS' },
+      { label: 'Reminders', value: 'About 24 h before', source: 'app/api/cron/session-reminders (~24h)' },
+    ],
   },
   {
-    eyebrow: 'Feedback',
+    id: 'feedback',
+    label: 'Feedback',
     title: 'Accountless feedback, safely summarised',
     body: 'Attendees scan a QR and answer your department’s custom form without needing an account. Submissions are identified, limited to the server-enforced window, and never create attendance or certificates. Moderators can request privacy-processed AI themes from the first response; teacher release omits identities and raw comments and labels small cohorts as limited evidence.',
     points: [
@@ -57,9 +83,23 @@ const FEATURES: Feature[] = [
       'Live stats, safety-screened AI summaries, privacy-safe teacher reports',
       'Low-scoring sessions alert moderators automatically',
     ],
+    spec: [
+      {
+        label: 'Responses',
+        value: 'One per person per session',
+        source: 'CLAUDE.md Feedback (one response per normalized email/session)',
+      },
+      { label: 'Scored questions', value: '1–5 scale', source: 'Feature copy; per-department feedback forms' },
+      {
+        label: 'Small cohorts',
+        value: 'Under 5 responses flagged',
+        source: 'spec/05; CLAUDE.md Feedback (limited-evidence warning below five responses)',
+      },
+    ],
   },
   {
-    eyebrow: 'Evidence Engine',
+    id: 'evidence-engine',
+    label: 'Evidence Engine',
     title: 'Portfolio-ready proof, one click',
     body: 'Trainees get a clear attendance record, per-session reflections, certificates, and a verifiable ARCP portfolio pack. Teachers get an appraisal-ready dossier: sessions taught, hours, reach, and privacy-processed feedback themes without stored identity fields.',
     points: [
@@ -68,18 +108,34 @@ const FEATURES: Feature[] = [
       'Five-minute, document-led audio recaps add moderator-reviewed authoritative context',
       'Audio Recap catch-up turns an approved recap and 5/5 mastery into transparent attendance evidence',
     ],
+    spec: [
+      { label: 'Audio recap', value: 'About 5 min', source: 'spec/08 Audio Recap (~5-minute recap)' },
+      { label: 'Recall mastery', value: '5 of 5 correct', source: 'spec/08 Recall item 6' },
+      { label: 'Recall attempts', value: 'Up to 3', source: 'spec/08 Recall item 6' },
+    ],
   },
   {
-    eyebrow: 'Petrios Ops',
+    id: 'petrios-ops',
+    label: 'Petrios Ops',
     title: 'An AI assistant that never acts alone',
     body: 'The ops layer drafts what programme admin eats your week: speaker chases and post-session thank-yous. A moderator can also generate an editable one-page departmental newsletter from every teaching session and document in a completed week. Every outbound email waits for an explicit human approval — that invariant is enforced in code, not policy.',
     points: [
       'Revision-bound newsletter review and per-member retry-safe delivery',
       'Full audit trail of every AI run — prompt hashes, never prompt text; one kill switch',
     ],
+    spec: [
+      {
+        label: 'Outbound email',
+        value: 'Human approval first',
+        source: 'spec/06; lib/ops/executors.ts is the only Ops send path',
+      },
+      { label: 'AI audit', value: 'Prompt hashes, not text', source: 'lib/ops/gateway.ts' },
+      { label: 'Kill switch', value: <code>OPS_ENABLED=false</code>, source: 'lib/ops/flags.ts' },
+    ],
   },
   {
-    eyebrow: 'Governance',
+    id: 'governance',
+    label: 'Governance',
     title: 'Certificates, audit, and equity',
     body: 'PDF certificates require the current finalized attendance revision and are publicly verifiable, visibly legacy, or revoked after correction. The audit dashboard covers sessions, certificates, members — and an equity lens showing attendance rates by grade, so scheduling patterns can be reviewed early.',
     points: [
@@ -88,74 +144,70 @@ const FEATURES: Feature[] = [
       'Attendance equity by cohort with CSV export',
       'DTAC self-assessment and DPIA template included for NHS deployments',
     ],
+    spec: [
+      {
+        label: 'Documents',
+        value: 'PDF, DOCX, PPTX up to 25 MiB',
+        source: 'lib/session-documents.ts SESSION_DOCUMENT_MAX_BYTES',
+      },
+      {
+        label: 'Certificate coordinators',
+        value: 'Up to 4',
+        source: 'lib/certificates/coordinators.ts MAX_TEACHING_COORDINATORS; spec/05',
+      },
+      { label: 'Certificates', value: 'Publicly verifiable', source: 'spec/05; /verify/[certificateId]' },
+    ],
   },
 ]
 
+const SECTIONS = FEATURES.map(({ id, label }) => ({ id, label }))
+
 export default function FeaturesPage() {
   return (
-    <div className="min-h-screen flex flex-col">
-      <PublicNav current="features" />
-      <main className="flex-1 px-4 py-10 sm:py-14 bg-dotgrid">
-        <div className="mx-auto max-w-4xl">
-          <div className="mb-10 text-center">
-            <h1 className="font-mono text-3xl font-bold sm:text-4xl">
-              Everything a teaching programme runs on
-            </h1>
-            <p className="mx-auto mt-3 max-w-2xl font-mono text-sm text-gray-700 leading-relaxed">
-              Not a content LMS — an operating system for live teaching:
-              scheduling, attendance, feedback, evidence, and the admin in
-              between.
-            </p>
-          </div>
+    <HudShell current="features">
+      <PageHeader
+        title="Everything a teaching programme runs on"
+        lede="Not a content LMS — an operating system for live teaching: scheduling, attendance, feedback, evidence, and the admin in between."
+      />
 
-          <div className="space-y-6">
-            {FEATURES.map((feature) => (
-              <section
-                key={feature.title}
-                className="border border-black border-t-4 border-t-clay-600 bg-white p-6 shadow-[8px_8px_0_rgba(31,29,26,0.08)] sm:p-8"
-              >
-                <p className="font-mono text-xs uppercase tracking-wide text-clay-700">
-                  {feature.eyebrow}
-                </p>
-                <h2 className="mt-1 font-mono text-xl font-bold sm:text-2xl">{feature.title}</h2>
-                <p className="mt-3 font-mono text-sm text-gray-700 leading-relaxed">
-                  {feature.body}
-                </p>
-                <ul className="mt-4 space-y-1.5 font-mono text-sm text-gray-700">
-                  {feature.points.map((point) => (
-                    <li key={point}>
-                      <span className="text-clay-600">▸</span> {point}
-                    </li>
-                  ))}
-                </ul>
-              </section>
+      <OnThisPage variant="chips" sections={SECTIONS} />
+
+      {FEATURES.map((feature) => (
+        <Panel
+          key={feature.id}
+          id={feature.id}
+          aria-labelledby={`${feature.id}-title`}
+          footer={<SpecStrip items={feature.spec} />}
+        >
+          <PanelTitle id={`${feature.id}-title`} label={feature.label}>
+            {feature.title}
+          </PanelTitle>
+          <p className={clsx(s.body, 'mt-3')}>{feature.body}</p>
+          <ul className={clsx(s.bullets, 'mt-4')}>
+            {feature.points.map((point) => (
+              <li key={point}>{point}</li>
             ))}
-          </div>
+          </ul>
+        </Panel>
+      ))}
 
-          <div className="mt-10 border border-black bg-white p-6 text-center shadow-[8px_8px_0_rgba(31,29,26,0.08)] sm:p-8">
-            <h2 className="font-mono text-xl font-bold">See it with your own data</h2>
-            <p className="mx-auto mt-2 max-w-xl font-mono text-sm text-gray-700">
-              Join with your department code, or self-host the whole platform
-              on your own infrastructure in an afternoon.
-            </p>
-            <div className="mt-4 flex flex-wrap justify-center gap-3 font-mono text-sm">
-              <Link
-                href="/join/dept"
-                className="border border-black bg-black px-4 py-2 text-white hover:bg-gray-800"
-              >
-                Join with a code
-              </Link>
-              <Link
-                href="/open-source"
-                className="border border-black bg-white px-4 py-2 hover:bg-gray-50"
-              >
-                Self-host it →
-              </Link>
-            </div>
-          </div>
+      <Panel rule="none" aria-labelledby="features-cta-title" className={s.ctaPanel}>
+        <h2 id="features-cta-title" className={s.sectionTitle}>
+          See it with your own data
+        </h2>
+        <p className={s.sectionLede}>
+          Join with your department code, or self-host the whole platform on your own infrastructure in an
+          afternoon.
+        </p>
+        <div className={clsx(s.ctaRow, 'mt-5')}>
+          <HudLink href="/join/dept" variant="primary">
+            Join with a code
+          </HudLink>
+          <HudLink href="/open-source" variant="secondary">
+            Self-host it
+          </HudLink>
         </div>
-      </main>
-      <Footer />
-    </div>
+      </Panel>
+    </HudShell>
   )
 }

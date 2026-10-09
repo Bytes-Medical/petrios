@@ -2,9 +2,12 @@ import Link from 'next/link'
 import {
   CompliancePage,
   ComplianceSection,
+  FactList,
   MissingDisclosure,
 } from '@/components/CompliancePage'
+import { HudLink } from '@/components/hud/HudLink'
 import { getComplianceConfig } from '@/lib/compliance'
+import { DISPLAY_COOKIE } from '@/lib/public-display'
 
 export const metadata = {
   title: 'Privacy notice — Petrios',
@@ -13,6 +16,20 @@ export const metadata = {
 
 export const dynamic = 'force-dynamic'
 
+const SECTIONS = [
+  'Who is responsible',
+  'Information processed',
+  'Why information is used',
+  'Lawful basis',
+  'Feedback, documents, and AI processing',
+  'Cookies and tracking',
+  'Recipients and subprocessors',
+  'Hosting and international transfers',
+  'Retention and deletion',
+  'Your rights and complaints',
+  'Security and changes',
+] as const
+
 export default function PrivacyPolicyPage() {
   const config = getComplianceConfig()
 
@@ -20,29 +37,34 @@ export default function PrivacyPolicyPage() {
     <CompliancePage
       title="Privacy notice"
       description="This notice explains the platform’s current data handling. The organisation that operates this Petrios deployment must complete the deployment-specific fields and confirm its lawful basis, retention schedule, and local rights process."
+      sections={SECTIONS}
     >
-      <ComplianceSection title="Who is responsible">
+      <ComplianceSection title={SECTIONS[0]}>
         <p>
           Petrios is open-source teaching-management software. The organisation using a deployment
           normally decides why and how personal data is processed and is therefore the controller;
           its hosting and support providers may act as processors.
         </p>
-        <dl className="grid gap-2 border border-gray-300 bg-white p-4 sm:grid-cols-[12rem_1fr]">
-          <dt className="font-semibold">Controller</dt>
-          <dd>{config.controllerName || <MissingDisclosure>controller legal name</MissingDisclosure>}</dd>
-          <dt className="font-semibold">Postal address</dt>
-          <dd>{config.controllerAddress || <MissingDisclosure>controller address</MissingDisclosure>}</dd>
-          <dt className="font-semibold">Privacy contact</dt>
-          <dd>
-            {config.privacyEmail ? (
-              <a className="underline hover:text-clay-700" href={`mailto:${config.privacyEmail}`}>
-                {config.privacyEmail}
-              </a>
-            ) : (
-              <MissingDisclosure>privacy or DPO email</MissingDisclosure>
-            )}
-          </dd>
-        </dl>
+        <FactList
+          items={[
+            {
+              label: 'Controller',
+              value: config.controllerName || <MissingDisclosure>controller legal name</MissingDisclosure>,
+            },
+            {
+              label: 'Postal address',
+              value: config.controllerAddress || <MissingDisclosure>controller address</MissingDisclosure>,
+            },
+            {
+              label: 'Privacy contact',
+              value: config.privacyEmail ? (
+                <a href={`mailto:${config.privacyEmail}`}>{config.privacyEmail}</a>
+              ) : (
+                <MissingDisclosure>privacy or DPO email</MissingDisclosure>
+              ),
+            },
+          ]}
+        />
         <p>
           If these details are not declared, contact the organisation that invited you to Petrios
           before submitting a data-rights request. Repository maintainers do not automatically
@@ -50,8 +72,8 @@ export default function PrivacyPolicyPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Information processed">
-        <ul className="list-disc space-y-2 pl-5">
+      <ComplianceSection title={SECTIONS[1]}>
+        <ul>
           <li><strong>Identity and account:</strong> name, email, training grade, authentication identifiers, profile, and account status.</li>
           <li><strong>Membership and authority:</strong> organisation, department, role, invitations, and teaching assignments.</li>
           <li><strong>Teaching activity:</strong> sessions created, taught, joined, or attended; private session documents; attendance evidence, roster, corrections, and finalized status; teaching slots and claims.</li>
@@ -67,7 +89,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Why information is used">
+      <ComplianceSection title={SECTIONS[2]}>
         <p>
           Data is used to authenticate users; administer organisations and departments; schedule
           and deliver teaching; derive attendance from recorded evidence; manage teachers and
@@ -77,7 +99,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Lawful basis">
+      <ComplianceSection title={SECTIONS[3]}>
         <p>
           The deploying controller must identify and record a lawful basis for each purpose. It
           may rely on public task, contract, legal obligation, legitimate interests, or consent
@@ -87,7 +109,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Feedback, documents, and AI processing">
+      <ComplianceSection title={SECTIONS[4]}>
         <p>
           Raw feedback remains identifiable to authorised moderators. Teacher feedback-release
           emails omit respondent names, email addresses, and raw comments, but may contain aggregate
@@ -115,12 +137,9 @@ export default function PrivacyPolicyPage() {
           metadata rather than raw prompt text or search queries. The provider may retain request and
           search content under its own terms. OpenAI states that API data is not used to train its models by
           default, while standard abuse-monitoring logs may be retained for up to 30 days; see its{' '}
-          <a
-            className="underline hover:text-clay-700"
-            href="https://developers.openai.com/api/docs/guides/your-data"
-          >
+          <HudLink href="https://developers.openai.com/api/docs/guides/your-data">
             API data controls documentation
-          </a>.
+          </HudLink>.
         </p>
         <p>
           Audio speech synthesis is currently{' '}
@@ -144,17 +163,14 @@ export default function PrivacyPolicyPage() {
             provider&apos;s configured logging/history posture; zero-retention availability depends on
             the operator&apos;s plan and account configuration. The operator must reconcile retention,
             region, contract, and transfer settings with the{' '}
-            <a
-              className="underline hover:text-clay-700"
-              href="https://elevenlabs.io/docs/api-reference/text-to-speech/convert"
-            >
+            <HudLink href="https://elevenlabs.io/docs/api-reference/text-to-speech/convert">
               ElevenLabs API documentation
-            </a>.
+            </HudLink>.
           </p>
         ) : null}
       </ComplianceSection>
 
-      <ComplianceSection title="Cookies and tracking">
+      <ComplianceSection title={SECTIONS[5]}>
         <p>
           Petrios uses first-party storage needed to sign a user in and maintain the authenticated
           session. The application does not ship advertising, cross-site behavioural tracking, or
@@ -163,21 +179,27 @@ export default function PrivacyPolicyPage() {
           consent required before those technologies run.
         </p>
         <p>
-          See <Link className="underline hover:text-clay-700" href="/privacy/choices">Your privacy choices</Link> for the platform’s sale/share and Global Privacy Control posture.
+          If you choose Night or Match device in the Display control on the public site, a
+          first-party cookie named <code>{DISPLAY_COOKIE}</code> remembers that choice on this device
+          for up to 6 months. It holds only that setting, is not used to identify you, and is never
+          set unless you choose one of those options. Choosing Day deletes it.
+        </p>
+        <p>
+          See <Link href="/privacy/choices">Your privacy choices</Link> for the platform’s sale/share and Global Privacy Control posture.
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Recipients and subprocessors">
+      <ComplianceSection title={SECTIONS[6]}>
         <p>
           Authorised users see data according to their role. Infrastructure, email, meeting, and
           optional AI providers process only the data needed for their service. The current
           deployment-facing register is published on the{' '}
-          <Link className="underline hover:text-clay-700" href="/subprocessors">subprocessors and external services page</Link>.
+          <Link href="/subprocessors">subprocessors and external services page</Link>.
           Data may also be disclosed where legally required or necessary to protect people and the service.
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Hosting and international transfers">
+      <ComplianceSection title={SECTIONS[7]}>
         <p>
           Application host: <strong>{config.hostingProvider}</strong>. Data-hosting location:{' '}
           {config.hostingRegion || <MissingDisclosure>database and application region(s)</MissingDisclosure>}.
@@ -189,7 +211,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Retention and deletion">
+      <ComplianceSection title={SECTIONS[8]}>
         <p>
           Petrios does not currently enforce one universal automatic retention schedule. The
           controller must set and document periods for accounts, membership, attendance evidence,
@@ -202,7 +224,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Your rights and complaints">
+      <ComplianceSection title={SECTIONS[9]}>
         <p>
           Depending on the applicable law, people may have rights to information, access,
           correction, deletion, restriction, objection, portability, and review of certain automated
@@ -212,7 +234,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Security and changes">
+      <ComplianceSection title={SECTIONS[10]}>
         <p>
           Petrios uses role checks, organisation scoping, Supabase Row Level Security, server-only
           privileged access, signed capability links, security headers, and automated code,

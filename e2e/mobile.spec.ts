@@ -17,8 +17,8 @@ test('public nav collapses to a hamburger on mobile', async ({ page }) => {
   await expect(page.locator('nav').getByRole('link', { name: 'Features' })).toBeHidden()
   await expect(page.locator('nav').getByRole('link', { name: 'Sign in' })).toBeVisible()
 
-  // Opening the menu reveals the links (retry the tap: on a dev server the
-  // first click can land before React hydration attaches the handler).
+  // Opening the menu reveals the links. The button is disabled until hydrated,
+  // so the click waits for it; the retry only absorbs a slow dev compile.
   const featuresLink = page.locator('nav').getByRole('link', { name: 'Features' })
   await expect(async () => {
     await hamburger.click()
@@ -37,8 +37,17 @@ test('landing page has no horizontal overflow on mobile', async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(0)
 })
 
-test('news and features pages have no horizontal overflow on mobile', async ({ page }) => {
-  for (const path of ['/news', '/features', '/open-source', '/contributors']) {
+test('inner and legal pages have no horizontal overflow on mobile', async ({ page }) => {
+  for (const path of [
+    '/news',
+    '/features',
+    '/open-source',
+    '/contributors',
+    '/privacy',
+    '/privacy/choices',
+    '/subprocessors',
+    '/data-processing-agreement',
+  ]) {
     await page.goto(path)
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth

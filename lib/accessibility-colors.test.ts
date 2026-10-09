@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ACCESSIBLE_TEXT_COLORS as colors } from './accessibility-colors'
+import { ACCESSIBLE_TEXT_COLORS as colors, HUD_TEXT_PAIRS, HUD_UI_PAIRS } from './accessibility-colors'
 
 function channel(hex: string): number {
   const value = Number.parseInt(hex, 16) / 255
@@ -27,5 +27,23 @@ describe('normal text colour tokens', () => {
     ['white on clay600', colors.white, colors.clay600],
   ])('%s remains at WCAG AA 4.5:1 or better', (_name, foreground, background) => {
     expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+describe('public HUD colour tokens', () => {
+  it('covers both displays', () => {
+    for (const pairs of [HUD_TEXT_PAIRS, HUD_UI_PAIRS]) {
+      expect(pairs.some(([name]) => name.startsWith('Day: '))).toBe(true)
+      expect(pairs.some(([name]) => name.startsWith('Night: '))).toBe(true)
+      expect(pairs.every(([, fg, bg]) => /^#[0-9A-F]{6}$/i.test(fg) && /^#[0-9A-F]{6}$/i.test(bg))).toBe(true)
+    }
+  })
+
+  it.each(HUD_TEXT_PAIRS)('%s reaches WCAG AA 4.5:1 for text', (_name, foreground, background) => {
+    expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(HUD_UI_PAIRS)('%s reaches 3:1 for non-text UI', (_name, foreground, background) => {
+    expect(contrast(foreground, background)).toBeGreaterThanOrEqual(3)
   })
 })

@@ -186,19 +186,29 @@ appropriate HTTP responses.
 
 ### Public page families
 
-The signed-out homepage presents an organiser-focused product walkthrough. Its
-primary link targets the on-page `#how-it-works` section; department-code joining,
-features, self-hosting, and the shared navigation retain their existing routes.
-Signed-in visitors still redirect to `/dashboard`, and the individual entry is
-shown only when `INDIVIDUAL_SIGNUP_ENABLED` is true. Homepage typography and layout
-are scoped to the page rather than changing the shared public shell or app.
+The signed-out homepage, features, news, open-source, contributors, and the four
+legal pages render inside `HudShell`, the public Clinical HUD design system
+(spec 07 “Public site design system”), which the signed-in app never imports.
+The homepage keeps its established section order: the newest `/news` entry as an
+announcement; the hero (the calibration-strip `<h1>`, lede, principles, and the
+Organisation door linking to `/login/organisation` and `/join/dept`); “Built for
+everyone in the room”; “A different shape of system”; “How it works” (linking to
+`/features`); and the open-source panel. A self-hosted installation with
+`SELF_HOSTED_SETUP=true` and setup not yet completed redirects to `/setup`,
+signed-in visitors still redirect to `/dashboard`, and the individual door
+(“Start teaching”, `/login/individual`) is shown only when
+`INDIVIDUAL_SIGNUP_ENABLED` is true.
 
-The schedule, attendance, evidence, and newsletter previews use labelled,
-fictional local examples. They fetch no application data and perform no mutations.
-Feedback is depicted separately from attendance, certificates follow finalized
-governance and eligibility, and the newsletter is a draft awaiting human approval.
-The optional Three.js hero only enhances decorative surfaces; its complete HTML
-fallback, loading eligibility, and motion behavior are specified in spec 13.
+Public page content comes from code constants and deployment configuration, never
+from application data, and the pages perform no mutations (the homepage only
+checks the session, and installation state under self-host setup, to redirect).
+`/contributors` fetches the public GitHub contributor list on the server, cached
+for up to an hour. Readouts quote verified product facts with a cited source. The
+only data request a public page makes from the browser is the `/open-source`
+health check: same-origin, and only when the visitor presses the button.
+The hero's CSS-only motion, its reduced-motion and no-JavaScript behaviour, the
+public token contrast, and the `petrios-display` preference cookie are specified
+in spec 13.
 
 The public surface includes:
 

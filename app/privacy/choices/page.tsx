@@ -1,5 +1,6 @@
 import { headers } from 'next/headers'
 import { CompliancePage, ComplianceSection, MissingDisclosure } from '@/components/CompliancePage'
+import { StatusChip } from '@/components/hud/StatusChip'
 import { getComplianceConfig } from '@/lib/compliance'
 
 export const metadata = {
@@ -8,6 +9,12 @@ export const metadata = {
 }
 
 export const dynamic = 'force-dynamic'
+
+const SECTIONS = [
+  'Sale, sharing, and advertising',
+  'Global Privacy Control',
+  'Make a privacy request',
+] as const
 
 export default async function PrivacyChoicesPage() {
   const requestHeaders = await headers()
@@ -18,8 +25,9 @@ export default async function PrivacyChoicesPage() {
     <CompliancePage
       title="Your privacy choices"
       description="Do Not Sell or Share My Personal Information — Petrios does not sell personal information or share it for cross-context behavioural advertising."
+      sections={SECTIONS}
     >
-      <ComplianceSection title="Sale, sharing, and advertising">
+      <ComplianceSection title={SECTIONS[0]}>
         <p>
           The Petrios application does not include advertising technology, data-broker integrations,
           or cross-site behavioural tracking. It does not sell personal information or share it for
@@ -32,24 +40,22 @@ export default async function PrivacyChoicesPage() {
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Global Privacy Control">
+      <ComplianceSection title={SECTIONS[1]}>
         <p>
           Global Privacy Control status for this request:{' '}
-          <strong>{gpcEnabled ? 'detected (Sec-GPC: 1)' : 'not detected'}</strong>.
+          <StatusChip kind={gpcEnabled ? 'ok' : 'off'}>{gpcEnabled ? 'detected (Sec-GPC: 1)' : 'not detected'}</StatusChip>.
           Petrios recognises the signal. Its default no-sale/no-sharing posture already applies
           whether or not the signal is present, so receiving the signal does not require additional
           tracking or an identity cookie.
         </p>
       </ComplianceSection>
 
-      <ComplianceSection title="Make a privacy request">
+      <ComplianceSection title={SECTIONS[2]}>
         <p>
           Requests to know, access, correct, delete, restrict, or object must go to the controller
           for this deployment. Contact:{' '}
           {config.privacyEmail ? (
-            <a className="underline hover:text-clay-700" href={`mailto:${config.privacyEmail}`}>
-              {config.privacyEmail}
-            </a>
+            <a href={`mailto:${config.privacyEmail}`}>{config.privacyEmail}</a>
           ) : (
             <MissingDisclosure>privacy request email</MissingDisclosure>
           )}.

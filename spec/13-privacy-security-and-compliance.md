@@ -39,7 +39,9 @@ spec 11 for identity, and spec 12 for reports/exports.
    Those controls still do not make the source record anonymous.
 3. **No tracking banner without tracking.** The base application ships no
    advertising, behavioural tracking, or non-essential analytics storage, so it
-   does not manufacture a consent banner. An operator or feature that introduces
+   does not manufacture a consent banner. The public Display preference cookie
+   (`petrios-display`, see Cookies posture) is interface storage set only at the
+   visitor's request, not tracking. An operator or feature that introduces
    non-essential device storage/tracking must block it until required choice,
    update public disclosures, and update this spec.
 4. **No sale/share claim may drift.** The base application does not sell personal
@@ -56,7 +58,9 @@ spec 11 for identity, and spec 12 for reports/exports.
    only exceptions are the static files listed under Browser security baseline.
 7. **Core small-text colour tokens retain WCAG AA contrast.** `gray.500` and
    `clay.600` must remain at least 4.5:1 against both their actual normal-text
-   surfaces. Token compliance is not a full accessibility-conformance claim.
+   surfaces, and every public HUD text pair must stay at 4.5:1 or better in both
+   Day and Night (see Public HUD tokens). Token compliance is not a full
+   accessibility-conformance claim.
 8. **Compliance documents distinguish code from operator evidence.** Repository
    controls may be cited as product evidence, but penetration testing, DPIA
    approval, DPA execution, lawful-basis selection, retention operation,
@@ -123,6 +127,29 @@ linked from the shared footer:
 | `/privacy/choices` | Exact sale/share posture, operator-change caveat, request-scoped GPC detection, and controller request route |
 | `/subprocessors` | Runtime-aware service-category register plus operator reconciliation and change-notice obligations |
 | `/data-processing-agreement` | Article 28 contracting framework and processing schedule; explicitly not executed terms |
+
+The four pages render through `components/CompliancePage.tsx` inside the public
+`HudShell` (spec 07 "Public site design system"). The page header carries two
+readouts: "Deployment address", the host of the configured `appUrl` (not the
+request host; omitted when it cannot be parsed), and "Last updated", the
+`COMPLIANCE_LAST_UPDATED` constant in that file. The date is hard-coded, so a
+material notice change must move it in the same change. Each page passes an
+explicit `SECTIONS` constant to an "On this page" list whose `section-…`
+anchors come from `lib/compliance-sections.ts` and keep the pre-redesign format,
+so existing deep links still resolve. On /subprocessors the contents list stays
+above the body at every width (`contents="stacked"`), so the register gets the
+article's full width rather than the 68ch prose measure. The table keeps a 760px
+minimum and scrolls sideways inside a keyboard-focusable region named by its
+section heading wherever the column is narrower (viewports under 876px); from
+876px it is not cramped and does not scroll. Its configurable rows show status
+chips with an explicit tone (never matched from the status text).
+`MissingDisclosure` keeps the fixed “Not declared by this deployment: …” wording
+and adds an aria-hidden ▲ mark (an inline SVG one character cell wide, because
+the glyph is outside the self-hosted Plex Mono subset) and a dashed frame, so the
+gap is not shown by colour alone. Off-site links in legal prose carry the
+aria-hidden ↗ like every other off-site public link. `lib/compliance-pages.test.ts` guards the exact h1s, the
+contents-to-section mapping, the missing-disclosure wording, the GPC strings, and
+the cookie paragraph below.
 
 Page availability is not evidence that the contents are complete. A production
 release review must fetch all four pages from the deployed origin, verify the
@@ -191,8 +218,45 @@ risk even when no identity field is explicitly included.
 
 The base application uses Supabase first-party session storage for login/session
 continuity. It has no bundled marketing pixels, behavioural-advertising SDKs,
-third-party analytics, or data-broker integration. Public landing pages do not
-set a consent preference because there is no optional purpose to choose.
+third-party analytics, or data-broker integration. Public pages set no consent
+preference because there is no optional tracking purpose to choose.
+
+The only other device storage is the public Display preference. The footer of
+every public page (`HudShell`, spec 07) offers Day (the default), Night, and
+Match device. Choosing Night or Match device writes one first-party cookie from
+the browser:
+
+| Attribute | Value |
+|---|---|
+| Name | `petrios-display` (`DISPLAY_COOKIE`, `lib/public-display.ts`) |
+| Values | `night` or `auto`; anything else, or no cookie, is read as Day |
+| Lifetime | `Max-Age=15552000` (180 days, “up to 6 months” in the notice) |
+| Attributes | `Path=/; SameSite=Lax`, plus `Secure` when the page is served over HTTPS. Not `HttpOnly`, because the control writes it in the browser |
+| Set | Only when the visitor explicitly chooses Night or Match device; never on page view and never by the server |
+| Deleted | When the visitor chooses Day (the control writes an empty value with `Max-Age=0`) |
+| Read | By `HudShell` on the server, to render the right display with no inline script; by `DisplayControl` in the browser, to correct a stale cached render or a back/forward-cache restore |
+
+It holds only that setting, carries no identifier, and is never sent to another
+origin. The control's caption says “Night and Match device are remembered with a
+cookie.” at the point of choice, and `/privacy` “Cookies and tracking” discloses
+it in this fixed paragraph (guarded by `lib/compliance-pages.test.ts` and
+`e2e/public-pages.spec.ts`):
+
+> If you choose Night or Match device in the Display control on the public site,
+> a first-party cookie named petrios-display remembers that choice on this device
+> for up to 6 months. It holds only that setting, is not used to identify you, and
+> is never set unless you choose one of those options. Choosing Day deletes it.
+
+**PECR rationale.** This is user-interface customisation storage, set only at the
+visitor's explicit request to provide the presentation they asked for. That is the
+reading under which preference storage is treated as strictly necessary for a
+service the user has requested, so it is not placed behind a consent banner and
+invariant 3 still holds. Its persistence beyond the session is disclosed at the
+point of choice and in the notice. This is a product position, not legal advice:
+an operator with a stricter reading (for example, that persistent preference
+cookies need consent) should review it, and may shorten the lifetime or make the
+choice session-only. That is a change to `lib/public-display.ts`, and the notice
+paragraph, its tests, and this section must move with it.
 
 `/privacy/choices` includes “Do Not Sell or Share My Personal Information” in
 its description and states that no sale/share for cross-context behavioural
@@ -402,29 +466,151 @@ reader semantics, focus order/visibility, 200%/400% zoom and reflow, errors and
 status announcements, motion, timeouts, touch targets, PDFs, emails, charts,
 calendar, video, and content authored by users.
 
+### Public HUD tokens
+
+The public site (spec 07 "Public site design system") has its own token set,
+defined once in `components/hud/hud.module.css` and mirrored in
+`lib/hud-tokens.ts`. The tokens exist only under the `HudShell` root, so the
+signed-in app's palette above is unaffected. Day is the default; Night applies
+when the visitor chooses it, or chooses Match device on a dark-scheme system.
+
+| Token | Day | Night | Role |
+|---|---|---|---|
+| `bg` | `#F0EEE6` | `#1F1D1A` | Page ground (dot grid) |
+| `surface` | `#FAF9F5` | `#282520` | Panels, strip, nav, footer |
+| `sunk` | `#F5F4EF` | `#211E19` | Usual-way cells, table head, inline code |
+| `ink` | `#1F1D1A` | `#F0EEE6` | Primary text |
+| `ink-hover` | `#2E2A25` | `#CBC6BA` | Ink CTA hover fill |
+| `graphite` | `#5D5749` | `#CBC6BA` | Body and secondary text |
+| `caption` | `#6D6759` | `#A8A292` | 12px labels, dates, units |
+| `clay` | `#A95134` | `#DF9377` | Clay text |
+| `clay-strong` | `#A04A30` | `#E5AE97` | Link hover, missing disclosures |
+| `clay-fill` / hover | `#A95134` / `#A04A30` | `#D97757` / `#DF9377` | Top rules, trace, ■, primary CTA, info chip |
+| `on-clay` | `#FAF9F5` | `#1F1D1A` | Text on clay fill |
+| `clay-wash` | `#FBF3EF` | `#413028` | Attention chip, missing disclosure, ledger footer |
+| `edge` | `#1F1D1A` | `#A8A292` | 1px panel and control edges, CTA shadow |
+| `hairline` | `#CBC6BA` | `#4A453D` | Decorative row dividers only |
+| `focus` | `#A04A30` | `#DF9377` | 2px focus outline |
+| `term-bg` / `term-ink` / `term-prompt` / `term-dim` | `#1F1D1A` / `#F0EEE6` / `#DF9377` / `#A8A292` | `#141210` / `#F0EEE6` / `#DF9377` / `#A8A292` | Terminal block |
+
+Text pairs (4.5:1 required; WCAG 2.x formula):
+
+| Pair | Day | Night |
+|---|---:|---:|
+| ink on bg / surface / sunk / wash | 14.47 / 15.96 / 15.27 / 15.35 | 14.47 / 13.14 / 14.30 / 10.77 |
+| graphite on bg / surface / sunk / wash | 6.18 / 6.82 / 6.52 / 6.55 | 9.87 / 8.96 / 9.75 / 7.34 |
+| caption on bg / surface / sunk | 4.84 / 5.34 / 5.11 | 6.60 / 6.00 / 6.52 |
+| clay on surface / sunk / wash | 5.09 / 4.87 / 4.90 | 6.23 / 6.78 / 5.11 |
+| clay on bg (14px and up only) | 4.62 | 6.87 |
+| clay-strong on surface / wash / bg | 5.67 / 5.45 / 5.14 | 7.87 / 6.46 / 8.67 |
+| on-clay on clay-fill / clay-fill hover | 5.09 / 5.67 | 5.39 / 6.87 |
+| surface on ink / ink-hover (ink CTA, checked Display segment) | 15.96 / 13.52 | 13.14 / 8.96 |
+| term-ink / term-prompt / term-dim on term-bg | 14.47 / 6.87 / 6.60 | 16.09 / 7.63 / 7.34 |
+| ink on ECG 5 mm line / line crossing (hero word and tagline) | 12.10 / 10.89 | 10.58 / 9.58 |
+
+Non-text pairs (3:1 required):
+
+| Pair | Day | Night |
+|---|---:|---:|
+| edge on bg / surface | 14.47 / 15.96 | 6.60 / 6.00 |
+| focus on bg / surface | 5.14 / 5.67 | 6.87 / 6.23 |
+| clay-fill mark on surface / bg | 5.09 / 4.62 | 4.89 / 5.39 |
+| clay-fill trace over an ECG 5 mm line | 3.86 | 3.94 |
+| caption dashed edge on surface / sunk | 5.34 / 5.11 | 6.00 / 6.52 |
+| clay border on wash | 4.90 | 5.11 |
+
+Caption text directly on the ECG grid is forbidden: it measures 4.05 on a 5 mm
+line and 3.64 on a crossing in Day (Night 4.83 / 4.37). That is why the strip's
+"50 mm/s  10 mm/mV" caption sits on a surface backing. In Night the surface and
+the ground differ by only about 1.1:1, so panels are always separated by their
+6:1 edge, never by fill alone; panel borders must not be removed in Night.
+
+Placement rules:
+
+1. The smallest text is 12px, in caption colour or stronger. Only the
+   aria-hidden status-chip glyphs (10px) are smaller; the chip's words carry the
+   state.
+2. Clay text at 13px or smaller sits only on surface, sunk, or wash, never on the
+   page ground.
+3. No text under 18px sits directly on the ECG grid, the nav ruler, or the dot
+   grid. Small text there gets a backing (`.backed` in the page colour, or the
+   surface).
+4. Decorative marks never carry meaning: dots about 1.3:1, ruler ticks 1.88:1
+   (Night 2.51:1), hairlines 1.47–1.77:1, ECG grid lines 1.1–1.32:1. A hairline
+   is never the only boundary of a control.
+5. State is never shown by colour alone: chips pair a glyph with words, the
+   comparison cells use dashed versus solid edges plus labels, and the current nav
+   item has a bar plus `aria-current`.
+
+Enforcement: `lib/hud-tokens.test.ts` fails if the CSS token blocks and
+`lib/hud-tokens.ts` drift apart (and if the Match device block differs from
+Night); `lib/accessibility-colors.test.ts` asserts every `HUD_TEXT_PAIRS` entry
+at 4.5:1 and every `HUD_UI_PAIRS` entry at 3:1; and `e2e/contrast.spec.ts`
+measures every rendered text node on the nine public routes, in Day and Night,
+against the background it is actually composited on (including the ECG grid's
+worst pixel, where both 5 mm and both 1 mm lines cross), and enforces rules 1
+and 3.
+
 ### Homepage motion and progressive enhancement
 
-The homepage's headline, content, links, and illustrative product previews are
-server-rendered. The hero diagram retains readable HTML labels and a static
-HTML/CSS/SVG presentation when JavaScript or GPU rendering is unavailable. The
-decorative canvas is hidden from assistive technology; the figure describes the
-workflow, and the substantive walkthrough remains ordinary document content.
+The landing `<h1>` is the calibration strip (`components/hud/CalibrationStrip.tsx`):
+a 1 mV calibration pulse and one normal P-QRS-T complex drawn to scale on ECG
+paper at 50 mm/s and 10 mm/mV, with the PETRIOS wordmark on the trace and the
+tagline typed beneath it. The contract:
 
-Three.js is imported only after the hero becomes visible and an idle callback
-(or short timer fallback), with a viewport of at least 1,024 CSS pixels, a fine
-pointer, `prefers-reduced-motion: no-preference`, no reported data-saving
-preference, and a visible document. Other visitors do not request the scene
-module. Eligibility changes tear down the scene and restore the static diagram.
-An import/rendering initialization failure or WebGL context loss also leaves the
-static diagram usable; it does not display an error or block navigation.
+- **Server-rendered and CSS-only.** The wordmark and every tagline character are
+  in the server HTML. The h1's accessible name is exactly “Petrios: The operating
+  system for clinical teaching”: an sr-only colon makes `textContent` read that
+  way, and the h1 also carries the string as `aria-label`, because some
+  accessible-name algorithms pad the flex trace pieces with spaces. No script runs
+  for the motion: no inline script, no canvas, no WebGL, no module loaded on
+  demand, and no new CSP origin. Without JavaScript the page is complete; only
+  the Display control and the mobile menu button are inert (both disabled until
+  hydrated), and the footer links every page the menu does.
+- **Typewriter.** `components/Typewriter.tsx` is a server component.
+  `chunkForTyping` (`lib/typewriter.ts`) splits the text at spaces into the fewest,
+  most even chunks of at most 21 characters (what fits 18px Plex Mono in the 320px
+  hero). Each chunk is a nowrap inline block of real text, revealed one monospace
+  advance per step with `clip-path: inset()` on `steps(n)`. `clip-path` never
+  removes text from the accessibility tree, find-in-page, selection, or
+  `textContent`. Layout is final from the first paint: chunks wrap whole on phones
+  (two lines at 390px), and the h1 box never changes while typing. A caret rides
+  the reveal edge; the block cursor then snaps on, blinks four times (1s each,
+  inside the WCAG 2.2.2 five-second limit), and stays solid. A word longer than 21
+  characters makes the text render statically.
+- **One orchestrated moment.** About 1.5s of linear, left-to-right reveals at
+  constant paper speed: lead-in, pulse outline, ■ fill, complex, lead-out, then
+  the write-head (the site's only glow apart from the health check's "up" mark).
+  The tagline types from 350ms at 27ms per
+  character. No other page animates on load; there are no scroll reveals, loops,
+  parallax, or sweeps. Client navigation back to `/` replays the strip once; the
+  content stays readable throughout.
+- **Reduced motion.** Every keyframe is declared under
+  `prefers-reduced-motion: no-preference`, and the base styles are the final
+  state. A `reduce` block also sets `animation: none` on every HUD element, so
+  reduced motion shows the full trace, lit write-head, full tagline, and solid
+  cursor at once.
+- **Forced colours and print.** The grids, nav ruler, glows, and dot grid are
+  removed. The trace, ■, cursor, and panel top rules use `CanvasText`. Print also
+  drops the Display control, the health-check button, and shadows.
+- **Geometry.** 1 mm is 4px, or 3px below a 480px hero container (a container
+  query), where a QRS-only complex replaces the full complex. Only the trace
+  clips (`overflow-x: clip` with a 4 mm clip margin); the strip itself does not,
+  so the tagline can never be cut off, even under WCAG 1.4.12 text-spacing
+  overrides at 320px. The aria-hidden caption sits on a surface backing.
+- **Truth rule.** ECG vocabulary lives only in this strip and the nav ruler's
+  time marks: no heartbeat icons, “HR”, “Lead II”, “bpm”, or invented vital signs
+  anywhere on the site. The caption describes the drawing's scale only. The
+  50 mm/s choice awaits UK clinician sign-off: at 25 mm/s the pulse would not be
+  square and the drawn intervals would read as abnormal, so the drawing and the
+  caption must change together if it is ever revised.
 
-The scene caps device pixel ratio at 1.5, uses a 600ms two-degree entrance tilt
-and at most three-degree pointer tilt, and renders only until motion settles.
-Leaving the viewport or hiding the document disposes the scene. Unmounting cancels pending
-work and releases listeners, observers, geometry, materials, and the renderer.
-The reserved desktop square prevents the enhancement from moving content;
-mobile cards reflow into a two-column static grid with readable labels.
-No external model, browser service, analytics, or new CSP origin is introduced.
+`e2e/landing.spec.ts` covers the accessible name, the no-JavaScript
+`textContent` and inert controls, chunking at 700ms with no layout shift, reduced
+motion, keyboard focus, overflow from 320px to 1440px, the tagline under 1.4.12
+text spacing at 320px, decorative markers kept out of the accessibility tree,
+and the absence of any canvas;
+`lib/typewriter.test.ts` covers the chunking.
 
 ## Compliance evidence pack
 
@@ -449,7 +635,10 @@ Changes to this surface require, at minimum:
 - response assertions for HSTS, CSP/default/frame ancestors, nosniff,
   anti-framing, referrer and permissions headers;
 - a search for stale anonymous-feedback claims;
-- contrast calculation for modified text/background tokens;
+- contrast calculation for modified text/background tokens, and for the public
+  site the `e2e/contrast.spec.ts` probe in Day and Night;
+- the Display cookie and GPC disclosures (`e2e/public-pages.spec.ts`) when
+  `/privacy`, `/privacy/choices`, or `lib/public-display.ts` changes;
 - production fetch of public pages and headers after deployment;
 - Jitsi join/camera/microphone regression where header source or permissions
   policy changes; and
@@ -472,6 +661,8 @@ deployed environment.
 - Is feedback language precise for storage, model input, output, teacher release,
   public display, and audit separately?
 - Is a consent/choice control functional before processing rather than cosmetic?
+- Does new device storage (cookie, localStorage, IndexedDB) on any surface fit the
+  Cookies posture, and is it disclosed on `/privacy` in the same change?
 - Are controller/processor/legal conclusions left to the parties with evidence?
 - Do colour and interaction changes retain automated and manual accessibility
   evidence?

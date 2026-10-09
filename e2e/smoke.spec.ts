@@ -71,7 +71,9 @@ test('responses carry the browser security baseline', async ({ request }) => {
   const response = await request.get('/')
   const headers = response.headers()
 
-  expect(headers['strict-transport-security']).toContain('max-age=31536000')
+  // HSTS is sent only for an https APP_URL (lib/security-headers.test.ts covers
+  // that); this server runs on plain http, where HSTS must be absent.
+  expect(headers['strict-transport-security']).toBeUndefined()
   expect(headers['content-security-policy']).toContain("default-src 'self'")
   expect(headers['content-security-policy']).toContain("frame-ancestors 'none'")
   expect(headers['x-content-type-options']).toBe('nosniff')

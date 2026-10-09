@@ -60,3 +60,13 @@ export const NEWS: NewsEntry[] = [
     link: { label: 'View on GitHub', href: 'https://github.com/Bytes-Medical/petrios' },
   },
 ]
+
+/** en-GB long date for an ISO day, e.g. '2026-07-12' -> '12 July 2026'. */
+export function formatNewsDate(iso: string): string {
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}

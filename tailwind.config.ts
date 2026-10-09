@@ -42,6 +42,24 @@ const config: Config = {
           800: '#7E3A26',
           900: '#5F2C1E',
         },
+        // Public-site Clinical HUD tokens (components/hud). Colour names only,
+        // and undefined outside a HudShell subtree, so never use them in app routes.
+        hud: {
+          bg: 'var(--hud-bg)',
+          surface: 'var(--hud-surface)',
+          sunk: 'var(--hud-sunk)',
+          ink: 'var(--hud-ink)',
+          graphite: 'var(--hud-graphite)',
+          caption: 'var(--hud-caption)',
+          clay: 'var(--hud-clay)',
+          'clay-strong': 'var(--hud-clay-strong)',
+          'clay-fill': 'var(--hud-clay-fill)',
+          'on-clay': 'var(--hud-on-clay)',
+          wash: 'var(--hud-clay-wash)',
+          edge: 'var(--hud-edge)',
+          hairline: 'var(--hud-hairline)',
+          focus: 'var(--hud-focus)',
+        },
       },
       fontFamily: {
         mono: [

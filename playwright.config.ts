@@ -25,6 +25,15 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'e2e-placeholder',
       SUPABASE_SERVICE_ROLE_KEY: 'e2e-placeholder',
       NEXT_PUBLIC_APP_URL: 'http://localhost:3100',
+      // lib/runtime-config.ts reads these before the NEXT_PUBLIC_* aliases, and
+      // process env wins over .env.local, so pinning them keeps e2e off any real project.
+      SUPABASE_URL: 'https://placeholder.supabase.co',
+      SUPABASE_ANON_KEY: 'e2e-placeholder',
+      APP_URL: 'http://localhost:3100',
+      SUPABASE_INTERNAL_URL: 'https://placeholder.supabase.co',
+      AUTH_INTERNAL_URL: 'https://placeholder.supabase.co/auth/v1',
+      STORAGE_INTERNAL_URL: 'https://placeholder.supabase.co/storage/v1',
+      OUTBOUND_EMAIL_ENABLED: 'false',
     },
   },
 })

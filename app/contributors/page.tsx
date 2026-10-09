@@ -1,6 +1,7 @@
-import Link from 'next/link'
-import { Footer } from '@/components/Footer'
-import { PublicNav } from '@/components/PublicNav'
+import { HudShell } from '@/components/hud/HudShell'
+import { HudLink } from '@/components/hud/HudLink'
+import { Ledger } from '@/components/hud/Ledger'
+import { PageHeader } from '@/components/hud/PageHeader'
 import { CURATED_CONTRIBUTORS, GITHUB_REPO } from '@/lib/contributors-data'
 
 export const revalidate = 3600 // refresh the GitHub contributor graph hourly
@@ -65,112 +66,40 @@ export default async function ContributorsPage() {
       url: contributor.html_url,
     })),
   ]
+  const githubListAvailable = githubContributors.length > 0
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <PublicNav current="contributors" />
-      <main className="flex-1 px-4 py-10 sm:py-14 bg-dotgrid">
-        <div className="mx-auto max-w-3xl">
-          <div className="mb-8 text-center sm:mb-10">
-            <h1 className="font-mono text-3xl font-bold sm:text-4xl">Contributors</h1>
-            <p className="mx-auto mt-3 max-w-2xl font-mono text-sm text-gray-700">
-              Built with care, in the open, by people who believe clinical
-              teaching deserves thoughtful tools.
-            </p>
-          </div>
+    <HudShell current="contributors" width="prose">
+      <PageHeader
+        title="Contributors"
+        lede="Built with care, in the open, by people who believe clinical teaching deserves thoughtful tools."
+      />
 
-          <div className="overflow-hidden border border-black border-t-4 border-t-clay-600 bg-white shadow-[8px_8px_0_rgba(31,29,26,0.08)]">
-            <div className="border-b border-black px-5 py-4 sm:px-7">
-              <p className="font-mono text-xs uppercase tracking-[0.18em] text-clay-700">
-                The people behind Petrios
-              </p>
-            </div>
-
-            <ol className="divide-y divide-gray-200">
-              {people.map((person, index) => {
-                const content = (
-                  <>
-                    <span className="w-8 shrink-0 font-mono text-xs text-clay-700">
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-mono text-sm font-bold text-black">
-                        {person.name}
-                      </span>
-                      <span className="mt-1 block font-mono text-xs text-gray-600">
-                        {person.detail}
-                      </span>
-                    </span>
-                    {person.url ? (
-                      <span aria-hidden="true" className="shrink-0 font-mono text-sm text-gray-400">
-                        ↗
-                      </span>
-                    ) : null}
-                  </>
-                )
-
-                return (
-                  <li key={`${person.name}-${person.detail}`}>
-                    {person.url ? (
-                      <a
-                        href={person.url}
-                        className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-clay-50 sm:px-7 sm:py-5"
-                      >
-                        {content}
-                      </a>
-                    ) : (
-                      <div className="flex items-center gap-3 px-5 py-4 sm:px-7 sm:py-5">
-                        {content}
-                      </div>
-                    )}
-                  </li>
-                )
-              })}
-            </ol>
-
-            <div className="border-t border-black bg-clay-50 px-5 py-4 font-mono text-xs leading-relaxed text-gray-700 sm:px-7">
-              {githubContributors.length === 0 ? (
-                <>
-                  The GitHub list is unavailable just now. View the{' '}
-                  <a
-                    href={`https://github.com/${GITHUB_REPO}/graphs/contributors`}
-                    className="underline hover:text-clay-700"
-                  >
-                    contributor graph
-                  </a>
-                  .
-                </>
-              ) : (
-                <>
-                  Want to add your name? Read{' '}
-                  <a
-                    href={`https://github.com/${GITHUB_REPO}/blob/main/CONTRIBUTING.md`}
-                    className="underline hover:text-clay-700"
-                  >
-                    CONTRIBUTING.md
-                  </a>{' '}
-                  or find a place to help on the{' '}
-                  <a
-                    href={`https://github.com/${GITHUB_REPO}/blob/main/ROADMAP.md`}
-                    className="underline hover:text-clay-700"
-                  >
-                    roadmap
-                  </a>
-                  .
-                </>
-              )}
-            </div>
-
-          </div>
-
-          <div className="mt-8 text-center">
-            <Link href="/" className="font-mono text-sm underline hover:text-clay-700">
-              ← Back to Petrios
-            </Link>
-          </div>
-        </div>
-      </main>
-      <Footer />
-    </div>
+      <Ledger
+        title="The people behind Petrios"
+        people={people}
+        githubList={githubListAvailable ? 'cached' : 'unavailable'}
+        footer={
+          githubListAvailable ? (
+            <>
+              Want to add your name? Read{' '}
+              <HudLink href={`https://github.com/${GITHUB_REPO}/blob/main/CONTRIBUTING.md`}>
+                CONTRIBUTING.md
+              </HudLink>{' '}
+              or find a place to help on the{' '}
+              <HudLink href={`https://github.com/${GITHUB_REPO}/blob/main/ROADMAP.md`}>roadmap</HudLink>.
+            </>
+          ) : (
+            <>
+              The GitHub list is unavailable just now. View the{' '}
+              <HudLink href={`https://github.com/${GITHUB_REPO}/graphs/contributors`}>
+                contributor graph
+              </HudLink>
+              .
+            </>
+          )
+        }
+      />
+    </HudShell>
   )
 }
