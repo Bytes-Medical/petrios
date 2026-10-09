@@ -91,7 +91,9 @@ export async function awardRecallCompletion(
         coordinator_names: created.coordinator_names,
         recognition_basis: created.recognition_basis ?? 'AUDIO_RECAP_CATCH_UP',
       }
-      void emitWebhook(completion.org_id, 'certificate.issued', {
+      // Awaited, not deferred: the recall-awards cron must finish its work
+      // before it responds, and emitWebhook never rejects.
+      await emitWebhook(completion.org_id, 'certificate.issued', {
         session_id: completion.session_id,
         certificate_code: certificateCode,
         role: 'ATTENDEE',

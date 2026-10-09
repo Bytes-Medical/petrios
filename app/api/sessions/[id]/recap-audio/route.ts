@@ -33,7 +33,7 @@ export async function GET(
   }
 
   const [recap, currentSources] = await Promise.all([
-    audioRecapsDb.findRecapAudio(params.id),
+    audioRecapsDb.findRecapForSession(params.id),
     getCurrentRecapSourceSnapshot(params.id),
   ])
   if (!recap || !recapSourcesAreCurrent(recap.source_digest, currentSources)) {
@@ -47,12 +47,19 @@ export async function GET(
     }
   }
 
-  return new NextResponse(new Uint8Array(recap.audio), {
-    status: 200,
-    headers: {
-      'Content-Type': 'audio/mpeg',
-      'Content-Length': String(recap.audio.byteLength),
-      'Cache-Control': 'private, max-age=3600',
-    },
+  const audio = await audioRecapsDb.openRecapAudioStream({
+    sessionId: params.id,
+    status: recap.status,
+    audioRevision: recap.audio_revision,
   })
+  if (!audio) {
+    return new NextResponse('Not found', { status: 404 })
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'audio/mpeg',
+    'Cache-Control': 'private, max-age=3600',
+  }
+  if (recap.audio_bytes !== null) headers['Content-Length'] = String(recap.audio_bytes)
+  return new NextResponse(audio, { status: 200, headers })
 }

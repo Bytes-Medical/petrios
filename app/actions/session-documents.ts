@@ -10,11 +10,11 @@ import {
 } from '@/lib/auth'
 import {
   canActorDeleteSessionDocument,
-  documentSha256,
+  documentExtensionForMime,
   safeDocumentFilename,
-  validateDocumentBytes,
   validateDocumentMetadata,
 } from '@/lib/session-documents'
+import { inspectDocumentStream } from '@/lib/session-documents-inspection'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as documentsDb from '@/lib/db/session-documents'
 import { DbNotFoundError } from '@/lib/db'
@@ -52,22 +52,28 @@ export async function getSessionDocuments(sessionId: string, includeArchived = f
   return documentsDb.listSessionDocumentsAsSystem(sessionId, includeArchived)
 }
 
-export async function uploadSessionDocument(sessionId: string, formData: FormData) {
-  const { userId, orgId, session } = await requireDocumentUploadAccess(sessionId)
-  const candidate = formData.get('file')
-  if (!(candidate instanceof File)) throw new Error('Choose a document to upload')
+function failureReason(error: unknown): string {
+  return error instanceof Error ? error.message : 'Document validation or storage failed'
+}
 
+// Upload bytes go browser -> Storage directly; the app server never buffers them (spec/04).
+export async function prepareSessionDocumentUpload(
+  sessionId: string,
+  file: { filename: string; mimeType: string; byteSize: number }
+): Promise<{ documentId: string; uploadUrl: string }> {
+  const { userId, orgId, session } = await requireDocumentUploadAccess(sessionId)
+  if (typeof file?.filename !== 'string' || typeof file.mimeType !== 'string') {
+    throw new Error('Choose a document to upload')
+  }
   const metadata = validateDocumentMetadata({
-    filename: candidate.name,
-    mimeType: candidate.type,
-    byteSize: candidate.size,
+    filename: file.filename,
+    mimeType: file.mimeType,
+    byteSize: file.byteSize,
   })
-  const bytes = new Uint8Array(await candidate.arrayBuffer())
-  validateDocumentBytes(bytes, metadata.extension)
 
   const id = randomUUID()
   const storagePath = `${orgId}/${sessionId}/${id}.${metadata.extension}`
-  const row = await documentsDb.insertUploadingDocument({
+  await documentsDb.insertUploadingDocument({
     id,
     orgId,
     departmentId: session.department_id,
@@ -76,34 +82,74 @@ export async function uploadSessionDocument(sessionId: string, formData: FormDat
     filename: metadata.filename,
     displayName: safeDocumentFilename(metadata.filename),
     mimeType: metadata.mimeType,
-    byteSize: bytes.byteLength,
+    byteSize: file.byteSize,
     uploadedBy: userId,
   })
 
   try {
-    await documentsDb.uploadDocumentObject({ storagePath, bytes, mimeType: metadata.mimeType })
-    await documentsDb.markDocumentAvailable({ id, sha256: documentSha256(bytes) })
+    return { documentId: id, uploadUrl: await documentsDb.createDocumentUploadUrl(storagePath) }
+  } catch (error) {
+    await documentsDb
+      .rejectUploadingDocument({ id, storagePath, reason: failureReason(error) })
+      .catch(() => {})
+    throw error
+  }
+}
+
+export async function finalizeSessionDocumentUpload(sessionId: string, documentId: string): Promise<void> {
+  const { userId, orgId, session } = await requireDocumentUploadAccess(sessionId)
+  const document = await documentsDb.findUploadingDocumentAsSystem({
+    id: documentId,
+    orgId,
+    sessionId,
+    uploadedBy: userId,
+  })
+  if (!document) throw new DbNotFoundError('Document not found')
+
+  let available = false
+  try {
+    const object = await documentsDb.fetchDocumentObject(document.storage_path)
+    const { sha256 } = await inspectDocumentStream(object.body, {
+      extension: documentExtensionForMime(document.mime_type),
+      expectedSize: document.byte_size,
+    })
+    await documentsDb.markDocumentAvailable({ id: document.id, sha256 })
+    available = true
     await documentsDb.recordDocumentActivityAsSystem({
       orgId,
       departmentId: session.department_id,
       sessionId,
       actorUserId: userId,
       eventType: 'SESSION_DOCUMENT_UPLOADED',
-      documentId: id,
-      filename: metadata.filename,
+      documentId: document.id,
+      filename: document.original_filename,
     })
   } catch (error) {
-    await documentsDb.rejectDocument({
-      id,
-      storagePath,
-      reason: error instanceof Error ? error.message : 'Document validation or storage failed',
-    }).catch(() => {})
+    const reject = available ? documentsDb.rejectDocument : documentsDb.rejectUploadingDocument
+    await reject({ id: document.id, storagePath: document.storage_path, reason: failureReason(error) }).catch(
+      () => {}
+    )
     throw error
   }
 
   revalidatePath(`/sessions/${sessionId}`)
   revalidatePath(`/sessions/${sessionId}/manage`)
-  return { ...row, status: 'AVAILABLE' as const }
+}
+
+export async function cancelSessionDocumentUpload(sessionId: string, documentId: string): Promise<void> {
+  const { userId, orgId } = await requireDocumentUploadAccess(sessionId)
+  const document = await documentsDb.findUploadingDocumentAsSystem({
+    id: documentId,
+    orgId,
+    sessionId,
+    uploadedBy: userId,
+  })
+  if (!document) return
+  await documentsDb.rejectUploadingDocument({
+    id: document.id,
+    storagePath: document.storage_path,
+    reason: 'The browser upload did not complete',
+  })
 }
 
 export async function archiveSessionDocument(sessionId: string, documentId: string) {

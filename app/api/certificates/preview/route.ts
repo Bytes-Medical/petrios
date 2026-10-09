@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
+import { getAppUrlFromHeaders } from '@/lib/app-url'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
 import * as departmentsDb from '@/lib/db/departments'
 import * as organizationsDb from '@/lib/db/organizations'
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
       organizationsDb.findOrganizationName(orgId),
     ])
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin
+    const baseUrl = await getAppUrlFromHeaders()
 
     const pdfBuffer = await generateCertificatePDF({
       orgName: orgName || 'Organization',

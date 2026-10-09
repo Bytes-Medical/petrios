@@ -18,10 +18,22 @@ export function isAuthorizedCronRequest(
   return !!match && match[1] === secret
 }
 
-/** Returns the 401 to send, or null when the request is authorized. */
+/**
+ * True only for an explicit "false". The staging Worker sets it because it
+ * shares the production database while Render still runs the jobs; Render
+ * leaves it unset.
+ */
+export function cronDisabledByConfig(value: string | undefined): boolean {
+  return value === 'false'
+}
+
+/** Returns the 401/503 to send, or null when the request may run the job. */
 export function unauthorizedCronResponse(request: NextRequest): NextResponse | null {
-  if (isAuthorizedCronRequest(request.headers.get('authorization'), process.env.CRON_SECRET)) {
-    return null
+  if (!isAuthorizedCronRequest(request.headers.get('authorization'), process.env.CRON_SECRET)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (cronDisabledByConfig(process.env.CRON_ENABLED)) {
+    return NextResponse.json({ error: 'Cron jobs are disabled on this deployment' }, { status: 503 })
+  }
+  return null
 }

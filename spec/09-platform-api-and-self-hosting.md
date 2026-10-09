@@ -7,7 +7,8 @@ This document specifies four external boundaries:
 1. the organization-scoped bearer REST API at `/api/v1`;
 2. signed outbound webhooks;
 3. user-initiated portable teaching-record federation; and
-4. deployment/provider configuration for a self-hosted instance.
+4. deployment/provider configuration for a self-hosted instance, the Render
+   Docker image, and the Cloudflare Workers staging build.
 
 All `/api/*` paths bypass the browser-auth proxy. Every handler owns its auth
 contract. The supported API schema is also published at `public/openapi.json` and
@@ -31,7 +32,9 @@ Creation:
 Authentication requires an exact case-insensitive Bearer pattern for
 `pt_<48 hex>`, hashes the presented token, resolves a nonrevoked row, checks the
 route scope, and derives `orgId` only from that row. `last_used_at` is updated
-best-effort and never fails the API request.
+best-effort after the response (registered with `after()`), so it never fails
+or delays the API request. Bearer authentication is therefore callable only
+from route handlers.
 
 Revocation writes `revoked_at`; there is no un-revoke, expiry, IP restriction,
 per-token rate limit, or key rotation endpoint. A replacement is a new token.
@@ -118,9 +121,9 @@ Returns the serialized row only when `sessions.org_id` matches the token.
 
 Loads the org-scoped session. Already published returns the existing row without
 another event. Otherwise it blocks when session end is at/before now, writes
-`PUBLISHED`, and fire-and-forget emits `session.published`. It does not require
-the previous status to be `DRAFT`, so a future, nonended `CANCELLED` session can
-be published through this route.
+`PUBLISHED`, and emits `session.published` after the response via `after()`. It
+does not require the previous status to be `DRAFT`, so a future, nonended
+`CANCELLED` session can be published through this route.
 
 ### `GET /api/v1/sessions/:id/attendance` — `read:attendance`
 
@@ -203,7 +206,7 @@ consumer idempotency must derive from payload identifiers plus event semantics.
 | Event | Emitted by current code | Data |
 |---|---|---|
 | `session.published` | Interactive nonpublished→published transition and bearer API publish | session id/title, department id, start/end |
-| `attendance.computed` | Post-session report job only | session id |
+| `attendance.computed` | Post-session report job only, once per pass over an unwatermarked finalized session (repeats when delivery spans runs or retries) | session id |
 | `certificate.issued` | Post-session report job and Audio Recap catch-up award worker, for a newly inserted attendee cert | session id, code, `ATTENDEE` role; catch-up producer also includes recognition basis |
 | `slot.claimed` | Successful slot orchestration | slot id, generated session id, department id, start |
 
@@ -213,15 +216,23 @@ currently emit their nominal events. Consumers must not assume
 
 ## Delivery semantics and SSRF boundary
 
-`emitWebhook` is deliberately fire-and-forget at call sites and catches all
-top-level failures. It loads active subscribed endpoints, serializes one body,
-and uses `Promise.allSettled` for endpoints. Each request has a five-second
-timeout.
+`emitWebhook` never rejects: it catches all top-level failures. Request paths
+(the session publish server action, the bearer publish route, and slot claim)
+register it with `after(() => emitWebhook(...))` from `next/server`, so it runs
+after the response without slowing it; on Workers OpenNext maps `after()` to
+`waitUntil`, and on the Node server it runs in-process. The post-session job and
+the catch-up award worker await it, so a job finishes its work before
+responding. No call site leaves it as a floating promise, because Workers may
+cancel unregistered work after the response. It loads active subscribed
+endpoints, serializes one body, and uses `Promise.allSettled` for endpoints.
+Each request has a five-second timeout.
 
 There is exactly one attempt. A delivery row stores endpoint, event, inner data
 payload, `ok`/`failed`, HTTP response code, attempts (default one), and timestamp.
 Response bodies are not retained. No retry/backoff/dead-letter worker is shipped.
-An initiating action never rolls back or waits for guaranteed webhook success.
+An initiating action never rolls back or waits for guaranteed webhook success;
+the catch-up award worker (also reached from the Recall answer action) waits for
+the single attempt but never fails on it.
 
 URL validation always requires `http` or `https`. In production it blocks
 literal localhost, `.local`, loopback, link-local, and RFC1918 IPv4 patterns plus
@@ -337,21 +348,24 @@ suppression, signature, and SSRF contract.
 
 `getAppUrl()` selects the first valid origin in this order:
 
-1. `NEXT_PUBLIC_APP_URL`
-2. `NEXT_PUBLIC_BASE_URL` (legacy)
-3. `NEXTAUTH_URL` (URL fallback only; Petrios does not otherwise use NextAuth)
-4. `VERCEL_PROJECT_PRODUCTION_URL`
-5. `VERCEL_URL`
-6. `RENDER_EXTERNAL_URL`
+1. `APP_URL`
+2. `NEXT_PUBLIC_APP_URL`
+3. `NEXT_PUBLIC_BASE_URL` (legacy)
+4. `NEXTAUTH_URL` (URL fallback only; Petrios does not otherwise use NextAuth)
+5. `VERCEL_PROJECT_PRODUCTION_URL`
+6. `VERCEL_URL`
+7. `RENDER_EXTERNAL_URL`
 
 Values without protocol use HTTPS unless localhost/loopback. Paths are reduced to
 origin. Production rejects missing or local URLs; development falls back to
 `http://localhost:3000`. `getAppUrlFromHeaders` can use forwarded host/proto when
 no environment URL exists.
 
-Some older call sites still directly read `NEXT_PUBLIC_APP_URL` or
-`NEXT_PUBLIC_BASE_URL` and fall back to localhost. New code should use the helper;
-removing legacy behavior requires testing every emailed/QR/callback URL.
+The helper reads these names indirectly at request time, so they are never
+inlined into a build. No call site reads a `NEXT_PUBLIC_*` URL variable
+directly; the certificate preview/download routes use `getAppUrlFromHeaders()`.
+New code must use the helpers, because a literal `process.env.NEXT_PUBLIC_*`
+read is fixed at build time from the build machine's environment.
 
 ### Email
 
@@ -362,13 +376,28 @@ spec 07.
 ### LLM
 
 `lib/ai/llm.ts` calls `<OPENAI_BASE_URL>/chat/completions` for ordinary text
-inference and `<OPENAI_BASE_URL>/responses` for Audio Recap document input plus
-hosted research, defaulting to the OpenAI API with Bearer `OPENAI_API_KEY`.
+inference and `<OPENAI_BASE_URL>/responses` for document input (Audio Recap
+with hosted research, and the department newsletter), defaulting to the OpenAI
+API with Bearer `OPENAI_API_KEY`.
 `OPENAI_MODEL` defaults to `gpt-5.5`. Chat uses `max_completion_tokens`, optional
 `reasoning_effort`, and optional JSON object response format.
 
-The recap path uses `instructions`, `max_output_tokens`, Base64 data-URL
-`input_file` parts, and a final `input_text`. When research is requested it adds
+The file-input path uses `instructions`, `max_output_tokens`, Base64 data-URL
+`input_file` parts, and a final `input_text`. That body is streamed rather than
+built in memory (`lib/ai/streaming-body.ts`): the non-file JSON comes from one
+`JSON.stringify` call with a placeholder per file, and each document's data URL
+is base64-encoded in pieces from its storage stream while the request uploads,
+byte-identical to a fully serialized body. Extra memory is a few chunks per
+request whatever the document size (measured on Node 24: about 4 MiB of live
+buffers for a 50 MiB source set, versus about 183 MiB when buffered). The
+request uses chunked transfer encoding (`duplex: 'half'`) and `cache: 'no-store'`
+(so a production build never reads the body to build a fetch-cache key; the
+`next dev` HMR cache still does), and refuses
+redirects: `redirect: 'error'` on Node, whose fetch otherwise keeps a copy of a
+streamed body for redirect replay, and `'manual'` on Workers, which reject
+`'error'` (a 3xx then fails as non-2xx). Each call re-opens the documents, so
+the gateway's retry starts from scratch, and a failed or aborted request cancels
+the storage read in progress. When research is requested it adds
 a `web_search` tool with `external_web_access: true`, `search_context_size`, an
 authoritative `filters.allowed_domains` list, and approximate GB user location.
 Because research is a product requirement rather than an optional model choice,
@@ -377,13 +406,15 @@ the request sets `tool_choice: required`. It requests
 tool item and output-text `url_citation` annotations. Only HTTP(S) URLs survive;
 URLs are normalized/de-duplicated and capped at 20 before persistence.
 
-File fingerprints and the static research configuration contribute to the Ops
+File fingerprints (provider filename plus the stored `session_documents.sha256`,
+never file bytes) and the static research configuration contribute to the Ops
 prompt hash. Raw document bytes, prompt text, provider-generated search queries,
 and fetched public-page bodies are not written to the Ops audit. The provider may
 still process or retain those values according to its own service terms. No key
 returns null; HTTP failure, refusal, incomplete output, or missing required
 research sources fails generation safely. An OpenAI-compatible custom base URL
-must support both endpoint shapes plus Responses file inputs, the hosted
+must support both endpoint shapes plus Responses file inputs sent as a chunked
+(streamed) request body at the configured URL without redirects, the hosted
 `web_search` request fields, and source-bearing response items for the full
 feature set. Chat Completions or file-input compatibility alone is insufficient.
 The request shapes follow the official [file-input guide](https://developers.openai.com/api/docs/guides/file-inputs)
@@ -459,6 +490,75 @@ GoTrue metadata, and Supabase helper behavior. A vanilla Postgres server without
 the compatible auth schema/functions is not a complete Petrios backend. Deploy
 against hosted Supabase or a self-hosted Supabase-compatible stack.
 
+### Cloudflare Workers (staging)
+
+Petrios also builds for Cloudflare Workers with `@opennextjs/cloudflare`
+(`npm run cf:build`, `wrangler.jsonc`, custom entry `cfw/worker.ts`); the
+operator guide is `docs/cloudflare-workers.md`. Render/Docker remains
+production. `.dockerignore` excludes every Cloudflare file, so the Docker image
+never contains them, and the application code is identical on both runtimes.
+
+- **Invariant:** the top-level wrangler environment (`petrios-staging`) is
+  workers.dev only, with `triggers.crons: []`, no routes, and
+  `CRON_ENABLED="false"`. Only `env.production` (`petrios`) declares cron
+  triggers and `CRON_ENABLED="true"`, and no repository script deploys it.
+  `cfw/cron.test.ts` and `npm run cf:deploy:staging` enforce the top-level
+  shape; the test also requires `env.production` triggers to equal
+  `CRON_SCHEDULE` in `cfw/cron.ts` (spec 07).
+- **Invariant:** the staging Worker never emails real users. It serves the
+  production database, so its links and certificate QR codes would point at
+  `workers.dev`, and a delivery it marked `SENT` would never be re-sent from
+  Render. The top level sets `OUTBOUND_EMAIL_ENABLED="false"` (required by
+  `cf:deploy:staging` and its unit test); `lib/email.ts` then refuses every send
+  before contacting a transport, except one whose every recipient is listed in
+  the `OUTBOUND_EMAIL_ALLOWLIST` secret. A refusal is an ordinary send error,
+  so delivery ledgers keep a retryable failure.
+- **Invariant:** no local `.env*` value reaches a Worker. OpenNext compiles local
+  `.env*` files into `.open-next/cloudflare/next-env.mjs`, which would fill any
+  variable the Worker does not set. `cf:build` overwrites it with empty exports,
+  then its guard fails on any key in that file and on any local `.env*` value
+  found in the `wrangler deploy --dry-run` output (which does not contact
+  Cloudflare) or the static assets. A value is checked when it has 12 or more
+  characters, is not `NEXT_PUBLIC_*` (those only warn), and is not already in
+  `.env.example`; matches are checked raw and JSON-escaped, and the guard reports
+  names only. `cf:preview` reads variables only from `.dev.vars` and never
+  falls back to `.env*` or the shell environment.
+- react-pdf's yoga WebAssembly cannot be compiled at runtime on Workers.
+  `cfw/yoga-install.ts`, the entry's first import, wraps
+  `WebAssembly.instantiate` (`cfw/yoga-redirect.ts`): a call whose bytes match
+  the recorded length and SHA-256 receives the module wrangler precompiled at
+  upload (`cfw/yoga.wasm`), and every other call passes through. Each build
+  regenerates that module from the installed `yoga-layout` and fails if the
+  loader no longer instantiates exactly one embedded base64 wasm from bytes.
+- `cf:build` copies `public/fonts/*.ttf` into `cfw/public/fonts`, which wrangler
+  uploads as Data modules (`base_dir: cfw`, `find_additional_modules`). On
+  Workers `process.cwd()` is `/bundle`, so the existing `node:fs` font reads for
+  PDFs and the OpenGraph image work unchanged.
+- `cf:deploy:staging` deploys only the top level, after `cf:build` and its
+  guard pass, with `APP_URL` supplied on every deploy and required to be exactly
+  `https://petrios-staging.<account-subdomain>.workers.dev`. Deploys treat the
+  config as the source of truth, so environment-specific values are Worker
+  secrets. Wrangler binds a first-deploy `--secrets-file` after the config and
+  `--var` without a collision check, so the script reads the file's names
+  (never values) and refuses one that names a `vars` key, a never-set-on-Workers
+  name or an `APP_URL` fallback, or that lives inside the repository or is a
+  `.dev.vars*`/`.env*` file.
+- OpenNext 4.1.9's `cloudflare-node` response writer completes every write at
+  once, so a streamed response (documents, recap/Recall audio) has no
+  backpressure and a slow client's unread bytes would queue in the 128 MB
+  isolate. `cf:build` rewrites that writer in the bundled server handler so a
+  write completes only while a 64 KiB byte-sized response queue has room, and
+  the client reading or cancelling releases it. The step fails unless the
+  expected code matches exactly once, and the guard fails if the patch marker
+  is missing from the dry-run upload. Render is unaffected (Node honours
+  `drain`).
+- Current limitation: `proxy.ts` runs as OpenNext's experimental Node
+  middleware, and static assets bypass it (spec 13). Behaviour on a deployed
+  Worker (Audio Recap memory with a 50 MiB source set on a real 128 MB isolate,
+  browser-direct uploads, PDFs, cron jobs against a real database) has been
+  verified only on local workerd; the staging checklist in
+  `docs/cloudflare-workers.md` must pass before it is relied on.
+
 ## Migration runner and upgrades
 
 `npm run db:migrate`:
@@ -509,7 +609,11 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `SMTP_USER`, `SMTP_PASS` | Optional relay auth | Server secrets |
 | `RESEND_API_KEY` | Required if Resend is selected | Server secret |
 | `MAIL_DEV_REDIRECT` | Optional | Redirect every recipient to one inbox |
+| `OUTBOUND_EMAIL_ENABLED` | Unset (email on); exactly `false` refuses | Deployment kill switch read by `lib/email.ts` at send time. `false` refuses every send before any transport is contacted and returns an ordinary error. Set to `false` on the Workers staging Worker (it serves the production database); Render never sets it |
+| `OUTBOUND_EMAIL_ALLOWLIST` | Optional; used only while `OUTBOUND_EMAIL_ENABLED=false` | Comma-separated addresses that may still receive mail; a send goes out only if every recipient is listed. Staging test inboxes only |
 | `CRON_SECRET` | Required to run jobs | Shared Bearer secret; no query fallback |
+| `CRON_ENABLED` | Unset on Render; set in `wrangler.jsonc` on Workers | `scheduled()` in `cfw/worker.ts` dispatches cron routes only when exactly `true`. Exactly `false` also makes every `/api/cron/*` route answer 503 after authentication (`lib/cron-auth.ts`), so the staging Worker cannot run jobs over HTTP either. `false` at the top level, `true` in `env.production`; unset means routes run |
+| `TRUSTED_CLIENT_IP_HEADER` | Optional; `cf-connecting-ip` on Workers | Header `lib/rate-limit.ts` trusts for the client IP of login-link and group-code throttles. When set, only that header is read (missing = no IP). Unset keeps first `x-forwarded-for` hop, then `x-real-ip` |
 | `ATTENDANCE_RATE_LIMIT_SECRET` | Optional HMAC key pseudonymizing check-in IPs for rate limiting; falls back to the service-role key |
 | `OPENAI_API_KEY` | Optional | Enables LLM and default OpenAI speech; server secret |
 | `OPENAI_BASE_URL` | Default OpenAI v1 | Compatible internal/gateway/provider base |
@@ -535,6 +639,18 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 test/development behavior. Only `NEXT_PUBLIC_*` variables may be intentionally
 bundled into browser code.
 
+On Cloudflare Workers, public configuration is read at request time by
+`lib/runtime-config.ts`; set the unprefixed names `APP_URL`, `SUPABASE_URL`,
+`SUPABASE_ANON_KEY`, and `JITSI_DOMAIN` (the `NEXT_PUBLIC_*` names remain runtime
+fallbacks). Never set `SUPABASE_INTERNAL_URL`, `AUTH_INTERNAL_URL`, or
+`STORAGE_INTERNAL_URL` there: they name Docker-network hosts that a Worker cannot
+reach. A Worker serving the production database must use byte-for-byte copies of
+Render's `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`ATTENDANCE_RATE_LIMIT_SECRET`, `CRON_SECRET`, and `INSTANCE_SIGNING_KEY`.
+The calendar-feed token, Recall and unsubscribe HMACs, the rate-limit
+pseudonym, and the auth cookie name derive from these values, so a hosting move
+never rotates them.
+
 Current `.env.example` limitation: it does not enumerate every optional/legacy
 variable above. Treat this table plus source as the current behavior until the
 example is synchronized.
@@ -551,7 +667,9 @@ contract is in spec 13.
 - OpenAPI, docs, serializers, routes, and this spec change together.
 - New list endpoints have pagination/rate/PII posture.
 - Webhook signature covers raw body and payload is version-compatible.
-- Event production completeness is stated; side effects remain nonblocking.
+- Event production completeness is stated; side effects remain nonblocking and
+  are registered with `after()` on request paths or awaited in crons, never
+  left floating.
 - URL inputs are protected against DNS, redirect, IPv4/IPv6, and cloud-metadata
   SSRF, with network egress defense in depth.
 - Portable records are schema-validated and trust level is not confused with

@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
 import { getAppUrl } from '@/lib/app-url'
 import { getEmailClient, getFromAddress } from '@/lib/email'
@@ -345,13 +346,6 @@ async function performClaim(ctx: ClaimContext) {
     }
 
     await slotsDb.linkSlotSession({ slotId: claimed.id, sessionId })
-
-    void emitWebhook(claimed.org_id, 'slot.claimed', {
-      slot_id: claimed.id,
-      session_id: sessionId,
-      department_id: claimed.department_id,
-      date_start: claimed.date_start,
-    })
   } catch (err) {
     // Compensation: the slot goes back on offer rather than being stuck
     // CLAIMED with no session.
@@ -362,6 +356,17 @@ async function performClaim(ctx: ClaimContext) {
     }
     throw err
   }
+
+  // Registered outside the compensating try so the event can never revert a
+  // completed claim.
+  after(() =>
+    emitWebhook(claimed.org_id, 'slot.claimed', {
+      slot_id: claimed.id,
+      session_id: sessionId,
+      department_id: claimed.department_id,
+      date_start: claimed.date_start,
+    })
+  )
 
   // Notify the slot creator (bell + email). Non-fatal.
   const startDate = new Date(claimed.date_start)

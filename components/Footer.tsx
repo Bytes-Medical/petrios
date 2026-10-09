@@ -4,7 +4,7 @@ export function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="text-center">
           <p className="font-mono text-sm text-gray-600">
-            © {new Date().getFullYear()} Petrios
+            © {new Date().getFullYear()} Petrios, owned by We Health
             <span className="text-clay-600"> ▪ </span>Open source.
             <span className="text-clay-600"> ▪ </span>Self-hostable.
             <span className="text-clay-600"> ▪ </span>Yours.

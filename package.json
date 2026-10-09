@@ -15,7 +15,10 @@
     "test:watch": "vitest",
     "db:migrate": "node scripts/migrate.mjs",
     "test:e2e": "playwright test",
-    "seed:demo": "node scripts/seed-demo.mjs"
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "cf:build": "node scripts/cloudflare/build.mjs",
+    "cf:preview": "node scripts/cloudflare/preview.mjs",
+    "cf:deploy:staging": "node scripts/cloudflare/deploy-staging.mjs"
   },
   "dependencies": {
     "@jitsi/react-sdk": "^1.4.4",
@@ -29,7 +32,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "ical-generator": "^10.1.0",
-    "next": "^16.2.10",
+    "next": "^16.3.8",
     "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
     "qrcode": "^1.5.4",
@@ -50,6 +53,9 @@
     "@next/eslint-plugin-next": {
       "glob": "^10.5.0"
     },
+    "@node-minify/core": {
+      "glob": "^10.5.0"
+    },
     "next": {
       "postcss": "^8.5.10"
     }
@@ -57,6 +63,7 @@
   "devDependencies": {
     "@commitlint/cli": "20.2.0",
     "@commitlint/config-conventional": "20.2.0",
+    "@opennextjs/cloudflare": "^1.20.10",
     "@playwright/test": "^1.61.1",
     "@types/node": "20.19.43",
     "@types/nodemailer": "^8.0.1",
@@ -66,11 +73,12 @@
     "@types/three": "^0.185.4",
     "autoprefixer": "^10.4.17",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.2.10",
+    "eslint-config-next": "^16.3.8",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.1",
     "typescript": "5.9.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "wrangler": "^4.149.0"
   },
   "engines": {
     "node": ">=20.9"

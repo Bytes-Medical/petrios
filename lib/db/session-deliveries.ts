@@ -4,6 +4,7 @@ import {
   claimableSessionDeliveryStatuses,
   type SessionDeliveryStatus,
 } from '@/lib/session-delivery-policy'
+import { normalizeDeliveryEmail } from '@/lib/session-delivery-ledger'
 
 export interface SessionDelivery {
   id: string
@@ -54,6 +55,38 @@ export async function claimSessionDelivery(
   return Boolean(stale)
 }
 
+export interface SessionDeliveryRow extends SessionDelivery {
+  recipient_email: string
+  related_id: string | null
+}
+
+/**
+ * One read of a session's ledger so a cron can skip finished recipients
+ * without a lookup each. A row reported SENT is final for cron callers. The
+ * read is a single page, so the API row cap (1,000 on hosted Supabase) can
+ * omit rows: a missing row never proves a recipient is unfinished. Callers
+ * confirm a miss with an exact `relatedId` lookup, or take the authoritative
+ * getOrCreate + claim path.
+ */
+export async function listSessionDeliveries(input: {
+  sessionId: string
+  deliveryType: string
+  relatedId?: string
+  status?: SessionDeliveryStatus
+}): Promise<SessionDeliveryRow[]> {
+  const db = await getServiceDb()
+  let query = db
+    .from('session_deliveries')
+    .select('id, status, attempt_count, recipient_email, related_id')
+    .eq('session_id', input.sessionId)
+    .eq('delivery_type', input.deliveryType)
+  if (input.relatedId) query = query.eq('related_id', input.relatedId)
+  if (input.status) query = query.eq('status', input.status)
+  const { data, error } = await query
+  if (error) throw toDbError('Failed to list delivery state', error)
+  return (data as SessionDeliveryRow[] | null) ?? []
+}
+
 /** Service-only delivery ledger used by cron and moderator-approved sends. */
 export async function getOrCreateSessionDelivery(input: {
   orgId: string
@@ -65,7 +98,7 @@ export async function getOrCreateSessionDelivery(input: {
   relatedId: string
 }): Promise<SessionDelivery> {
   const db = await getServiceDb()
-  const normalizedEmail = input.recipientEmail.trim().toLowerCase()
+  const normalizedEmail = normalizeDeliveryEmail(input.recipientEmail)
   const { data: existing, error: readError } = await db
     .from('session_deliveries')
     .select('id, status, attempt_count')

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { authenticateApiRequest, apiError } from '@/lib/api/auth'
 import { serializeSession } from '@/lib/api/serializers'
 import { assertSessionCanBePublished } from '@/lib/session-validation'
@@ -29,13 +29,15 @@ export async function POST(
   }
 
   const published = await apiReads.publishSessionForApi(auth.orgId, id)
-  void emitWebhook(auth.orgId, 'session.published', {
-    session_id: published.id,
-    title: published.title,
-    department_id: published.department_id,
-    date_start: published.date_start,
-    date_end: published.date_end,
-  })
+  after(() =>
+    emitWebhook(auth.orgId, 'session.published', {
+      session_id: published.id,
+      title: published.title,
+      department_id: published.department_id,
+      date_start: published.date_start,
+      date_end: published.date_end,
+    })
+  )
 
   return NextResponse.json({ data: serializeSession(published) })
 }

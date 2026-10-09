@@ -57,12 +57,13 @@ export async function generateAudioRecapScriptAction(
   if (!opsEnabled()) throw new Error('Petrios Ops is disabled on this deployment')
   const { session, orgId } = await requireModeratedSession(sessionId)
 
-  const { snapshot, files } = await loadRecapSourceFiles(sessionId)
+  const { snapshot, files, throwIfSourceFailed } = await loadRecapSourceFiles(sessionId)
   const generated = await generateRecapScript({
     sessionTitle: session.title,
     documents: snapshot.documents,
     files,
   })
+  throwIfSourceFailed()
 
   if (!generated) {
     throw new Error(

@@ -18,10 +18,9 @@ export async function GET(
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
-  const [set, recap, audio] = await Promise.all([
+  const [set, recap] = await Promise.all([
     recallDb.findSetForSession(verified.sessionId),
     audioRecapsDb.findRecapForSession(verified.sessionId),
-    audioRecapsDb.findRecapAudio(verified.sessionId),
   ])
   if (
     !set ||
@@ -29,18 +28,24 @@ export async function GET(
     !set.script_digest ||
     !recap ||
     recap.status !== 'approved' ||
-    recap.script_digest !== set.script_digest ||
-    !audio ||
-    audio.status !== 'approved'
+    recap.script_digest !== set.script_digest
   ) {
     return new NextResponse('Not found', { status: 404 })
   }
 
-  return new NextResponse(new Uint8Array(audio.audio), {
-    headers: {
-      'Content-Type': 'audio/mpeg',
-      'Content-Length': String(audio.audio.byteLength),
-      'Cache-Control': 'private, no-store',
-    },
+  const audio = await audioRecapsDb.openRecapAudioStream({
+    sessionId: verified.sessionId,
+    status: 'approved',
+    audioRevision: recap.audio_revision,
   })
+  if (!audio) {
+    return new NextResponse('Not found', { status: 404 })
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'audio/mpeg',
+    'Cache-Control': 'private, no-store',
+  }
+  if (recap.audio_bytes !== null) headers['Content-Length'] = String(recap.audio_bytes)
+  return new NextResponse(audio, { headers })
 }

@@ -389,7 +389,7 @@ export async function updateCompletionAward(input: {
   if (error) throw toDbError('Failed to update catch-up award', error)
 }
 
-export async function listCompletionsNeedingAward(limit = 50): Promise<RecallCompletion[]> {
+export async function listCompletionsNeedingAward(limit: number): Promise<RecallCompletion[]> {
   const db = await getServiceDb()
   const { data, error } = await db
     .from('recall_completions')

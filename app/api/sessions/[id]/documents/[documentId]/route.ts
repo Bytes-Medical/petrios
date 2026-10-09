@@ -29,10 +29,9 @@ export async function GET(
     })
     if (!document) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
 
-    const object = await documentsDb.downloadDocumentObject(document.storage_path)
-    const bytes = await object.arrayBuffer()
+    const object = await documentsDb.fetchDocumentObject(document.storage_path)
     const inline = request.nextUrl.searchParams.get('view') === '1' && document.mime_type === 'application/pdf'
-    return new NextResponse(bytes, {
+    return new Response(object.body, {
       headers: {
         'Content-Type': document.mime_type,
         'Content-Length': String(document.byte_size),

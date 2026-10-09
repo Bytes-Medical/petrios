@@ -4,11 +4,15 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   archiveSessionDocument,
+  cancelSessionDocumentUpload,
   deleteSessionDocument,
-  uploadSessionDocument,
+  finalizeSessionDocumentUpload,
+  prepareSessionDocumentUpload,
 } from '@/app/actions/session-documents'
 import type { SessionDocument } from '@/lib/db/session-documents'
+import { uploadToSignedDocumentUrl } from '@/lib/session-documents-upload'
 import { Button } from './Button'
+import { useRuntimeConfig } from './runtime/RuntimeConfigProvider'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KiB`
@@ -29,6 +33,7 @@ export function SessionDocumentsPanel({
   currentUserId: string
 }) {
   const router = useRouter()
+  const { supabaseAnonKey } = useRuntimeConfig()
   const formRef = useRef<HTMLFormElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +42,20 @@ export function SessionDocumentsPanel({
     setBusy(true)
     setError(null)
     try {
-      await uploadSessionDocument(sessionId, formData)
+      const file = formData.get('file')
+      if (!(file instanceof File)) throw new Error('Choose a document to upload')
+      const { documentId, uploadUrl } = await prepareSessionDocumentUpload(sessionId, {
+        filename: file.name,
+        mimeType: file.type,
+        byteSize: file.size,
+      })
+      try {
+        await uploadToSignedDocumentUrl({ uploadUrl, anonKey: supabaseAnonKey, file })
+      } catch (storageError) {
+        await cancelSessionDocumentUpload(sessionId, documentId).catch(() => {})
+        throw storageError
+      }
+      await finalizeSessionDocumentUpload(sessionId, documentId)
       formRef.current?.reset()
       router.refresh()
     } catch (uploadError) {

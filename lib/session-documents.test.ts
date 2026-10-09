@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   canActorDeleteSessionDocument,
+  documentExtensionForMime,
   SESSION_DOCUMENT_MAX_BYTES,
+  SESSION_DOCUMENT_MIME,
   safeDocumentFilename,
-  validateDocumentBytes,
   validateDocumentMetadata,
 } from './session-documents'
 
@@ -42,20 +43,10 @@ describe('session document validation', () => {
     ).toThrow('25 MiB')
   })
 
-  it('checks PDF magic bytes', () => {
-    expect(() => validateDocumentBytes(Buffer.from('%PDF-1.7'), 'pdf')).not.toThrow()
-    expect(() => validateDocumentBytes(Buffer.from('hello'), 'pdf')).toThrow('not a valid PDF')
-  })
-
-  it('checks Office package markers and rejects macros', () => {
-    const docx = Buffer.from('PK\u0003\u0004...[Content_Types].xml...word/document.xml')
-    expect(() => validateDocumentBytes(docx, 'docx')).not.toThrow()
-    expect(() => validateDocumentBytes(docx, 'pptx')).toThrow('not a valid PPTX')
-
-    const macroDocx = Buffer.from(
-      'PK\u0003\u0004...[Content_Types].xml...word/document.xml...vbaProject.bin'
-    )
-    expect(() => validateDocumentBytes(macroDocx, 'docx')).toThrow('Macro-enabled')
+  it('maps each stored MIME type back to its extension', () => {
+    expect(documentExtensionForMime(SESSION_DOCUMENT_MIME.pdf)).toBe('pdf')
+    expect(documentExtensionForMime(SESSION_DOCUMENT_MIME.docx)).toBe('docx')
+    expect(documentExtensionForMime(SESSION_DOCUMENT_MIME.pptx)).toBe('pptx')
   })
 })
 

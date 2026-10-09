@@ -38,10 +38,17 @@ export function evaluateLoginLinkRateLimit(counts: {
   return { allowed: true }
 }
 
-/** First hop of x-forwarded-for, else x-real-ip, else null. */
-export function clientIpFromHeaders(headers: {
-  get(name: string): string | null
-}): string | null {
+/**
+ * The header named by TRUSTED_CLIENT_IP_HEADER when set (one the edge
+ * overwrites, e.g. cf-connecting-ip on Cloudflare, where the first
+ * x-forwarded-for hop is client-supplied); otherwise first hop of
+ * x-forwarded-for, else x-real-ip, else null.
+ */
+export function clientIpFromHeaders(
+  headers: { get(name: string): string | null },
+  trustedHeader: string | undefined = process.env.TRUSTED_CLIENT_IP_HEADER
+): string | null {
+  if (trustedHeader) return headers.get(trustedHeader)?.trim() || null
   const forwarded = headers.get('x-forwarded-for')
   if (forwarded) {
     const first = forwarded.split(',')[0]?.trim()

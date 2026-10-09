@@ -17,6 +17,7 @@ generic Next.js architecture recommendation.
 | Concern | Implementation |
 |---|---|
 | Web application | Next.js 16 App Router and React 19 |
+| Hosting | Production on Render (Docker, Node, `output: 'standalone'`); a Cloudflare Workers staging build via `@opennextjs/cloudflare` with the custom entry `cfw/worker.ts` (spec 09, `docs/cloudflare-workers.md`). The same application code runs on both |
 | Language | TypeScript with server actions and route handlers |
 | Identity | Supabase GoTrue; password, passwordless link, and Microsoft Entra OAuth |
 | Primary storage | Supabase-hosted Postgres with RLS |
@@ -164,6 +165,11 @@ tradeoff: a revoked-but-unexpired token passes the proxy for up to its TTL
 but renders nothing. Self-hosters on legacy symmetric (HS256) JWT secrets
 should know `getClaims()` silently falls back to a network check there.
 
+On Cloudflare Workers the same `proxy.ts` runs through OpenNext's experimental
+Node middleware support. Static assets are served there without running it
+(spec 13). The documented fallback, if staging shows problems, is renaming it to
+an edge-runtime `middleware.ts`, which must update this spec and `CLAUDE.md`.
+
 The proxy deliberately allows **every `/api/*` path through without a browser
 auth decision**. Therefore route handlers must enforce one of these models:
 
@@ -253,13 +259,22 @@ Database writes and side effects are not globally transactional.
 - Email is frequently best-effort after a durable row is written. Individual
   email failures may be logged or counted while the underlying operation remains
   successful.
-- Webhooks are fire-and-forget, one attempt, and never fail the initiating action.
+- Webhooks are one attempt and never fail the initiating action. Request paths
+  defer them with `after()` from `next/server` (`waitUntil` on Workers,
+  in-process on Node); cron jobs await them. No side effect is left as a
+  floating promise, since Workers may cancel unregistered work after the
+  response (spec 07).
 - Notifications are internal database records and may be created independently
   from email.
 - Certificate PDFs are generated from stored certificate/session data,
   including the issued coordinator-name snapshot, and use the fixed Petrios UI
   brand palette/wordmark; the file is not generally stored as a blob.
-- Audio recaps are an exception: approved MP3 bytes are stored in Postgres.
+- Audio recaps are an exception: approved MP3 bytes are stored in Postgres and
+  streamed to listeners without being buffered whole. Session documents move
+  browser-to-Storage through one-shot signed upload URLs and are stream-validated
+  and stream-downloaded, so no request holds a whole file (spec 04). On
+  Cloudflare Workers that holds for slow clients only because `cf:build`
+  patches OpenNext's response writer to restore backpressure (spec 09).
 
 Every workflow spec lists its own ordering and failure semantics. Callers must not
 infer all-or-nothing behavior from a single success response.
@@ -276,7 +291,10 @@ Configuration falls into five trust classes:
 
 The complete variable contract and precedence are in spec 09. Secrets must never
 be imported by client components, serialized into props, included in prompt logs,
-or returned after their one-time display.
+or returned after their one-time display. Local `.env*` files are build-machine
+configuration only: the Docker image excludes them, and the Workers build scrubs
+OpenNext's compiled `.env` snapshot and fails if any local secret value is found
+in the upload (spec 09).
 
 ## Architectural review checklist
 

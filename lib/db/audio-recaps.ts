@@ -1,3 +1,5 @@
+import { decodeHexJsonValueBody } from '@/lib/audio-hex-stream'
+import { getPublicRuntimeConfig } from '@/lib/runtime-config'
 import { getServiceDb } from './client'
 import { toDbError } from './errors'
 import type {
@@ -8,8 +10,9 @@ import type {
 /**
  * Audio recaps DAL (audio_recaps, deny-all RLS). Service role justification:
  * mutations are requireDepartmentModerator-gated in
- * app/actions/audio-recaps.ts; the attendee read path is the org-scoped
- * streaming route /api/sessions/[id]/recap-audio.
+ * app/actions/audio-recaps.ts; the read paths are the org-scoped streaming
+ * route /api/sessions/[id]/recap-audio and the identity-bound
+ * /api/recall/[token]/audio.
  *
  * Blob discipline: the `audio` BYTEA column is NEVER part of metadata reads
  * (META_COLUMNS) — a 5-minute MP3 is megabytes and PostgREST hex-encodes it.
@@ -220,32 +223,48 @@ export async function recallApprovedRecap(input: {
   return ((data as { id: string }[] | null) ?? []).length > 0
 }
 
-/** The one blob read — used only by the streaming route. */
-export async function findRecapAudio(
+/**
+ * The one blob read — used only by the streaming routes, after they have
+ * authorized `findRecapForSession` metadata. A direct PostgREST GET selects
+ * only `audio` and decodes its hex JSON as it arrives, so playback never
+ * materializes the hex string or a decoded Buffer. The status and revision
+ * filters pin the read to the exact audio that was authorized: any later
+ * synthesis bumps the revision and any script edit clears the audio.
+ * Resolves null when the row or its audio is gone (the caller's 404).
+ */
+export async function openRecapAudioStream(input: {
   sessionId: string
-): Promise<{
-  audio: Buffer
   status: 'draft' | 'approved'
-  source_digest: string | null
-} | null> {
-  const db = await getServiceDb()
-  const { data, error } = await db
-    .from('audio_recaps')
-    .select('audio, status, source_digest')
-    .eq('session_id', sessionId)
-    .maybeSingle()
+  audioRevision: number
+}): Promise<ReadableStream<Uint8Array> | null> {
+  const base = process.env.SUPABASE_INTERNAL_URL || getPublicRuntimeConfig().supabaseUrl
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const query = new URLSearchParams({
+    select: 'audio',
+    session_id: `eq.${input.sessionId}`,
+    status: `eq.${input.status}`,
+    audio_revision: `eq.${input.audioRevision}`,
+  })
+  const response = await fetch(`${base}/rest/v1/audio_recaps?${query}`, {
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      Accept: 'application/vnd.pgrst.object+json',
+    },
+    cache: 'no-store',
+  })
+  if (!response.ok || !response.body) {
+    const error = await response.json().catch(() => null) as { code?: string } | null
+    if (response.status === 406 && error?.code === 'PGRST116') return null
+    throw toDbError(
+      'Failed to fetch recap audio',
+      error ?? new Error(`PostgREST responded ${response.status}`)
+    )
+  }
 
-  if (error) throw toDbError('Failed to fetch recap audio', error)
-  const row = data as {
-    audio: string | null
-    status: 'draft' | 'approved'
-    source_digest: string | null
-  } | null
-  if (!row?.audio) return null
-  const hex = row.audio.startsWith('\\x') ? row.audio.slice(2) : row.audio
-  return {
-    audio: Buffer.from(hex, 'hex'),
-    status: row.status,
-    source_digest: row.source_digest,
+  try {
+    return await decodeHexJsonValueBody(response.body)
+  } catch (error) {
+    throw toDbError('Failed to read recap audio', error)
   }
 }

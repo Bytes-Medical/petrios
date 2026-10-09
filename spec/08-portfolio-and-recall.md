@@ -302,10 +302,13 @@ questions, or mutation authority.
 ### Identity-bound audio streaming and playback progress
 
 `GET /api/recall/:token/audio` verifies the token, current authenticated user,
-current approved set, recap approval, and matching script digest before returning
-MP3 with `private, no-store`. It is separate from the normal organization-member
-recap stream so a valid expected attendee is not broken by “current org”
-selection in a multi-membership account.
+current approved set, recap approval, and matching script digest before streaming
+exactly that approved `audio_revision` as MP3 with `private, no-store`. It uses
+the same incremental, revision-pinned blob read as the organization-member recap
+stream (spec 06); audio that changed or was cleared after authorization returns
+404. It is separate from the normal organization-member recap stream so a valid
+expected attendee is not broken by “current org” selection in a
+multi-membership account.
 
 The browser sends an authenticated heartbeat approximately every eight seconds
 while audio is playing and a final heartbeat on `ended`. The service action
@@ -404,8 +407,15 @@ session-end through +21-day interpretation.
 `recall_completions.award_status` is `PENDING`, `ISSUED`, `DELIVERED`, or
 `FAILED`; it stores the certificate id and last failure. After transactional
 recognition, the answer action immediately invokes the shared award worker.
-`GET /api/cron/recall-awards`, protected by `CRON_SECRET`, retries all unfinished
-or failed rows.
+`GET /api/cron/recall-awards`, protected by `CRON_SECRET`, retries unfinished or
+failed rows oldest `updated_at` first: at most 10 per run, two at a time, because
+each award holds a rendered PDF and its base64 attachment (50 in parallel peaked
+near 141 MiB, over a 128 MB Workers isolate). Every attempt rewrites
+`updated_at`, so retried rows rotate behind the rest of the queue. The response
+reports `processed`, `delivered`, `failed`, and `morePending`. The worker awaits
+its `certificate.issued` webhook, so the immediate answer-action path also waits
+for it (bounded by the five-second per-endpoint timeout) when it issues a new
+certificate.
 
 The worker:
 

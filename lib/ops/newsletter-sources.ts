@@ -1,5 +1,5 @@
-import { documentSha256 } from '@/lib/session-documents'
 import type { LlmFileInput } from '@/lib/ai/llm'
+import { verifiedFileSources } from '@/lib/ai/streaming-body'
 import type { OpsNewsletterSourceDocument } from '@/lib/types'
 import type { OpsSessionRow } from '@/lib/db/ops-reads'
 import * as documentsDb from '@/lib/db/session-documents'
@@ -10,13 +10,17 @@ export const NEWSLETTER_MAX_SOURCE_FILES = 50
 
 export interface NewsletterSourceBundle {
   documents: OpsNewsletterSourceDocument[]
+  /** Lazy inputs: each request attempt streams the objects from storage. */
   files: LlmFileInput[]
+  /** Rethrows a storage or integrity failure raised while the files streamed. */
+  throwIfSourceFailed(): void
 }
 
 /**
- * Load every currently available teaching document for the selected sessions.
+ * Select every currently available teaching document for the selected sessions.
  * The job fails rather than silently dropping a document when the provider
- * input boundary is exceeded or stored integrity no longer matches.
+ * input boundary is exceeded or stored integrity no longer matches (checked
+ * while each object streams into the provider request).
  */
 export async function loadNewsletterSourceFiles(
   sessions: OpsSessionRow[]
@@ -33,7 +37,7 @@ export async function loadNewsletterSourceFiles(
       if (!row.sha256) {
         throw new Error(`Teaching document "${row.display_name}" has no verified integrity hash`)
       }
-      return { session, sessionIndex, row }
+      return { session, sessionIndex, row, sha256: row.sha256 }
     })
   )
   const totalBytes = flattened.reduce((total, item) => total + Number(item.row.byte_size), 0)
@@ -48,39 +52,32 @@ export async function loadNewsletterSourceFiles(
     )
   }
 
-  const loaded = await Promise.all(
-    flattened.map(async ({ session, sessionIndex, row }, documentIndex) => {
-      const blob = await documentsDb.downloadDocumentObject(row.storage_path)
-      const bytes = new Uint8Array(await blob.arrayBuffer())
-      const sha256 = documentSha256(bytes)
-      if (bytes.byteLength !== Number(row.byte_size) || sha256 !== row.sha256) {
-        throw new Error(
+  const sources = verifiedFileSources(
+    flattened.map(({ sessionIndex, row, sha256 }, documentIndex) => ({
+      filename: `session-${sessionIndex + 1}-document-${documentIndex + 1}-${row.display_name}`,
+      mimeType: row.mime_type,
+      byteSize: Number(row.byte_size),
+      sha256,
+      read: async (signal: AbortSignal) =>
+        (await documentsDb.fetchDocumentObject(row.storage_path, { signal })).body,
+      integrityError: () =>
+        new Error(
           `Teaching document "${row.display_name}" failed its integrity check. Re-upload it before generating the newsletter.`
-        )
-      }
-      const providerFilename = `session-${sessionIndex + 1}-document-${documentIndex + 1}-${row.display_name}`
-      return {
-        document: {
-          sessionId: session.id,
-          sessionTitle: session.title,
-          id: row.id,
-          filename: row.display_name,
-          mimeType: row.mime_type,
-          byteSize: Number(row.byte_size),
-          sha256,
-        } satisfies OpsNewsletterSourceDocument,
-        file: {
-          filename: providerFilename,
-          mimeType: row.mime_type,
-          bytes,
-          sha256,
-        } satisfies LlmFileInput,
-      }
-    })
+        ),
+    }))
   )
 
   return {
-    documents: loaded.map((item) => item.document),
-    files: loaded.map((item) => item.file),
+    documents: flattened.map(({ session, row, sha256 }) => ({
+      sessionId: session.id,
+      sessionTitle: session.title,
+      id: row.id,
+      filename: row.display_name,
+      mimeType: row.mime_type,
+      byteSize: Number(row.byte_size),
+      sha256,
+    })),
+    files: sources.files,
+    throwIfSourceFailed: sources.throwIfFailed,
   }
 }

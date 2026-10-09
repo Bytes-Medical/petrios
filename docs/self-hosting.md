@@ -15,6 +15,9 @@ Two moving parts:
    (simplest) or [Supabase's official self-host stack](https://supabase.com/docs/guides/self-hosting/docker)
    on your own server.
 
+The same app can also be built for Cloudflare Workers (currently a staging
+target only); see [cloudflare-workers.md](./cloudflare-workers.md).
+
 ## Quickstart (Docker)
 
 ```bash

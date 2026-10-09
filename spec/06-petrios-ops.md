@@ -277,11 +277,19 @@ The job caps a week at 50 sessions so it never silently truncates a larger set.
 
 For those sessions the job selects every `AVAILABLE` `session_documents` row,
 including PDF, DOCX, and PPTX. It rejects more than 50 files or more than 50 MiB
-combined. Every selected object is downloaded through the private service DAL;
-stored byte count and SHA-256 are verified before inference. A missing object,
-missing stored digest, or integrity mismatch fails the whole generation. A week
-with sessions but no documents is allowed: trusted session title/date/description
-metadata remains the available source. No material is silently omitted.
+combined. A missing stored digest fails before inference. Every selected object
+is then streamed one at a time from the private service DAL
+(`fetchDocumentObject`) into the provider request while it uploads; its stored
+byte count and SHA-256 are verified incrementally, and a mismatch errors the
+request body before the JSON is complete, so no output is accepted. A missing
+object or an integrity mismatch fails the whole generation with the original
+storage or integrity message: because the gateway converts provider failures to
+null, the job rethrows the recorded source failure after inference
+(`throwIfSourceFailed`). The gateway also records that failed step with its error
+message, which names the document, as for any provider failure. The
+schema-repair retry re-reads every object from storage. A week with sessions but
+no documents is allowed: trusted session title/date/description metadata remains
+the available source. No material is silently omitted.
 
 The inference request supplies a trusted manifest tying opaque provider
 filenames to session ids/titles/dates plus the corresponding private file bytes.
@@ -390,8 +398,11 @@ Feedback tab.
 1. A moderator requests a script; no automatic job sends document content to AI
    or starts research.
 2. The action requires at least one currently available private session
-   document, caps their combined decoded size at 50 MiB, downloads them through
-   the authorized service DAL, and verifies stored byte counts and SHA-256.
+   document, caps their combined decoded size at 50 MiB, and streams them one at
+   a time from the authorized service DAL into the provider request. Stored byte
+   counts and SHA-256 are verified incrementally; a mismatch or storage failure
+   aborts the incomplete request, and the action rethrows the original message
+   (`throwIfSourceFailed`; see spec 04).
 3. `generateRecapScript` calls gateway purpose `audio_recap` with the session
    title as context and PDF/DOCX/PPTX bytes as the primary learning evidence. It
    does not use description, tags, or feedback synthesis. The prompt treats file
@@ -423,8 +434,11 @@ Feedback tab.
    `web_search_call.action.sources`; the adapter also reads message
    `url_citation` annotations, accepts only HTTP(S), de-duplicates by normalized
    URL, and keeps at most 20 URL/title pairs. Generation fails if required search
-   returns no verifiable source. A custom provider must support Responses file
-   inputs and hosted web search; Chat Completions or file-input compatibility
+   returns no verifiable source. The request body is streamed with chunked
+   transfer encoding and refuses redirects (`redirect: 'error'` on Node;
+   `'manual'` on Workers, where a 3xx then fails as a non-2xx response). A custom
+   provider must support Responses file inputs sent as a chunked body at its
+   final URL and hosted web search; Chat Completions or file-input compatibility
    alone is insufficient.
 8. The script is capped at 7,000 characters and upserted as `draft` with the
    exact sorted document metadata/digest, research URL/title list, and
@@ -480,7 +494,13 @@ Feedback tab.
     draft. Every replacement requires a new approval.
 16. Any authenticated member of the session's organization can stream approved,
     source-current audio; only department moderators can stream a current draft
-    preview. A changed document set or legacy null digest returns 404.
+    preview. A changed document set or legacy null digest returns 404. The route
+    authorizes against blob-free metadata first, then reads only the `audio`
+    column with a direct PostgREST GET pinned to the authorized `status` and
+    `audio_revision`, decoding PostgREST's `\\x` hex JSON incrementally
+    (`lib/audio-hex-stream.ts`), so a play never holds the hex string or the
+    whole MP3 in memory. Audio that changed or was cleared between authorization
+    and read returns 404. `Content-Length` is the `audio_bytes` size mirror.
 
 Generation is one server action rather than a streamed provider job. The client
 therefore renders an explicitly **estimated** progress bar, not fabricated

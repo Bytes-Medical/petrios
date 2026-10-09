@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { NextResponse, type NextRequest } from 'next/server'
+import { after, NextResponse, type NextRequest } from 'next/server'
 import * as apiPlatformDb from '@/lib/db/api-platform'
 
 /**
@@ -33,7 +33,8 @@ export function apiError(status: number, code: string, message: string): NextRes
 
 /**
  * Authenticate a v1 request and enforce a scope. Returns the auth context,
- * or a ready-to-return error response.
+ * or a ready-to-return error response. Call only from a route handler: the
+ * last-used touch is registered with after().
  */
 export async function authenticateApiRequest(
   request: NextRequest,
@@ -54,7 +55,7 @@ export async function authenticateApiRequest(
     return apiError(403, 'insufficient_scope', `This token lacks the ${requiredScope} scope`)
   }
 
-  void apiPlatformDb.touchTokenLastUsed(token.id).catch(() => {})
+  after(() => apiPlatformDb.touchTokenLastUsed(token.id).catch(() => {}))
 
   return { orgId: token.org_id, scopes: token.scopes, tokenId: token.id }
 }

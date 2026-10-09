@@ -66,7 +66,13 @@ authored message pass; correct or reword the commit instead.
 | `lib/ai/` | General LLM and speech provider adapters |
 | `lib/ops/` | Ops inference policy, safety, jobs, assistant tools, and approval execution |
 | `supabase/migrations/` | Immutable ordered schema/RLS history |
+| `cfw/`, `wrangler.jsonc`, `open-next.config.ts`, `scripts/cloudflare/` | Cloudflare Workers entry, config, and `cf:*` build/preview/deploy scripts; excluded from the Render/Docker image (spec 09) |
 | `spec/` | Detailed implemented contract and explicitly labelled RFCs |
+
+Server code runs unchanged on both Node (Render) and Cloudflare Workers. Do not
+buffer whole documents, audio, or PDFs where a stream will do (a Workers isolate
+has 128 MB shared by concurrent requests), do not read the filesystem except
+bundled `public/fonts`, and do not compile WebAssembly at runtime.
 
 Do not put a convenient table query in a page/action. Do not put authorization
 inside a client component. Do not put a provider HTTP call at a feature call
@@ -132,6 +138,18 @@ Mutation order should be deliberate:
 If side effects are intentionally nontransactional, state which durable result
 survives failure. Catching an error is not idempotency.
 
+### Work after the response
+
+Never leave a promise floating (`void promise`, or an un-awaited `.catch()`) on
+a server path: on Cloudflare Workers, work not registered with `waitUntil` may be
+cancelled once the response is sent. In server actions and route handlers, wrap
+best-effort follow-up work in `after(() => task())` from `next/server`. OpenNext
+maps it to `ctx.waitUntil` (about 30 s) and the Node server runs it in-process;
+either way it runs after the response and does not slow the action. `after()`
+throws outside a request scope, so do not call it in lib code that crons can
+reach. Cron routes and the code they reach await instead, and the awaited task
+must swallow its own failures (as `emitWebhook` does).
+
 ## HTTP and cron handlers
 
 HTTP handlers should declare their authentication contract in a top-level
@@ -148,23 +166,53 @@ secrets leak through access logs and copied URLs. A missing `CRON_SECRET` reject
 every request. Use a bounded batch and a database watermark/unique/CAS guarantee
 because schedulers may retry.
 
+Long jobs also take a per-run work budget (`lib/run-budget.ts`: 8,000 estimated
+subrequests and 10 minutes, under the Workers 10,000-subrequest default and the
+15-minute Cron Trigger wall cap). Reserve an estimated cost before each step,
+stop starting work once it is spent (exhaustion is sticky), keep unreached work
+in a per-recipient ledger with the watermark open, and report deferred counts in
+the JSON response. A job that works through several independent units (such as
+sessions) gives each a capped slice (`createBudgetSlice`) that holds back a
+share for the units behind it; a slice running out defers only its own unit,
+so one unit can never starve the rest. A capped bulk read (one PostgREST page)
+may only be a fast path for skipping finished work: confirm a miss with an
+exact lookup before reserving the full cost of a step, or a backlog of rows the
+page omits can spend the whole budget on work that is already done. Bound
+memory-heavy fan-out with `mapSettledWithConcurrency`
+(`lib/concurrency.ts`). Cron code awaits side effects such as webhooks rather
+than deferring them.
+
 Current cron families:
 
 | Route | Primary idempotency |
 |---|---|
-| `session-reminders` | Session `reminder_sent_at` watermark |
-| `post-session-reports` | Session report watermark plus selected certificate/evidence checks |
+| `session-reminders` | Per-recipient `SESSION_REMINDER` delivery rows (related_id = session id) plus `reminder_sent_at` watermark; watermark closes only when every recipient is `SENT` or has used 3 attempts |
+| `post-session-reports` | Finalized-session report watermark plus per-recipient `ATTENDANCE_CERTIFICATE` delivery keyed by certificate id; watermark closes only after one budget-bounded pass completes every recipient |
 | `recall-send` | Per-recipient catch-up invite delivery plus set watermarks; watermark closes only after all eligible sends |
-| `recall-awards` | Unique completion/certificate plus claimed `ATTENDANCE_CERTIFICATE` delivery |
+| `recall-awards` | Unique completion/certificate plus claimed `ATTENDANCE_CERTIFICATE` delivery; 10 completions per run, two concurrently |
 | `ops-weekly` | Pending-action dedupe, chase counts, Ops memory; low-score notification has no dedupe |
 | `ops-synthesis` | Unique synthesis and Recall set per session |
+
+On Cloudflare Workers, Cron Triggers reach these same routes through
+`scheduled()` in `cfw/worker.ts`. `cfw/cron.ts` maps each trigger expression to
+exactly one route and calls the OpenNext fetch handler with
+`GET ${APP_URL}/api/cron/<job>` and the Bearer header inside `ctx.waitUntil`,
+logging only the HTTP status. It dispatches nothing unless `CRON_ENABLED` is
+exactly `true`, `CRON_SECRET` is set, and `APP_URL` is an HTTP(S) URL. When
+`CRON_ENABLED` is exactly `false` (the staging Worker), `lib/cron-auth.ts` also
+answers every authenticated `/api/cron/*` request with 503, so the jobs cannot
+run over HTTP there either; Render leaves it unset.
+**Invariant:** only one scheduler, Render's or the Worker's, runs these jobs
+against a given database at any time. The self-host
+`/api/internal/scheduler/tick` route is not used on Workers.
 
 Newsletters are not cron routes. Moderator generation is unique per
 organization/department/week, and delivery idempotency is per issue/member with
 a revision-bound claim ledger.
 
-Watermark timing matters. Recall invitation delivery deliberately keeps the set
-open after any missing profile/provider/ledger failure, while successful
+Watermark timing matters. Recall invitation, session reminder, and post-session
+certificate delivery deliberately keep their watermark open while any recipient
+delivery is unfinished (as each subsystem spec defines), while successful
 recipient rows skip on retry. Other jobs may retain different explicitly
 documented partial-failure behavior; preserve or deliberately redesign the
 relevant contract.
@@ -247,6 +295,9 @@ body.
 ## AI and speech provider conventions
 
 - General chat completions use `lib/ai/llm.ts`.
+- Private document inputs are lazy `LlmFileInput`s (`lib/ai/streaming-body.ts`)
+  opened per request attempt and verified against stored size/SHA-256 while
+  they stream; never download whole documents before inference.
 - Ops inference uses `lib/ops/gateway.ts` and its purpose allow-list.
 - The Ops tool loop is the sole sanctioned direct chat-completion caller outside
   the general adapter.
@@ -331,9 +382,11 @@ Every mutation click is at least two server round trips (action, then
 
 ### Unit tests
 
-Vitest runs `vitest run`. Pure domain modules colocate tests, including attendance
-windows/priority, Recall analytics/tokens, federation signing/canonicalization,
-cron auth, Ops anonymization/synthesis/newsletter, slot helpers, and other
+Vitest runs `vitest run` over `lib/**/*.test.ts`, `cfw/**/*.test.ts`, and
+`scripts/cloudflare/**/*.test.ts`. Pure domain modules colocate tests, including
+attendance windows/priority, Recall analytics/tokens, federation
+signing/canonicalization, cron auth, Ops anonymization/synthesis/newsletter,
+slot helpers, Workers cron safety and secret-guard logic, and other
 deterministic behavior.
 
 For a stateful flow, extract and test the pure decision separately, then add
@@ -376,9 +429,10 @@ The security workflow runs on pushes, PRs, and weekly schedule:
 - production dependency audit at high severity or above; and
 - changed-migration RLS guard.
 
-Browser-facing responses additionally receive the global HSTS, CSP,
-anti-framing, MIME, referrer, permissions, and cross-domain-policy baseline from
-`next.config.js`. CSP origin and Jitsi regression requirements are in spec 13.
+Browser-facing responses additionally receive the HSTS, CSP, anti-framing,
+MIME, referrer, permissions, and cross-domain-policy baseline from `proxy.ts`
+(`lib/security-headers.ts`). Matcher exclusions, CSP origin, and Jitsi
+regression requirements are in spec 13.
 
 PR findings gate merges. Main/scheduled scanner findings are generally reported
 for triage, while dependency audit remains failing on every trigger and the RLS

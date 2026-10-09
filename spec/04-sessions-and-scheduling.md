@@ -121,8 +121,9 @@ resolved row; a client-provided department is not authorization.
 ## Publication effects
 
 Changing from a nonpublished status to `PUBLISHED` emits the best-effort
-`session.published` webhook. The action updates the session first and does not
-roll it back if delivery fails. Moving back to draft does not revoke emails,
+`session.published` webhook, registered with `after()` so it runs after the
+response (spec 09). The action updates the session first and does not roll it
+back if delivery fails. Moving back to draft does not revoke emails,
 calendar entries already cached by clients, certificates, feedback, or related
 records.
 
@@ -257,22 +258,47 @@ Registered profiles and external invitations are deduplicated by lower-cased
 email, with the registered profile winning. The email includes date/time,
 location, resolved meeting URL, and session link.
 
-Thrown failures are isolated per recipient. The mail adapter also reports
-provider failure as `{ error }`, but this job does not inspect that result: it
-increments `emailsSent` as if delivery succeeded. After the loops the session
-watermark is written even if sends throw, return an error, or the session has no
-recipients. The reminder route is therefore idempotent at session level but is
-not a per-recipient retry queue or delivery guarantee.
+Each recipient has a `session_deliveries` row with
+`delivery_type = 'SESSION_REMINDER'` and `related_id` = the session id (non-null
+so the natural unique key applies), keyed by lower-cased email; two registered
+profiles sharing an email therefore receive one reminder. The job reads the
+session's reminder ledger once, skips recipients already `SENT` or `FAILED` after
+three attempts (`SESSION_REMINDER_MAX_ATTEMPTS`), and sends to the rest through
+the normal get-or-create, 15-minute claim lease, and attempt record. A provider
+`{ error }` result or a thrown send is recorded as `FAILED`; `emailsSent` counts
+provider-accepted sends only.
+
+The `reminder_sent_at` watermark is written only after a pass in which every
+recipient is `SENT` or has exhausted its attempts, no recipient was left
+unreached by the run budget, and no claim was held by another run. Otherwise the
+session stays selectable and the next run retries only unfinished rows. A
+session leaves the selection window when it starts, which bounds retries. A
+session with no recipients is watermarked immediately. Each run uses the shared
+cron work budget (spec 07; reserved per session 8, per ledger lookup 2, per send
+5), and the JSON response adds `deferredSessions` and `deferredRecipients`. An
+interrupted or capped run never re-emails a recipient whose row is `SENT`; only
+a crash between provider acceptance and the ledger write can repeat that one
+recipient, after the 15-minute lease.
 
 ## Post-session reporting eligibility
 
-The post-session report job processes published sessions whose end is at least
-24 hours in the past and whose report watermark is null, with a fixed batch cap.
-It does not recompute or infer attendance. Sessions remain unwatermarked until a
-moderator finalizes attendance. The job then emits the attendance event for that
-final revision and issues attendee recognition through the per-recipient
-delivery ledger described in specs 03 and 05. It does not issue teacher
-certificates.
+The post-session report job selects published sessions whose attendance is
+`FINALIZED`, whose end is at least 24 hours in the past, and whose report
+watermark is null, oldest end first, with a fixed batch cap of 10. Sessions
+awaiting finalization are not selected, so they never take batch slots from
+finalized work. It does not recompute or infer attendance. The job emits the
+attendance event for the final revision and issues attendee recognition through
+the per-recipient delivery ledger described in specs 03 and 05. Each run uses
+the shared cron work budget (spec 07; reserved per session 15, per certificate
+lookup 1, per exact delivery lookup 1, per recipient delivery 20). Each session
+spends from its own slice of the run budget, which holds back 400 units for
+every later session in the batch, so a session that cannot finish in one run is
+deferred on its own and the sessions behind it are still processed. An
+attendee already delivered costs at most 2 units, so every run makes progress on
+every selected session. Attendees a run does not reach are picked up by the next
+run, the watermark stays open until a single pass completes every recipient,
+and the JSON response adds `deferredSessions` and `deferredRecipients`. It does
+not issue teacher certificates.
 
 ## Session documents
 
@@ -284,10 +310,11 @@ created.
 ### Upload authority and limits
 
 A department moderator or an `ACCEPTED` registered session teacher may upload.
-The action re-resolves session and organization scope before using the service
-DAL. Other session users can list/download documents if the normal session read
-authorizes them; archived objects are visible only in the moderator management
-view and are not downloadable.
+Each upload action (prepare, finalize, cancel) re-resolves session and
+organization scope and repeats this check before using the service DAL. Other
+session users can list/download documents if the normal session read authorizes
+them; archived objects are visible only in the moderator management view and
+are not downloadable.
 
 Supported formats and exact MIME types are:
 
@@ -297,27 +324,64 @@ Supported formats and exact MIME types are:
 | `.docx` | Open XML Word MIME | Download |
 | `.pptx` | Open XML PowerPoint MIME | Download |
 
-The maximum is 25 MiB in application validation, Next Server Action body
-configuration, bucket configuration, and the database check. Legacy `.doc`,
-`.ppt`, macro-enabled files, and all other formats are rejected.
+The maximum is 25 MiB in application validation (the declared size at prepare
+and the streamed byte count at finalize), the bucket `file_size_limit`, and the
+database check. File bytes never pass through a Server Action, so Next keeps its
+default 1 MB Server Action body limit. Legacy `.doc`, `.ppt`, macro-enabled
+files, and all other formats are rejected.
 
 ### Validation and storage sequence
 
-The server sanitizes path/control characters from the display filename, checks
-extension/MIME agreement and size, reads the bytes, and then performs basic
-content validation:
+Upload is a three-step, browser-direct flow, so the application server
+(including a 128 MB Workers isolate) never buffers file bytes.
 
-- PDF must begin `%PDF-`;
-- Office files must have a ZIP signature, `[Content_Types].xml`, and the correct
-  `word/` or `ppt/` package prefix; and
-- any package containing `vbaProject.bin` is rejected.
+1. **Prepare** (`prepareSessionDocumentUpload`) sanitizes path/control
+   characters from the display filename and checks extension/MIME agreement and
+   the declared size (1 byte to 25 MiB). It inserts the `UPLOADING/PENDING` row
+   with the unguessable object path `<org>/<session>/<document UUID>.<extension>`
+   and returns a one-shot, non-upsert Storage signed upload URL for exactly that
+   path, rebuilt on the public Supabase origin. The token authorizes that single
+   write; no browser object policy exists. The bucket `file_size_limit` and
+   `allowed_mime_types` still apply.
+2. **Browser upload.** The client PUTs the file straight to Storage
+   (`lib/session-documents-upload.ts`, a plain `fetch` mirroring storage-js
+   `uploadToSignedUrl`; components import no Supabase client). If the PUT fails,
+   the client calls `cancelSessionDocumentUpload`, which, for the caller's own
+   `UPLOADING` row only, marks it `REJECTED` and removes any object.
+3. **Finalize** (`finalizeSessionDocumentUpload`) requires the row to be
+   `UPLOADING`, in this organization and session, with `uploaded_by` equal to the
+   caller. It streams the stored object once through
+   `lib/session-documents-inspection.ts` with bounded memory (an approximately
+   1.1 MiB tail window; the whole object is never held), computing SHA-256 and
+   the true byte count, which must equal the declared size and stay within
+   25 MiB. Content checks:
+   - PDF must begin `%PDF-`;
+   - Office files must begin with a ZIP local-file signature, and the whole-file
+     byte rules apply: any `vbaProject.bin` bytes reject, and
+     `[Content_Types].xml` and the `word/` or `ppt/` prefix must appear; and
+   - the ZIP end-of-central-directory record is parsed (ZIP64 supported,
+     multi-disk and entry-count mismatches rejected) with a central directory of
+     at most 1 MiB; it must list `[Content_Types].xml` and an entry under
+     `word/` (DOCX) or `ppt/` (PPTX), and any entry name containing
+     `vbaProject.bin` rejects. Entry-name checks are case-insensitive, as OPC
+     part names are.
 
-After validation it calculates SHA-256 and uses an unguessable object path:
-`<org>/<session>/<document UUID>.<extension>`. Metadata transitions
-`UPLOADING/PENDING` to `AVAILABLE/BASIC_VALIDATED` only after object storage
-succeeds. Failure marks the row `REJECTED` and attempts object cleanup. Upload
-and archive actions append session activity events. Completed permanent
-deletions append an operational activity event on a best-effort basis.
+Success moves the row from `UPLOADING` to `AVAILABLE/BASIC_VALIDATED`
+(compare-and-set) with the computed SHA-256 and appends
+`SESSION_DOCUMENT_UPLOADED`. On a validation or storage failure the row is first
+claimed `REJECTED` only while still `UPLOADING`, so a duplicate finalize or a
+late cancel cannot remove an `AVAILABLE` document; then the object is removed.
+If the activity event cannot be appended after availability, the document is
+still rejected. Because the row exists before the bytes arrive,
+content-validation failures leave a `REJECTED` row. Upload and archive actions
+append session activity events. Completed permanent deletions append an
+operational activity event on a best-effort basis.
+
+Current limitation: a browser that disappears between prepare and finalize
+leaves an unlisted `UPLOADING` row and possibly an unvalidated private object.
+Signed upload tokens remain usable for about two hours, so an authorized uploader
+can still write an object to a path whose row was already rejected; such an
+object is private and never served. No sweeper removes either yet.
 
 `BASIC_VALIDATED` is deliberately not called malware-scanned. Package-marker
 checks do not replace antivirus/content-disarm scanning. The UI tells users to
@@ -333,10 +397,18 @@ feedback themes as substitute teaching content. Generation is an explicit
 moderator action and fails when there is no available document.
 
 The server reauthorizes session moderation, lists source metadata through the
-document DAL, enforces the provider's 50 MiB combined file-input limit, downloads
-the private objects, and verifies each byte count and SHA-256 before inference.
-PDF, DOCX, and PPTX bytes are then sent to the configured AI provider through an
-OpenAI Responses-compatible file-input call. PDFs contribute extracted text and
+document DAL, and enforces the provider's 50 MiB combined file-input limit.
+Documents are not downloaded up front: the provider request body is streamed,
+and each private object is read from storage one at a time
+(`fetchDocumentObject`) while the request uploads. Its byte count and SHA-256 are
+checked incrementally against the `session_documents` values recorded at
+upload. A mismatch, an object larger than recorded, or a storage read failure
+errors the request body before that document's data URL, and therefore the
+JSON, is complete; no output is accepted and generation fails with the original
+integrity or storage message. Unlike a verify-before-send
+flow, the bytes preceding a mismatch may already have reached the provider
+inside that aborted, incomplete request. PDF, DOCX, and PPTX bytes reach the
+configured AI provider through an OpenAI Responses-compatible file-input call. PDFs contribute extracted text and
 page images; DOCX/PPTX contribute extracted text, so embedded Office-only charts
 or images may not inform the recap. Users are warned before upload/generation not
 to include patient-identifiable, confidential, or unnecessary special-category
@@ -377,10 +449,12 @@ an error replaces the pending state with the provider-safe failure message.
 
 The same-origin download route requires authentication and current organization
 session access, then matches document id, session id, org id, and `AVAILABLE`
-status before a service-role object read. Responses use the stored MIME type,
-safe RFC 5987 content disposition, `private, no-store`, and `nosniff`. Only PDFs
-honor `?view=1` as inline; Office files always download, so no Word/PPT webviewer
-or conversion service is introduced.
+status before a service-role object read. The route streams the object from
+Storage (`fetchDocumentObject`) to the client without buffering it and sets
+`Content-Length` from the stored, validated `byte_size`. Responses use the stored
+MIME type, safe RFC 5987 content disposition, `private, no-store`, and
+`nosniff`. Only PDFs honor `?view=1` as inline; Office files always download, so
+no Word/PPT webviewer or conversion service is introduced.
 
 Archiving is moderator-only, stamps actor/time, prevents future route lookup,
 and preserves the private object for audit/retention. It is not secure deletion.

@@ -133,7 +133,7 @@ Generic evidence writers cannot invoke this source.
 | `session_feedback` | Submitted identity snapshot, configurable answer snapshot, derived rating/comment | Public/accountless submission path; moderator raw access |
 | `feedback_actions` | Legacy “You said, we did” records | Inactive historical storage; no current read, write, management, or public surface |
 | `teacher_feedback_reports` | Moderator-approved, versioned aggregate release snapshot | Deny-all; deterministic analytics plus optional exact reviewed AI-assisted narrative; content changes create a new version |
-| `session_deliveries` | Per-recipient report, invitation, or certificate delivery ledger and recoverable send claim | Deny-all; unique natural delivery identity, 15-minute stale-claim recovery; `SENT` is reclaimable only for an explicit moderator feedback resend |
+| `session_deliveries` | Per-recipient report, invitation, certificate, or session-reminder delivery ledger and recoverable send claim | Deny-all; unique natural delivery identity `(session_id, recipient_email, delivery_type, related_id)`, 15-minute stale-claim recovery; `SENT` is reclaimable only for an explicit moderator feedback resend |
 | `certificates` | Issued metadata, public code, finalized revision, recognition basis, coordinator snapshot, and validity/revocation state | Database eligibility trigger; attendee recognition requires current finalized attendance and correct live/catch-up basis, while teacher recognition requires an accepted assignment/invitation; partial uniqueness permits one current `VALID` subject/session/role row |
 
 Feedback stores the submitter's first name, last name, and email; “public form”
@@ -146,6 +146,14 @@ historical `lead_name` and backfills existing certificate snapshots once. The
 old single-value column remains as a compatibility mirror of the first current
 coordinator, not the canonical renderer input. See spec 05 for report privacy,
 eligibility, branding, replacement, and delivery semantics.
+
+`session_deliveries.delivery_type` is unconstrained `TEXT`, so a new delivery
+kind needs no migration; the application owns the vocabulary. The session
+reminder uses `SESSION_REMINDER` with `related_id` set to the session id: a
+non-null `related_id` is required for the natural unique key to deduplicate,
+because Postgres treats nulls as distinct. Reminder rows add one ledger row per
+reminded recipient (email, user id, provider message id) with no automated
+expiry, like the other delivery rows (spec 04).
 
 ## Notification, API, and integration tables
 
@@ -193,7 +201,12 @@ pages. Legacy rows default to an empty list and `false`. Current generation sets
 the flag only after required hosted search returns at least one verifiable HTTP(S)
 source. SQL constrains the value to an array of at most 20 entries and forbids a
 nonempty list when the research flag is false. Application metadata reads
-deliberately exclude the MP3 byte column.
+deliberately exclude the MP3 byte column. The only blob read
+(`openRecapAudioStream` in `lib/db/audio-recaps.ts`) is a direct PostgREST GET
+of `audio` alone, filtered by session, authorized status, and `audio_revision`,
+and decoded incrementally from PostgREST's `\\x` hex JSON. `audio_bytes` must
+remain the exact decoded byte length, written or cleared in the same update as
+`audio`, because playback sends it as `Content-Length`.
 
 Migration 058 adds nullable `tts_provider`, constrained to `openai` or
 `elevenlabs`. Existing audio remains `NULL` because a historical custom

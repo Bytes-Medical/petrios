@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { LlmFileInput } from '@/lib/ai/llm'
+import { verifiedFileSources } from '@/lib/ai/streaming-body'
 import type { AudioRecapSourceDocument } from '@/lib/audio-recap-types'
-import { documentSha256 } from '@/lib/session-documents'
 import * as documentsDb from '@/lib/db/session-documents'
 import type { SessionDocument } from '@/lib/db/session-documents'
 
@@ -49,10 +49,15 @@ export async function getCurrentRecapSourceSnapshot(
   return buildRecapSourceSnapshot(documents)
 }
 
-export async function loadRecapSourceFiles(sessionId: string): Promise<{
+export interface RecapSourceFiles {
   snapshot: AudioRecapSourceSnapshot
+  /** Lazy inputs: each request attempt streams the objects from storage. */
   files: LlmFileInput[]
-}> {
+  /** Rethrows a storage or integrity failure raised while the files streamed. */
+  throwIfSourceFailed(): void
+}
+
+export async function loadRecapSourceFiles(sessionId: string): Promise<RecapSourceFiles> {
   const documents = await documentsDb.listSessionDocumentsAsSystem(sessionId)
   if (documents.length === 0) {
     throw new Error('Upload at least one PDF, DOCX, or PPTX in the Documents tab first.')
@@ -66,27 +71,25 @@ export async function loadRecapSourceFiles(sessionId: string): Promise<{
   }
 
   const rowsById = new Map(documents.map((document) => [document.id, document]))
-  const files = await Promise.all(
-    snapshot.documents.map(async (source) => {
-      const row = rowsById.get(source.id)!
-      const blob = await documentsDb.downloadDocumentObject(row.storage_path)
-      const bytes = new Uint8Array(await blob.arrayBuffer())
-      const actualSha256 = documentSha256(bytes)
-      if (bytes.byteLength !== source.byteSize || actualSha256 !== source.sha256) {
-        throw new Error(
-          `Document "${source.filename}" failed its integrity check. Re-upload it before generating the recap.`
-        )
-      }
+  const sources = verifiedFileSources(
+    snapshot.documents.map((source) => {
+      const storagePath = rowsById.get(source.id)!.storage_path
       return {
         filename: source.filename,
         mimeType: source.mimeType,
-        bytes,
-        sha256: actualSha256,
+        byteSize: source.byteSize,
+        sha256: source.sha256,
+        read: async (signal: AbortSignal) =>
+          (await documentsDb.fetchDocumentObject(storagePath, { signal })).body,
+        integrityError: () =>
+          new Error(
+            `Document "${source.filename}" failed its integrity check. Re-upload it before generating the recap.`
+          ),
       }
     })
   )
 
-  return { snapshot, files }
+  return { snapshot, files: sources.files, throwIfSourceFailed: sources.throwIfFailed }
 }
 
 export function recapSourcesAreCurrent(

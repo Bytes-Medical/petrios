@@ -76,6 +76,8 @@ Petrios is built to run on **your own infrastructure**: Docker image +
 compose file, SMTP email, an OpenAI-compatible `OPENAI_BASE_URL` for
 in-network AI (or none), self-hosted Jitsi, a plain-Postgres migration
 runner, and a health endpoint — see [docs/self-hosting.md](./docs/self-hosting.md).
+A Cloudflare Workers staging build is also available — see
+[docs/cloudflare-workers.md](./docs/cloudflare-workers.md).
 
 Integrate anything via the **org-scoped REST API** (`/api/v1`, tokens with
 scopes, [OpenAPI schema](./public/openapi.json)) and **signed webhooks** —

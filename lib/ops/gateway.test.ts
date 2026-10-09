@@ -37,7 +37,7 @@ describe('file-input purpose gate', () => {
         files: [{
           filename: 'private.pdf',
           mimeType: 'application/pdf',
-          bytes: new Uint8Array([1]),
+          open: async () => new ReadableStream<Uint8Array>(),
           sha256: 'a'.repeat(64),
         }],
       })

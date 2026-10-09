@@ -1,0 +1,78 @@
+// Cloudflare Workers configuration (docs/cloudflare-workers.md). Render/Docker
+// ignores this file. The TOP LEVEL is the staging Worker: workers.dev only and
+// no cron triggers, because Render still runs the cron jobs against the same
+// database. Deploy it only with `npm run cf:deploy:staging`.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "petrios-staging",
+  "main": "cfw/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  // Module rules apply only under cfw/: the precompiled yoga.wasm and the fonts
+  // copied by cf:build, which the app reads from /bundle/public/fonts via node:fs.
+  // fallthrough keeps wrangler's default Data rule (**/*.bin) that next/og needs.
+  "base_dir": "cfw",
+  "find_additional_modules": true,
+  "rules": [{ "type": "Data", "globs": ["public/fonts/*.ttf"], "fallthrough": true }],
+
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // OpenNext's self-reference binding; the service name must match the Worker name.
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "petrios-staging" }],
+  "observability": { "enabled": true },
+  "send_metrics": false,
+
+  "workers_dev": true,
+  "preview_urls": false,
+  "triggers": { "crons": [] },
+
+  "vars": {
+    // Set per deploy by cf:deploy:staging (validated); empty fails closed for email links.
+    "APP_URL": "",
+    // scheduled() dispatches nothing unless this is exactly "true".
+    "CRON_ENABLED": "false",
+    // Staging serves the production database, so lib/email.ts refuses every
+    // send (except to OUTBOUND_EMAIL_ALLOWLIST secret addresses). Real users
+    // must never get links or certificates that point at workers.dev.
+    "OUTBOUND_EMAIL_ENABLED": "false",
+    // Cloudflare overwrites this header; the first x-forwarded-for hop is
+    // client-supplied, so rate limits (lib/rate-limit.ts) must not trust it.
+    "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip"
+  },
+  // Deploy fails unless these exist as Worker secrets (wrangler secret put).
+  "secrets": {
+    "required": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "CRON_SECRET"]
+  },
+
+  "env": {
+    // FUTURE CUTOVER ONLY. There is no deploy script for this environment.
+    // Deploying it while Render's scheduler runs would double-send every
+    // cron email. Add the custom-domain route and APP_URL at cutover.
+    "production": {
+      "name": "petrios",
+      "workers_dev": false,
+      "preview_urls": false,
+      "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "petrios" }],
+      // Must match cfw/cron.ts CRON_SCHEDULE (enforced by cfw/cron.test.ts) and
+      // Render's real schedule. UTC.
+      "triggers": {
+        "crons": ["0 * * * *", "15 * * * *", "5,20,35,50 * * * *", "0 8 * * *", "30 6 * * *", "0 7 * * MON"]
+      },
+      "vars": {
+        "APP_URL": "",
+        "CRON_ENABLED": "true",
+        "OUTBOUND_EMAIL_ENABLED": "true",
+        "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip"
+      },
+      "secrets": {
+        "required": [
+          "SUPABASE_URL",
+          "SUPABASE_ANON_KEY",
+          "SUPABASE_SERVICE_ROLE_KEY",
+          "CRON_SECRET",
+          "RESEND_API_KEY"
+        ]
+      }
+    }
+  }
+}

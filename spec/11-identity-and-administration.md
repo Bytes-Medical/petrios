@@ -57,8 +57,11 @@ local deep link.
 
 The limiter table is deny-all/service accessed because the caller is not signed
 in. Limiter failure is intentionally fail-open: sign-in continues and logs the
-problem. IP is the first `x-forwarded-for` value, then `x-real-ip`; deployments
-must configure a trusted proxy or clients may spoof these headers.
+problem. When `TRUSTED_CLIENT_IP_HEADER` is set, IP is that header only (the
+Workers config sets `cf-connecting-ip`, which Cloudflare overwrites; a missing
+header yields no IP rather than a spoofable fallback). Otherwise IP is the
+first `x-forwarded-for` value, then `x-real-ip`; such deployments must
+configure a trusted proxy or clients may spoof these headers.
 
 The action returns readable structured failure rather than throwing a masked
 server-action error. In nonproduction only (there is deliberately no production override), the full

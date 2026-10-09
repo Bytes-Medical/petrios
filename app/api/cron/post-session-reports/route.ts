@@ -4,6 +4,12 @@ import { emitWebhook } from '@/lib/webhooks'
 import { generateCertificateCode } from '@/lib/certificates/utils'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildCertificateEmailHtml } from '@/lib/email-templates'
+import {
+  CRON_SUBREQUEST_BUDGET,
+  CRON_TIME_BUDGET_MS,
+  createBudgetSlice,
+  createRunBudget,
+} from '@/lib/run-budget'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as attendanceDb from '@/lib/db/attendance'
 import * as certificatesDb from '@/lib/db/certificates'
@@ -11,6 +17,17 @@ import * as onboardingDb from '@/lib/db/onboarding'
 import * as deliveriesDb from '@/lib/db/session-deliveries'
 import { requireCertificateEligibility } from '@/lib/certificates/eligibility'
 import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
+
+// Estimated subrequests reserved against the run budget. A webhook costs one
+// endpoint lookup plus a POST and a delivery row per subscribed endpoint.
+const SESSION_SETUP_COST = 15
+const CERTIFICATE_LOOKUP_COST = 1
+const DELIVERY_LOOKUP_COST = 1
+const RECIPIENT_DELIVERY_COST = 20
+// Units held back for each later session in the batch, so a session that
+// cannot finish in one run never blocks the sessions behind it. With the batch
+// cap of 10, the first of ten sessions may spend at most 8,000 - 9 * 400.
+const LATER_SESSION_RESERVE = 400
 
 export async function GET(request: NextRequest) {
   const unauthorized = unauthorizedCronResponse(request)
@@ -24,27 +41,49 @@ export async function GET(request: NextRequest) {
 
   const mailer = getEmailClient()
   const fromAddress = getFromAddress()
+  const budget = createRunBudget({
+    maxUnits: CRON_SUBREQUEST_BUDGET,
+    maxDurationMs: CRON_TIME_BUDGET_MS,
+  })
 
   let processedCount = 0
+  let deferredSessions = 0
+  let deferredRecipients = 0
 
-  for (const session of sessions) {
+  for (const [sessionIndex, session] of sessions.entries()) {
+    const laterSessions = sessions.length - sessionIndex - 1
+    const sessionBudget = createBudgetSlice(
+      budget,
+      budget.remaining - laterSessions * LATER_SESSION_RESERVE
+    )
+    if (!sessionBudget.take(SESSION_SETUP_COST)) {
+      if (budget.exhausted) {
+        deferredSessions += sessions.length - sessionIndex
+        break
+      }
+      deferredSessions++
+      continue
+    }
+
     try {
-      // Certificate recognition is downstream of human-reviewed finalization.
-      // Leave the session eligible for a later run until that gate is complete.
-      if (session.attendance_phase !== 'FINALIZED') continue
-
       // Integration event: attendance for this session has been computed.
-      void emitWebhook(session.org_id, 'attendance.computed', {
+      await emitWebhook(session.org_id, 'attendance.computed', {
         session_id: session.id,
       })
 
       // 3. Live attendees (LATE still attended). RECALL-primary learners use
       // the dedicated award worker so their PDF/email keeps its catch-up basis.
-      const [allAttendeeIds, acceptedTeacherIds, recallCatchupIds] = await Promise.all([
-        attendanceDb.listAttendeeUserIdsByStatusAsSystem(session.id, ['PRESENT', 'LATE']),
-        certificatesDb.listAcceptedRegisteredTeacherIdsAsSystem(session.id),
-        attendanceDb.listAttendeeUserIdsBySourceAsSystem(session.id, 'RECALL'),
-      ])
+      const [allAttendeeIds, acceptedTeacherIds, recallCatchupIds, sentDeliveries] =
+        await Promise.all([
+          attendanceDb.listAttendeeUserIdsByStatusAsSystem(session.id, ['PRESENT', 'LATE']),
+          certificatesDb.listAcceptedRegisteredTeacherIdsAsSystem(session.id),
+          attendanceDb.listAttendeeUserIdsBySourceAsSystem(session.id, 'RECALL'),
+          deliveriesDb.listSessionDeliveries({
+            sessionId: session.id,
+            deliveryType: 'ATTENDANCE_CERTIFICATE',
+            status: 'SENT',
+          }),
+        ])
       const teacherIdSet = new Set(acceptedTeacherIds)
       const recallCatchupIdSet = new Set(recallCatchupIds)
       // A person teaching this session receives the role-specific teaching
@@ -60,6 +99,14 @@ export async function GET(request: NextRequest) {
         continue
       }
 
+      // Deliveries are keyed by certificate id, so a replacement certificate
+      // after a reopen is never mistaken for one already delivered. The bulk
+      // read is a single page (the API row cap applies, and earlier revisions'
+      // and catch-up rows count toward it), so it is only a fast path: a miss
+      // is confirmed with an exact lookup before paying for a delivery.
+      const deliveredCertificateIds = new Set(
+        sentDeliveries.flatMap((delivery) => (delivery.related_id ? [delivery.related_id] : []))
+      )
       const profiles = await onboardingDb.listProfilesForUsers(attendeeIds)
       const profileByUserId = new Map(profiles.map((p) => [p.user_id, p]))
       const coordinatorSettings =
@@ -69,15 +116,49 @@ export async function GET(request: NextRequest) {
         coordinatorSettings.lead_name
       )
       let sessionHadFailure = false
+      let sessionDeferred = false
 
       // 4. Issue certificates and email each attendee
-      for (const attendeeId of attendeeIds) {
+      for (const [attendeeIndex, attendeeId] of attendeeIds.entries()) {
+        if (!sessionBudget.take(CERTIFICATE_LOOKUP_COST)) {
+          deferredRecipients += attendeeIds.length - attendeeIndex
+          sessionDeferred = true
+          break
+        }
+
         let claimedDeliveryId: string | null = null
         try {
           const profile = profileByUserId.get(attendeeId)
           if (!profile?.email) {
             sessionHadFailure = true
             continue
+          }
+
+          const existingCert = await certificatesDb.findCertificateByUserAndSession(
+            attendeeId,
+            session.id,
+            { role: 'ATTENDEE', includeLegacy: false }
+          )
+          if (existingCert) {
+            if (deliveredCertificateIds.has(existingCert.id)) continue
+            if (!sessionBudget.take(DELIVERY_LOOKUP_COST)) {
+              deferredRecipients += attendeeIds.length - attendeeIndex
+              sessionDeferred = true
+              break
+            }
+            const sent = await deliveriesDb.listSessionDeliveries({
+              sessionId: session.id,
+              deliveryType: 'ATTENDANCE_CERTIFICATE',
+              relatedId: existingCert.id,
+              status: 'SENT',
+            })
+            if (sent.length > 0) continue
+          }
+
+          if (!sessionBudget.take(RECIPIENT_DELIVERY_COST)) {
+            deferredRecipients += attendeeIds.length - attendeeIndex
+            sessionDeferred = true
+            break
           }
 
           const eligibility = await requireCertificateEligibility({
@@ -91,12 +172,6 @@ export async function GET(request: NextRequest) {
             profile.full_name ||
             [profile.first_name, profile.last_name].filter(Boolean).join(' ') ||
             profile.email
-
-          const existingCert = await certificatesDb.findCertificateByUserAndSession(
-            attendeeId,
-            session.id,
-            { role: 'ATTENDEE', includeLegacy: false }
-          )
 
           let certificateId = existingCert?.id ?? null
           if (!existingCert) {
@@ -116,7 +191,7 @@ export async function GET(request: NextRequest) {
               recognitionBasis: eligibility.recognitionBasis,
             })
             certificateId = certificate.id
-            void emitWebhook(session.org_id, 'certificate.issued', {
+            await emitWebhook(session.org_id, 'certificate.issued', {
               session_id: session.id,
               certificate_code: code,
               role: 'ATTENDEE',
@@ -174,9 +249,12 @@ export async function GET(request: NextRequest) {
       }
 
       // Only close the session-level selector once every recipient delivery is
-      // complete. Failed rows remain individually retryable and successful rows
-      // are skipped on the next invocation.
-      if (!sessionHadFailure) {
+      // complete in one pass. Failed rows remain individually retryable,
+      // successful rows are skipped on the next invocation, and recipients the
+      // run budget did not reach are picked up by the next run.
+      if (sessionDeferred) {
+        deferredSessions++
+      } else if (!sessionHadFailure) {
         await sessionsDb.markSessionReportSent(session.id)
         processedCount++
       }
@@ -189,5 +267,7 @@ export async function GET(request: NextRequest) {
     message: `Processed ${processedCount} of ${sessions.length} sessions`,
     processed: processedCount,
     total: sessions.length,
+    deferredSessions,
+    deferredRecipients,
   })
 }

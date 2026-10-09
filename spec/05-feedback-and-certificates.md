@@ -430,8 +430,8 @@ future issue paths that try to bypass the service. Certificate insert appends a
 | Path | Authority/trigger | Recipients | Idempotency and delivery |
 |---|---|---|---|
 | Manual `generateCertificate` | Authenticated department moderator | One supplied registered user and role passing canonical eligibility | Reuses current `VALID` certificate for that role; renders PDF result |
-| Session batch | Department moderator, ended published session, finalized attendance governance | Current-revision `PRESENT`/`LATE` non-teacher registered attendees plus accepted registered and external teachers | Role-specific reuse; teachers do not need an attendee result; external teacher delivery uses a claimed `TEACHING_CERTIFICATE` ledger row and PDF attachment; returns issued/existing/failure counts |
-| Post-session job | Cron bearer secret; finalized sessions selected by report watermark | Internal `PRESENT`/`LATE` attendees excluding accepted teachers and RECALL-primary catch-up learners | Role-specific valid reuse/insert; durable claimed email delivery; watermark only after all recipients complete; catch-up delivery stays with its dedicated worker |
+| Session batch | Department moderator, ended published session, finalized attendance governance | Current-revision `PRESENT`/`LATE` non-teacher registered attendees plus accepted registered and external teachers | Role-specific reuse; teachers do not need an attendee result; registered recipients receive certificate rows only, with no PDF rendered at issue (their PDF renders on authenticated download); the moderator issuer is resolved once per batch; external teacher delivery uses a claimed `TEACHING_CERTIFICATE` ledger row and is the only batch-time PDF render, attached to the email; returns issued/existing/failure counts only (no certificate rows or PDF bytes) |
+| Post-session job | Cron bearer secret; finalized sessions selected by report watermark | Internal `PRESENT`/`LATE` attendees excluding accepted teachers and RECALL-primary catch-up learners | Role-specific valid reuse/insert; durable claimed email delivery; watermark only after one budget-bounded pass completes all recipients; catch-up delivery stays with its dedicated worker |
 | Audio Recap catch-up | Perfect authenticated completion RPC, then immediate worker or `recall-awards` cron retry | Expected registered attendee changed from finalized `ABSENT` to transparent RECALL-primary `PRESENT` | Reuses/inserts one `AUDIO_RECAP_CATCH_UP` certificate; PDF email attachment uses claimed delivery; learning/attendance remains committed through provider failure |
 
 There is no feedback-submission issue path and no teacher-feedback-release issue
@@ -439,7 +439,14 @@ path.
 
 Manual registered generation snapshots the target profile's name/email, the
 department's resolved teaching coordinators, and the moderator as issuer. It
-does not use the moderator's identity as the recipient. External batch issuance
+does not use the moderator's identity as the recipient. The session batch
+applies the same per-recipient canonical eligibility, role-specific reuse,
+name/email/coordinator/issuer snapshots, and unique-conflict reuse, but inserts
+registered rows without rendering a PDF; registered recipients render it on
+demand through the authenticated download surfaces, so a batch never holds or
+returns PDF bytes for them. A renderer failure therefore surfaces at download
+for registered recipients rather than failing their batch issue. Manual
+`generateCertificate` still renders before inserting. External batch issuance
 snapshots the accepted invitation name/email and moderator issuer, renders the
 same branded/verified teaching PDF, and attaches it to an email because the
 recipient has no authenticated download surface. Provider acceptance is stored
@@ -452,11 +459,15 @@ both application and database eligibility reject an attendee-role certificate
 for that registered teacher. This prevents one session from producing both
 teaching and attendee recognition for the same teacher.
 
-The post-session job emits `attendance.computed` only for the already finalized
-record and `certificate.issued` only for a new certificate. A recipient delivery
-is related to the certificate id, so a replacement certificate after correction
-has a distinct retry ledger. The session report watermark is not written after
-any missing profile, eligibility, claim, provider, or ledger failure.
+The post-session job emits `attendance.computed` each time it starts a pass over
+an already finalized, unwatermarked session; a session whose delivery spans
+several runs, or that retries a failure, emits it again, so consumers dedupe by
+session id. It emits `certificate.issued` only for a new certificate. A
+recipient delivery is related to the certificate id, so a replacement
+certificate after correction has a distinct retry ledger. The session report
+watermark is not written after any missing profile, eligibility, claim,
+provider, or ledger failure, nor while attendees remain unreached because the
+per-run work budget ran out.
 
 ## Reopening, revocation, and replacement
 
@@ -511,7 +522,9 @@ Authenticated download requires current-user ownership and organization scope,
 so it applies only to registered recipients. External teachers receive the PDF
 attachment at generation; public verification remains available by bearer code.
 `VALID` and explicitly labelled `LEGACY` rows can render for their registered
-owner; `REVOKED` cannot.
+owner; `REVOKED` cannot. Every render path builds the QR verification URL from
+the application origin read at request time (spec 09, Application URL), not
+from a build-time value.
 
 `/verify/:certificateId` is public because the code is a bearer verification
 identifier. It uses the certificate's coordinator snapshot (falling back to the

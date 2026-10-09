@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { isAuthorizedCronRequest } from './cron-auth'
+import { cronDisabledByConfig, isAuthorizedCronRequest } from './cron-auth'
+
+describe('cronDisabledByConfig', () => {
+  it('disables only on an explicit "false"', () => {
+    expect(cronDisabledByConfig('false')).toBe(true)
+    expect(cronDisabledByConfig(undefined)).toBe(false)
+    expect(cronDisabledByConfig('true')).toBe(false)
+    expect(cronDisabledByConfig('')).toBe(false)
+  })
+})
 
 describe('isAuthorizedCronRequest', () => {
   const secret = 'test-cron-secret'

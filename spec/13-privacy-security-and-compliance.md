@@ -51,8 +51,9 @@ spec 11 for identity, and spec 12 for reports/exports.
    Operators must reconcile runtime configuration with contracts, dashboards,
    logs, backups, support tools, and onward subprocessors.
 6. **Security headers cover every application response.** New page/route families
-   remain under the global Next.js header rule unless a reviewed exception is
-   necessary and documented. API routes do not bypass the header baseline.
+   remain under the `proxy.ts` header baseline unless a reviewed exception is
+   necessary and documented. API routes do not bypass the header baseline. The
+   only exceptions are the static files listed under Browser security baseline.
 7. **Core small-text colour tokens retain WCAG AA contrast.** `gray.500` and
    `clay.600` must remain at least 4.5:1 against both their actual normal-text
    surfaces. Token compliance is not a full accessibility-conformance claim.
@@ -142,7 +143,7 @@ The public privacy notice summarizes these active families:
 |---|---|---|
 | Identity/account | Name, email, grade, auth id, profile/status | Supabase Auth/database; server-rendered role UI; authentication email |
 | Authority | Org/department memberships, roles, invitations, assignments | Authorisation ladder, RLS/service DAL, moderator/admin surfaces |
-| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration, private session documents, Audio Recap and newsletter document/research/speech provenance | Member pages, private storage/download, invite email, calendar/API/webhook/export paths; explicit moderator Audio Recap generation sends current session documents to the configured LLM provider and may cause provider-hosted public-search queries derived from them; explicit newsletter generation sends every available document for the selected department/week but does not use web search; later audio creation sends only the stored draft script to the separately selected speech provider |
+| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration, private session documents, Audio Recap and newsletter document/research/speech provenance | Member pages, browser-direct signed upload to private storage and streamed download, invite email, calendar/API/webhook/export paths; explicit moderator Audio Recap generation sends current session documents to the configured LLM provider and may cause provider-hosted public-search queries derived from them; explicit newsletter generation sends every available document for the selected department/week but does not use web search; later audio creation sends only the stored draft script to the separately selected speech provider |
 | Attendance | Evidence source/timestamp, roster, derived status, lifecycle revision, corrections, transparent Audio Recap catch-up source | Moderator/teacher views, in-app notifications, certificates, reports, portable records, portfolio |
 | Feedback | First/last name, email, rating, answers, comment, aggregate report snapshots, optional reviewed AI-assisted narrative | Public submission; moderator raw audit; privacy-safe teacher release; stats; optional AI draft and explicit review |
 | Learning evidence | Certificates and recognition basis, registered user or external invitation/email identity, recipient/coordinator/issuer names, Recall playback progress/attempts/answers/completion, reflections, snapshots | Identity-bound catch-up page; personal dashboards; certificate PDF email attachments; PDFs; capability verification pages (certificate coordinator/issuer and catch-up attribution are visible to a code bearer) |
@@ -303,11 +304,13 @@ already sent.
 
 ## Browser security baseline
 
-`next.config.js` applies these headers to `/(.*)`:
+`proxy.ts` applies these headers through `lib/security-headers.ts` to every
+response its matcher reaches, with origins taken from runtime configuration
+(`lib/runtime-config.ts`):
 
 | Header | Implemented value / purpose |
 |---|---|
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains`; one-year HTTPS enforcement after a browser receives it over HTTPS |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains`, sent only when the configured app URL is HTTPS; one-year HTTPS enforcement after a browser receives it over HTTPS |
 | `Content-Security-Policy` | Source allow-list and injection-impact reduction described below |
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY`, redundant defence for older clients alongside `frame-ancestors 'none'` |
@@ -319,6 +322,14 @@ HSTS intentionally omits `preload`: inclusion in a browser preload list creates
 an operational commitment for the parent domain and subdomains and must not be
 requested by source code without domain-owner review. Headers over local HTTP are
 ignored by conforming browsers; production TLS termination must preserve them.
+
+Current limitation: the proxy matcher skips `_next/static`, `_next/image`,
+`favicon.ico`, and `.svg`/`.png`/`.jpg`/`.jpeg`/`.gif`/`.webp` files, so those
+never carry these headers on any host. On Cloudflare Workers every file under
+`public/` is also served by the Workers assets layer without running the Worker,
+so `public/fonts/*.ttf` and `/openapi.json` additionally lack the whole baseline
+(including CSP and `X-Content-Type-Options`) there. HTML, route-handler, and API
+responses carry the full baseline on both hosts.
 
 ### CSP construction
 
@@ -342,7 +353,11 @@ Production directives:
 - `worker-src 'self' blob:`
 - `frame-src 'self' <jitsi-origin>`
 - `connect-src 'self' <supabase-http/ws> <jitsi-http/ws>`
-- `upgrade-insecure-requests`
+- `upgrade-insecure-requests` (only when the configured app URL is HTTPS)
+
+The Supabase origin in `connect-src` also carries browser-direct
+session-document uploads to one-shot signed Storage URLs (spec 04); removing it
+breaks uploads.
 
 Development additionally permits `unsafe-eval` for framework tooling and local
 HTTP/WebSocket connections. Production must never inherit those development

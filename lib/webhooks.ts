@@ -3,10 +3,16 @@ import * as apiPlatformDb from '@/lib/db/api-platform'
 
 /**
  * Outbound webhooks: org-admin-registered endpoints receive signed POSTs
- * when platform events fire. Fire-and-forget by contract — a webhook must
- * NEVER fail or slow the action that triggered it, so emitWebhook swallows
- * everything and delivery results land in webhook_deliveries for the
- * Settings panel. One attempt per event in v1 (retries: see ROADMAP.md).
+ * when platform events fire. A webhook must NEVER fail the action that
+ * triggered it, so emitWebhook never rejects and delivery results land in
+ * webhook_deliveries for the Settings panel. One attempt per event in v1
+ * (retries: see ROADMAP.md).
+ *
+ * Never leave the promise floating: Workers may cancel unregistered work once
+ * the response is sent. Server actions and route handlers wrap it in
+ * `after(() => emitWebhook(...))` from next/server (waitUntil on Workers,
+ * in-process on Node) so it does not slow the response; cron jobs and code they
+ * reach await it. Do not call after() here — it throws outside a request scope.
  */
 
 import type { WebhookEvent } from './webhook-events'

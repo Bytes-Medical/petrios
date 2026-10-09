@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
 import {
   assertSessionCanBePublished,
@@ -132,15 +133,18 @@ export async function updateSession(id: string, updates: Partial<Session>) {
     normalizedUpdates
   )
 
-  // Fire-and-forget integration event on the DRAFT -> PUBLISHED transition.
+  // Integration event on the DRAFT -> PUBLISHED transition, sent after the
+  // response so it never slows the action.
   if (nextStatus === 'PUBLISHED' && scope.status !== 'PUBLISHED') {
-    void emitWebhook(orgId, 'session.published', {
-      session_id: session.id,
-      title: session.title,
-      department_id: session.department_id,
-      date_start: session.date_start,
-      date_end: session.date_end,
-    })
+    after(() =>
+      emitWebhook(orgId, 'session.published', {
+        session_id: session.id,
+        title: session.title,
+        department_id: session.department_id,
+        date_start: session.date_start,
+        date_end: session.date_end,
+      })
+    )
   }
 
   revalidatePath(`/sessions/${id}`)

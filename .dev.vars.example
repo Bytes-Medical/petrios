@@ -1,0 +1,31 @@
+# Local Cloudflare Workers preview (npm run cf:preview). Copy to .dev.vars.
+# .dev.vars is the ONLY source of variables for the preview: cf:preview stops
+# wrangler from falling back to .env/.env.local, and cf:build scrubs the .env
+# snapshot OpenNext would otherwise compile into the Worker.
+#
+# Placeholders only. Point SUPABASE_* at a NON-production project, or at a dead
+# local port (as below) for smoke tests that must not reach any database.
+# wrangler dev loads only names declared in wrangler.jsonc (vars or
+# secrets.required); anything else in this file is ignored.
+
+APP_URL=http://localhost:8787
+SUPABASE_URL=http://127.0.0.1:59999
+SUPABASE_ANON_KEY=placeholder-anon-key
+SUPABASE_SERVICE_ROLE_KEY=placeholder-service-role-key
+CRON_SECRET=placeholder-cron-secret
+
+# scheduled() refuses to dispatch unless this is exactly "true". Leave "false"
+# except when testing cron dispatch with `npm run cf:preview -- --test-scheduled`.
+CRON_ENABLED=false
+
+# lib/email.ts refuses every send while this is "false" (the staging default).
+OUTBOUND_EMAIL_ENABLED=false
+
+# Never copy this file into a --secrets-file: cf:deploy:staging refuses one
+# that sets APP_URL, CRON_ENABLED or OUTBOUND_EMAIL_ENABLED.
+
+# Never set these on Workers: they name Docker-network hosts, and
+# global_fetch_strictly_public blocks private addresses.
+# SUPABASE_INTERNAL_URL=
+# AUTH_INTERNAL_URL=
+# STORAGE_INTERNAL_URL=

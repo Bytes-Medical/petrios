@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireOrg, getCurrentUser } from '@/lib/auth'
+import { getAppUrlFromHeaders } from '@/lib/app-url'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
 import * as certificatesDb from '@/lib/db/certificates'
 import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     }
 
     const orgName = certificate.organizations?.name || 'Organization'
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin
+    const baseUrl = await getAppUrlFromHeaders()
     const verifyUrl = `${baseUrl}/verify/${certificate.certificate_code}`
 
     const pdfBuffer = await generateCertificatePDF({

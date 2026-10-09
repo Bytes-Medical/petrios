@@ -36,6 +36,10 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".open-next",
+    ".wrangler",
+    "cfw/worker.ts",
+    "cfw/yoga-install.ts"
   ]
 }

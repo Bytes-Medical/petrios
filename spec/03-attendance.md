@@ -357,12 +357,22 @@ results use `LIVE_ATTENDANCE`; a RECALL-primary result must use
 database rejects either basis being substituted for the other. The catch-up PDF,
 email, download, and public verification surface retain this distinction.
 
-The post-session job does not create evidence or recompute attendance. It skips
-sessions that are not finalized, reads current `PRESENT`/`LATE` internal users,
-calls the canonical eligibility service, inserts an idempotent role-specific
-certificate, and sends through `session_deliveries`. Provider `{ error }`
-results are failures. Successful recipient deliveries are skipped on retry and
-the session watermark is written only when every eligible recipient completes.
+The post-session job does not create evidence or recompute attendance. It
+selects only finalized sessions, reads current `PRESENT`/`LATE` internal users,
+and reads the session's `SENT` `ATTENDANCE_CERTIFICATE` delivery rows once. An
+attendee whose current `VALID` attendee certificate already has a `SENT`
+delivery is skipped without re-running eligibility; reopening revokes every
+`VALID` certificate, so a replacement always has a new id and a new ledger row.
+That bulk read is a single page (hosted PostgREST returns at most 1,000 rows,
+and rows for earlier revisions and catch-up awards count toward it), so it is
+only a fast path: a current certificate missing from it gets one exact ledger
+lookup by certificate id, and is skipped if that finds a `SENT` row.
+Other attendees go through the canonical eligibility service, an idempotent
+role-specific certificate insert, and a claimed `session_deliveries` send.
+Provider `{ error }` results are failures. The session watermark is written only
+after one pass in which every eligible recipient completes and the per-run work
+budget reached every attendee; otherwise the next run resumes and skips
+delivered recipients.
 
 Reopening revokes canonical `VALID` certificates immediately and clears the
 watermark. A later finalization can issue a new certificate and delivery tied to

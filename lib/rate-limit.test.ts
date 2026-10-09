@@ -73,4 +73,18 @@ describe('clientIpFromHeaders', () => {
       clientIpFromHeaders(headersOf({ 'x-forwarded-for': '', 'x-real-ip': '192.0.2.9' }))
     ).toBe('192.0.2.9')
   })
+
+  it('uses only the trusted header when one is configured', () => {
+    const spoofed = headersOf({
+      'x-forwarded-for': '6.6.6.6, 203.0.113.7',
+      'cf-connecting-ip': '203.0.113.7',
+    })
+    expect(clientIpFromHeaders(spoofed, 'cf-connecting-ip')).toBe('203.0.113.7')
+  })
+
+  it('never falls back to spoofable headers when the trusted header is missing', () => {
+    expect(
+      clientIpFromHeaders(headersOf({ 'x-forwarded-for': '6.6.6.6' }), 'cf-connecting-ip')
+    ).toBeNull()
+  })
 })

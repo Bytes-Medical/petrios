@@ -61,6 +61,7 @@ Keep the complete result at 700 words or fewer. Do not add sessions, omit sessio
     run: input.run,
     stepName: `newsletter:${input.departmentName}`,
   })
+  bundle.throwIfSourceFailed()
   if (!generated) {
     throw new Error(
       bundle.files.length

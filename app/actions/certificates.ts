@@ -2,9 +2,9 @@
 
 import { getAppUrl } from '@/lib/app-url'
 import { revalidatePath } from 'next/cache'
-import { requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
+import { getCurrentUser, requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
 import type { CertificateRole } from '@/lib/types'
-import { generateCertificatePDF } from '@/lib/certificates/pdf'
+import type { CertificateData } from '@/lib/certificates/pdf'
 import { generateCertificateCode } from '@/lib/certificates/utils'
 import { createSupabaseClient } from '@/lib/supabase/server'
 import * as certificatesDb from '@/lib/db/certificates'
@@ -12,6 +12,12 @@ import * as onboardingDb from '@/lib/db/onboarding'
 import { DbConflictError, DbNotFoundError } from '@/lib/db'
 import { requireCertificateEligibility } from '@/lib/certificates/eligibility'
 import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
+import {
+  certificateBatchFailure,
+  describeCertificateBatchRecipient,
+  planCertificateBatch,
+  type CertificateBatchFailure,
+} from '@/lib/certificates/batch'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildCertificateEmailHtml } from '@/lib/email-templates'
 import * as deliveriesDb from '@/lib/db/session-deliveries'
@@ -20,14 +26,36 @@ import type {
   SessionWithCertificateContext,
 } from '@/lib/db/certificates'
 
+interface CertificateIssuer {
+  issuedBy: string | null
+  issuedByName: string | null
+}
+
+// Loaded lazily so row-only batch issuance never pulls in the PDF renderer.
+async function renderCertificatePdf(data: CertificateData): Promise<Buffer> {
+  const { generateCertificatePDF } = await import('@/lib/certificates/pdf')
+  return generateCertificatePDF(data)
+}
+
+/**
+ * Snapshot the issuing moderator so verification can show who certified it,
+ * even if their account/name changes later. Request-cached auth lookup.
+ */
+async function currentIssuer(): Promise<CertificateIssuer> {
+  const user = await getCurrentUser()
+  return {
+    issuedBy: user?.id || null,
+    issuedByName: user?.user_metadata?.full_name || user?.email || null,
+  }
+}
+
 async function generateAndDeliverExternalTeacherCertificate(input: {
   session: SessionWithCertificateContext
   teacher: ExternalTeacherCertificateCandidate
   coordinatorNames: string[]
-  issuedBy: string
-  issuedByName: string | null
+  issuer: CertificateIssuer
 }) {
-  const { session, teacher } = input
+  const { session, teacher, issuer } = input
   const eligibility = await requireCertificateEligibility({
     sessionId: session.id,
     role: 'TEACHER',
@@ -55,8 +83,8 @@ async function generateAndDeliverExternalTeacherCertificate(input: {
     attendanceRevision: eligibility.attendanceRevision,
     issuanceSource: 'MODERATOR_BATCH',
     recognitionBasis: eligibility.recognitionBasis,
-    issuedBy: input.issuedBy,
-    issuedByName: input.issuedByName,
+    issuedBy: issuer.issuedBy,
+    issuedByName: issuer.issuedByName,
   })
 
   const delivery = await deliveriesDb.getOrCreateSessionDelivery({
@@ -68,7 +96,7 @@ async function generateAndDeliverExternalTeacherCertificate(input: {
     relatedId: certificate.id,
   })
   if (delivery.status === 'SENT') {
-    return { certificate, pdfBuffer: null, existing: true }
+    return { certificate, existing: true }
   }
   if (!(await deliveriesDb.claimSessionDelivery(delivery.id))) {
     throw new Error('The external teacher certificate is already being delivered')
@@ -78,7 +106,7 @@ async function generateAndDeliverExternalTeacherCertificate(input: {
     // getAppUrl throws in production when unset — a certificate PDF with a
     // localhost verify link is unrecoverable once emailed.
     const baseUrl = getAppUrl()
-    const pdfBuffer = await generateCertificatePDF({
+    const pdfBuffer = await renderCertificatePdf({
       orgName: session.organizations?.name || 'Organization',
       departmentName: session.departments?.name || 'Unknown',
       sessionTitle: session.title,
@@ -89,7 +117,7 @@ async function generateAndDeliverExternalTeacherCertificate(input: {
       issuedDate: new Date(certificate.issued_at).toLocaleDateString('en-GB'),
       verifyUrl: `${baseUrl}/verify/${certificate.certificate_code}`,
       coordinatorNames: certificate.coordinator_names ?? input.coordinatorNames,
-      issuerName: certificate.issued_by_name || input.issuedByName || undefined,
+      issuerName: certificate.issued_by_name || issuer.issuedByName || undefined,
     })
     const sendResult = await getEmailClient().emails.send({
       from: getFromAddress(),
@@ -119,7 +147,91 @@ async function generateAndDeliverExternalTeacherCertificate(input: {
     throw error
   }
 
-  return { certificate, pdfBuffer: null, existing: Boolean(existing) }
+  return { certificate, existing: Boolean(existing) }
+}
+
+/**
+ * Issue (or reuse) one registered recipient's certificate. The moderator
+ * batch passes renderPdf=false: registered recipients render their PDF on
+ * authenticated download, so the batch only inserts rows.
+ */
+async function issueRegisteredCertificate(input: {
+  session: SessionWithCertificateContext
+  userId: string
+  role: CertificateRole
+  issuer: CertificateIssuer
+  coordinatorNames: string[]
+  renderPdf: boolean
+}) {
+  const { session, userId, role, issuer, coordinatorNames } = input
+  const eligibility = await requireCertificateEligibility({
+    sessionId: session.id,
+    userId,
+    role,
+    orgId: session.org_id,
+  })
+  const existing = await certificatesDb.findCertificateByUserAndSession(userId, session.id, {
+    role,
+    includeLegacy: false,
+  })
+  if (existing) return { certificate: existing, pdfBuffer: null, existing: true }
+
+  const targetProfile = await onboardingDb.findProfileByUserId(userId)
+  const recipientName =
+    targetProfile?.full_name ||
+    [targetProfile?.first_name, targetProfile?.last_name].filter(Boolean).join(' ') ||
+    targetProfile?.email ||
+    userId
+
+  const certificateCode = generateCertificateCode()
+
+  const pdfBuffer = input.renderPdf
+    ? await renderCertificatePdf({
+        orgName: session.organizations?.name || 'Organization',
+        departmentName: session.departments?.name || 'Unknown',
+        sessionTitle: session.title,
+        sessionDate: new Date(session.date_start).toLocaleDateString(),
+        recipientName,
+        role: role === 'ATTENDEE' ? 'Attendee' : 'Teacher',
+        certificateCode,
+        issuedDate: new Date().toLocaleDateString(),
+        verifyUrl: `${getAppUrl()}/verify/${certificateCode}`,
+        coordinatorNames,
+        issuerName: issuer.issuedByName || undefined,
+        recognitionBasis: eligibility.recognitionBasis,
+      })
+    : null
+
+  let certificate
+  try {
+    certificate = await certificatesDb.insertCertificate({
+      orgId: session.org_id,
+      departmentId: session.department_id,
+      sessionId: session.id,
+      userId,
+      role,
+      certificateCode,
+      issuedBy: issuer.issuedBy,
+      issuedByName: issuer.issuedByName,
+      recipientName,
+      recipientEmail: targetProfile?.email ?? null,
+      coordinatorNames,
+      attendanceRevision: eligibility.attendanceRevision,
+      issuanceSource: 'MODERATOR_BATCH',
+      recognitionBasis: eligibility.recognitionBasis,
+    })
+  } catch (error) {
+    if (error instanceof DbConflictError) {
+      const raced = await certificatesDb.findCertificateByUserAndSession(userId, session.id, {
+        role,
+        includeLegacy: false,
+      })
+      if (raced) return { certificate: raced, pdfBuffer: null, existing: true }
+    }
+    throw error
+  }
+
+  return { certificate, pdfBuffer, existing: false }
 }
 
 export async function generateCertificate(
@@ -136,85 +248,19 @@ export async function generateCertificate(
   }
   await requireDepartmentModerator(session.department_id)
 
-  const eligibility = await requireCertificateEligibility({ sessionId, userId, role, orgId })
-  const existing = await certificatesDb.findCertificateByUserAndSession(userId, sessionId, {
+  const result = await issueRegisteredCertificate({
+    session,
+    userId,
     role,
-    includeLegacy: false,
+    issuer: await currentIssuer(),
+    coordinatorNames: resolveTeachingCoordinatorNames(
+      session.departments?.certificate_coordinator_names,
+      session.departments?.lead_name
+    ),
+    renderPdf: true,
   })
-  if (existing) return { certificate: existing, pdfBuffer: null, existing: true }
-
-  // Auth-plane: the current user is the moderator generating this certificate.
-  // Stays on a direct Supabase client until the auth provider is swapped.
-  const supabase = await createSupabaseClient()
-  const { data: userData } = await supabase.auth.getUser()
-
-  // Snapshot the issuing moderator so verification can show who certified it,
-  // even if their account/name changes later.
-  const issuerName =
-    userData?.user?.user_metadata?.full_name || userData?.user?.email || null
-  const issuedBy = userData?.user?.id || null
-  const targetProfile = await onboardingDb.findProfileByUserId(userId)
-  const recipientName =
-    targetProfile?.full_name ||
-    [targetProfile?.first_name, targetProfile?.last_name].filter(Boolean).join(' ') ||
-    targetProfile?.email ||
-    userId
-
-  const certificateCode = generateCertificateCode()
-  const coordinatorNames = resolveTeachingCoordinatorNames(
-    session.departments?.certificate_coordinator_names,
-    session.departments?.lead_name
-  )
-
-  const baseUrl = getAppUrl()
-  const verifyUrl = `${baseUrl}/verify/${certificateCode}`
-
-  const pdfBuffer = await generateCertificatePDF({
-    orgName: session.organizations?.name || 'Organization',
-    departmentName: session.departments?.name || 'Unknown',
-    sessionTitle: session.title,
-    sessionDate: new Date(session.date_start).toLocaleDateString(),
-    recipientName,
-    role: role === 'ATTENDEE' ? 'Attendee' : 'Teacher',
-    certificateCode,
-    issuedDate: new Date().toLocaleDateString(),
-    verifyUrl,
-    coordinatorNames,
-    issuerName: issuerName || undefined,
-    recognitionBasis: eligibility.recognitionBasis,
-  })
-
-  let certificate
-  try {
-    certificate = await certificatesDb.insertCertificate({
-      orgId,
-      departmentId: session.department_id,
-      sessionId,
-      userId,
-      role,
-      certificateCode,
-      issuedBy,
-      issuedByName: issuerName,
-      recipientName,
-      recipientEmail: targetProfile?.email ?? null,
-      coordinatorNames,
-      attendanceRevision: eligibility.attendanceRevision,
-      issuanceSource: 'MODERATOR_BATCH',
-      recognitionBasis: eligibility.recognitionBasis,
-    })
-  } catch (error) {
-    if (error instanceof DbConflictError) {
-      const raced = await certificatesDb.findCertificateByUserAndSession(userId, sessionId, {
-        role,
-        includeLegacy: false,
-      })
-      if (raced) return { certificate: raced, pdfBuffer: null, existing: true }
-    }
-    throw error
-  }
-
-  revalidatePath('/certificates')
-  return { certificate, pdfBuffer, existing: false }
+  if (!result.existing) revalidatePath('/certificates')
+  return result
 }
 
 export async function generateCertificatesForSession(sessionId: string) {
@@ -238,82 +284,52 @@ export async function generateCertificatesForSession(sessionId: string) {
     throw new Error('Finalize attendance before generating certificates')
   }
 
-  const [teacherIds, allAttendeeIds, externalTeachers] = await Promise.all([
+  const [teacherIds, attendeeIds, externalTeachers, issuer] = await Promise.all([
     certificatesDb.listSessionTeacherIds(sessionId),
     certificatesDb.listSessionAttendeeUserIds(sessionId),
     certificatesDb.listAcceptedExternalTeachersAsSystem(sessionId),
+    currentIssuer(),
   ])
-  const teacherIdSet = new Set(teacherIds)
-  const attendeeIds = allAttendeeIds.filter((attendeeId) => !teacherIdSet.has(attendeeId))
-
-  const supabase = await createSupabaseClient()
-  const { data: moderatorData } = await supabase.auth.getUser()
-  const issuedBy = moderatorData?.user?.id || await requireAuth()
-  const issuedByName =
-    moderatorData?.user?.user_metadata?.full_name || moderatorData?.user?.email || null
   const coordinatorNames = resolveTeachingCoordinatorNames(
     session.departments?.certificate_coordinator_names,
     session.departments?.lead_name
   )
 
-  const results = []
-  const failures: { userId: string; role: CertificateRole; message: string }[] = []
+  let issuedCount = 0
+  let existingCount = 0
+  const failures: CertificateBatchFailure[] = []
 
-  for (const teacherId of teacherIds) {
+  for (const recipient of planCertificateBatch({ teacherIds, attendeeIds, externalTeachers })) {
     try {
-      const result = await generateCertificate(sessionId, teacherId, 'TEACHER')
-      results.push(result)
+      const result = recipient.kind === 'external'
+        ? await generateAndDeliverExternalTeacherCertificate({
+            session,
+            teacher: recipient.teacher,
+            coordinatorNames,
+            issuer,
+          })
+        : await issueRegisteredCertificate({
+            session,
+            userId: recipient.userId,
+            role: recipient.role,
+            issuer,
+            coordinatorNames,
+            renderPdf: false,
+          })
+      if (result.existing) existingCount += 1
+      else issuedCount += 1
     } catch (error) {
-      console.error(`Failed to generate certificate for teacher ${teacherId}:`, error)
-      failures.push({
-        userId: teacherId,
-        role: 'TEACHER',
-        message: error instanceof Error ? error.message : 'Certificate generation failed',
-      })
+      console.error(
+        `Failed to generate certificate for ${describeCertificateBatchRecipient(recipient)}:`,
+        error
+      )
+      failures.push(certificateBatchFailure(recipient, error))
     }
   }
 
-  for (const externalTeacher of externalTeachers) {
-    try {
-      const result = await generateAndDeliverExternalTeacherCertificate({
-        session,
-        teacher: externalTeacher,
-        coordinatorNames,
-        issuedBy,
-        issuedByName,
-      })
-      results.push(result)
-    } catch (error) {
-      console.error(`Failed to generate certificate for external teacher ${externalTeacher.email}:`, error)
-      failures.push({
-        userId: `external:${externalTeacher.email}`,
-        role: 'TEACHER',
-        message: error instanceof Error ? error.message : 'Certificate generation failed',
-      })
-    }
-  }
-
-  for (const attendeeId of attendeeIds) {
-    try {
-      const result = await generateCertificate(sessionId, attendeeId, 'ATTENDEE')
-      results.push(result)
-    } catch (error) {
-      console.error(`Failed to generate certificate for attendee ${attendeeId}:`, error)
-      failures.push({
-        userId: attendeeId,
-        role: 'ATTENDEE',
-        message: error instanceof Error ? error.message : 'Certificate generation failed',
-      })
-    }
-  }
-
+  if (issuedCount > 0) revalidatePath('/certificates')
   revalidatePath(`/sessions/${sessionId}`)
-  return {
-    certificates: results,
-    issuedCount: results.filter((result) => !result.existing).length,
-    existingCount: results.filter((result) => result.existing).length,
-    failures,
-  }
+  return { issuedCount, existingCount, failures }
 }
 
 export async function getMyCertificates() {
@@ -357,7 +373,7 @@ export async function downloadMyCertificateForSession(sessionId: string) {
     session.lead_name
   )
 
-  const pdfBuffer = await generateCertificatePDF({
+  const pdfBuffer = await renderCertificatePdf({
     orgName: session.org_name || 'Organization',
     departmentName: session.department_name || 'Department',
     sessionTitle: session.title,

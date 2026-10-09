@@ -19,6 +19,8 @@
  * Other config:
  *   MAIL_FROM               — default sender "Name <email@your-domain>"
  *   MAIL_DEV_REDIRECT       — rewrite every recipient to one inbox (dev only; ignored in production)
+ *   OUTBOUND_EMAIL_ENABLED  — exactly "false" refuses every send (see outboundEmailRefusal)
+ *   OUTBOUND_EMAIL_ALLOWLIST — comma-separated addresses still served while it is "false"
  */
 
 import nodemailer from 'nodemailer'
@@ -63,6 +65,35 @@ export function parseResendProviderMessageId(payload: unknown): string | null {
 function toBase64(content: Buffer | Uint8Array | string): string {
   if (typeof content === 'string') return content // assume already base64
   return Buffer.from(content).toString('base64')
+}
+
+/**
+ * Deployment-level outbound email switch. Unset, or any value other than
+ * exactly "false", leaves email unchanged (Render and self-hosting never set
+ * it). "false" refuses a send before any transport is contacted, unless every
+ * recipient is listed in OUTBOUND_EMAIL_ALLOWLIST. The Cloudflare staging
+ * Worker sets it because it serves the production database: mail sent from it
+ * would carry the staging origin in its links and certificate QR codes, and a
+ * delivery marked SENT is never re-sent from production. A refusal is an
+ * ordinary `{ error }`, so delivery ledgers record a retryable failure.
+ */
+export function outboundEmailRefusal(
+  recipients: string[],
+  env: Record<string, string | undefined> = process.env
+): string | null {
+  if (env.OUTBOUND_EMAIL_ENABLED !== 'false') return null
+  const allowed = new Set(
+    (env.OUTBOUND_EMAIL_ALLOWLIST ?? '')
+      .split(',')
+      .map((address) => address.trim().toLowerCase())
+      .filter(Boolean)
+  )
+  const allRecipientsAllowed =
+    recipients.length > 0 &&
+    recipients.every((recipient) => allowed.has(parseEmail(recipient).toLowerCase()))
+  return allRecipientsAllowed
+    ? null
+    : 'Outbound email is disabled on this deployment (OUTBOUND_EMAIL_ENABLED=false)'
 }
 
 const isDev = process.env.NODE_ENV !== 'production'
@@ -176,6 +207,9 @@ export function getEmailClient() {
             `\n📧 [email] to=${originalTo.join(', ')}${red} | subject="${params.subject}"${att}`
           )
         }
+
+        const refusal = outboundEmailRefusal(effectiveTo)
+        if (refusal) return { data: null, error: { message: refusal } }
 
         // Self-hosted SMTP takes priority: local relays (or mailpit in dev)
         // accept any sender, so the placeholder-from guard doesn't apply.

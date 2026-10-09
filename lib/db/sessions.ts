@@ -465,6 +465,12 @@ export interface SessionNeedingReport {
   attendance_revision: number | null
 }
 
+/**
+ * Service-role: post-session cron batch. Certificate recognition is downstream
+ * of human-reviewed finalization, so only FINALIZED sessions are selected; a
+ * session awaiting finalization stays eligible for a later run without taking
+ * a batch slot from finalized work behind it.
+ */
 export async function listSessionsNeedingReport(): Promise<SessionNeedingReport[]> {
   const { getServiceDb } = await import('./client')
   const db = await getServiceDb()
@@ -477,6 +483,7 @@ export async function listSessionsNeedingReport(): Promise<SessionNeedingReport[
       'id, org_id, department_id, title, date_start, date_end, checkin_open_mins_before, checkin_close_mins_after, feedback_valid_mins_after_end, late_after_mins, attendance_locked, attendance_policy_version, attendance_phase, attendance_revision'
     )
     .eq('status', 'PUBLISHED')
+    .eq('attendance_phase', 'FINALIZED')
     .lte('date_end', cutoff)
     .is('report_sent_at', null)
     .order('date_end', { ascending: true })

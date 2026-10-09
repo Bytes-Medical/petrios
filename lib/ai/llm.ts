@@ -17,6 +17,10 @@
  *     data-governance path for self-hosted NHS deployments.
  */
 
+import { streamJsonWithFileData, type LlmFileInput } from './streaming-body'
+
+export type { LlmFileInput } from './streaming-body'
+
 const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '')
 const OPENAI_ENDPOINT = `${OPENAI_BASE_URL}/chat/completions`
 const OPENAI_RESPONSES_ENDPOINT = `${OPENAI_BASE_URL}/responses`
@@ -82,14 +86,6 @@ export interface LlmWebSearchOptions {
   }
   /** Require the model to use the configured search tool at least once. */
   required?: boolean
-}
-
-export interface LlmFileInput {
-  filename: string
-  mimeType: string
-  bytes: Uint8Array
-  /** Stored integrity hash used by the Ops audit fingerprint. */
-  sha256: string
 }
 
 interface ResponsesOutputItem {
@@ -159,59 +155,122 @@ function responseSources(output: ResponsesOutputItem[] | undefined): LlmSource[]
   return [...sources.values()]
 }
 
-/**
- * Responses API path for private document inputs. This stays separate from
- * the ordinary Chat Completions adapter because `input_file` is a multimodal
- * request shape and compatible custom endpoints may support chat without
- * supporting file-backed Responses calls.
- */
-export async function askLlmWithFileInputs(input: {
+interface FileInputRequest {
   system: string
   prompt: string
   files: LlmFileInput[]
   maxTokens?: number
   webSearch?: LlmWebSearchOptions
+}
+
+function responsesFileInputBody(input: FileInputRequest, fileData: (index: number) => string) {
+  return {
+    model: LLM_MODEL,
+    instructions: input.system,
+    max_output_tokens: input.maxTokens ?? 8192,
+    ...(input.webSearch ? {
+      tools: [{
+        type: 'web_search',
+        search_context_size: input.webSearch.searchContextSize ?? 'medium',
+        external_web_access: true,
+        filters: { allowed_domains: input.webSearch.allowedDomains },
+        ...(input.webSearch.userLocation ? {
+          user_location: { type: 'approximate', ...input.webSearch.userLocation },
+        } : {}),
+      }],
+      ...(input.webSearch.required ? { tool_choice: 'required' } : {}),
+      include: ['web_search_call.action.sources'],
+    } : {}),
+    input: [{
+      role: 'user',
+      content: [
+        ...input.files.map((file, index) => ({
+          type: 'input_file',
+          filename: file.filename,
+          file_data: fileData(index),
+          ...(file.mimeType === 'application/pdf' ? { detail: 'auto' } : {}),
+        })),
+        { type: 'input_text', text: input.prompt },
+      ],
+    }],
+  }
+}
+
+/**
+ * Responses API path for private document inputs. This stays separate from
+ * the ordinary Chat Completions adapter because `input_file` is a multimodal
+ * request shape and compatible custom endpoints may support chat without
+ * supporting file-backed Responses calls.
+ *
+ * The body is streamed (chunked transfer encoding): each document is read
+ * from storage and base64-encoded while the request uploads, so memory does
+ * not grow with document size. Every call re-opens the documents, and any
+ * failure or abort cancels the storage read in flight.
+ */
+export async function askLlmWithFileInputs(input: FileInputRequest & {
+  signal?: AbortSignal
 }): Promise<LlmResult | null> {
   if (!isLlmConfigured()) return null
   if (input.files.length === 0) throw new Error('At least one document is required')
 
-  const response = await fetch(OPENAI_RESPONSES_ENDPOINT, {
+  const done = new AbortController()
+  const signal = input.signal ? AbortSignal.any([input.signal, done.signal]) : done.signal
+  const body = streamJsonWithFileData(
+    (fileData) => responsesFileInputBody(input, fileData),
+    input.files,
+    signal
+  )
+  try {
+    return await sendFileInputRequest(body.stream, signal, body.failure)
+  } finally {
+    done.abort()
+  }
+}
+
+/**
+ * Node's fetch keeps a tee of a streamed body so it could replay it after a
+ * redirect, which holds the whole upload in memory unless redirects are
+ * refused outright. Workers do not buffer the body but reject 'error', so
+ * they use 'manual' and a 3xx then fails the status check.
+ */
+function streamedBodyRedirectMode(): RequestRedirect {
+  return typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers'
+    ? 'manual'
+    : 'error'
+}
+
+async function sendFileInputRequest(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  bodyFailure: () => unknown
+): Promise<LlmResult> {
+  const init: RequestInit & { duplex: 'half' } = {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      instructions: input.system,
-      max_output_tokens: input.maxTokens ?? 8192,
-      ...(input.webSearch ? {
-        tools: [{
-          type: 'web_search',
-          search_context_size: input.webSearch.searchContextSize ?? 'medium',
-          external_web_access: true,
-          filters: { allowed_domains: input.webSearch.allowedDomains },
-          ...(input.webSearch.userLocation ? {
-            user_location: { type: 'approximate', ...input.webSearch.userLocation },
-          } : {}),
-        }],
-        ...(input.webSearch.required ? { tool_choice: 'required' } : {}),
-        include: ['web_search_call.action.sources'],
-      } : {}),
-      input: [{
-        role: 'user',
-        content: [
-          ...input.files.map((file) => ({
-            type: 'input_file',
-            filename: file.filename,
-            file_data: `data:${file.mimeType};base64,${Buffer.from(file.bytes).toString('base64')}`,
-            ...(file.mimeType === 'application/pdf' ? { detail: 'auto' } : {}),
-          })),
-          { type: 'input_text', text: input.prompt },
-        ],
-      }],
-    }),
-  })
+    body,
+    // Node's fetch requires half duplex for a stream body.
+    duplex: 'half',
+    redirect: streamedBodyRedirectMode(),
+    // Stops Next's fetch cache from reading the whole body to build a cache key.
+    cache: 'no-store',
+    signal,
+  }
+  let response: Response
+  try {
+    response = await fetch(OPENAI_RESPONSES_ENDPOINT, init)
+  } catch (error) {
+    throw bodyFailure() ?? error
+  }
+  // A body that failed (storage or integrity) never completed the JSON, so
+  // nothing the endpoint returned can be accepted.
+  const failure = bodyFailure()
+  if (failure !== undefined) {
+    await response.body?.cancel()
+    throw failure
+  }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => '')

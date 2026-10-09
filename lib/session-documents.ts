@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto'
-
 export const SESSION_DOCUMENT_MAX_BYTES = 25 * 1024 * 1024
 
 export const SESSION_DOCUMENT_MIME = {
@@ -37,43 +35,12 @@ export function validateDocumentMetadata(input: {
   return { filename, extension, mimeType: expectedMime }
 }
 
-export function validateDocumentBytes(
-  bytes: Uint8Array,
-  extension: 'pdf' | 'docx' | 'pptx'
-): void {
-  if (extension === 'pdf') {
-    const header = Buffer.from(bytes.subarray(0, 5)).toString('ascii')
-    if (header !== '%PDF-') throw new Error('The uploaded file is not a valid PDF')
-    return
-  }
-
-  if (
-    bytes.length < 4 ||
-    bytes[0] !== 0x50 ||
-    bytes[1] !== 0x4b ||
-    bytes[2] !== 0x03 ||
-    bytes[3] !== 0x04
-  ) {
-    throw new Error('The uploaded Office document is not a valid Open XML package')
-  }
-
-  // ZIP entry names are present in the package directory. This deliberately
-  // rejects macro-enabled content even when it was renamed to .docx/.pptx.
-  const packageIndex = Buffer.from(bytes).toString('latin1')
-  if (packageIndex.includes('vbaProject.bin')) {
-    throw new Error('Macro-enabled Office documents are not allowed')
-  }
-  if (!packageIndex.includes('[Content_Types].xml')) {
-    throw new Error('The Office package is missing its content manifest')
-  }
-  const requiredPrefix = extension === 'docx' ? 'word/' : 'ppt/'
-  if (!packageIndex.includes(requiredPrefix)) {
-    throw new Error(`The uploaded file is not a valid ${extension.toUpperCase()} document`)
-  }
-}
-
-export function documentSha256(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex')
+export function documentExtensionForMime(mimeType: SessionDocumentMime): SessionDocumentExtension {
+  const extension = (Object.keys(EXTENSION_TO_MIME) as SessionDocumentExtension[]).find(
+    (candidate) => EXTENSION_TO_MIME[candidate] === mimeType
+  )
+  if (!extension) throw new Error('Only PDF, DOCX, and PPTX documents are supported')
+  return extension
 }
 
 export function canActorDeleteSessionDocument(input: {
