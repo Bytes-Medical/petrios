@@ -249,6 +249,13 @@ export function ManageSessionTabs({
             <Card>
               <h2 className="text-xl font-mono font-bold mb-4">Recall Questions</h2>
               <RecallQuestionsPanel
+                // Remount on a new draft: the panel seeds its editable state once,
+                // so a set arriving after router.refresh() would otherwise show stale.
+                key={
+                  recallSet
+                    ? `${recallSet.id}:${recallSet.revision}:${recallSet.script_digest ?? ''}:${recallSet.status}`
+                    : 'none'
+                }
                 sessionId={session.id}
                 initialSet={recallSet}
                 recapScriptDigest={audioRecap?.script_digest}
