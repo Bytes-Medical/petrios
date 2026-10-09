@@ -1,6 +1,7 @@
 import { Card } from '@/components/Card'
 import { Badge } from '@/components/Badge'
 import * as portfolioDb from '@/lib/db/portfolio'
+import { formatAppDate } from '@/lib/datetime'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,7 @@ export default async function VerifyPackPage(props: { params: Promise<{ code: st
             <div>
               <h1 className="font-mono text-2xl font-bold">Portfolio pack verified</h1>
               <p className="mt-1 font-mono text-sm text-gray-600">
-                Issued {new Date(pack.created_at).toLocaleDateString('en-GB')} · code{' '}
+                Issued {formatAppDate(pack.created_at)} · code{' '}
                 {pack.pack_code}
               </p>
             </div>
@@ -81,7 +82,7 @@ export default async function VerifyPackPage(props: { params: Promise<{ code: st
                 {payload.attendance.map((entry, i) => (
                   <div key={i} className="flex items-center justify-between gap-2 px-3 py-1.5">
                     <span className="min-w-0 truncate font-mono text-xs">
-                      {entry.session} · {new Date(entry.date).toLocaleDateString('en-GB')}
+                      {entry.session} · {formatAppDate(entry.date)}
                     </span>
                     <span className="shrink-0 font-mono text-xs text-gray-600">
                       {entry.status}

@@ -3,6 +3,7 @@ import { buildSignatories } from '@/lib/certificates/signatories'
 import Image from 'next/image'
 import { Wordmark } from '@/components/Wordmark'
 import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
+import { formatInAppTimeZone } from '@/lib/datetime'
 
 export default async function VerifyCertificatePage(
   props: {
@@ -74,10 +75,12 @@ export default async function VerifyCertificatePage(
               {certificate.sessions?.date_start && (
                 <Detail
                   label="Session Date"
-                  value={new Date(certificate.sessions.date_start).toLocaleDateString(
-                    'en-GB',
-                    { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }
-                  )}
+                  value={formatInAppTimeZone(certificate.sessions.date_start, {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
                 />
               )}
               {certificate.departments?.name && (
@@ -97,10 +100,11 @@ export default async function VerifyCertificatePage(
               ))}
               <Detail
                 label="Issued"
-                value={new Date(certificate.issued_at).toLocaleDateString(
-                  'en-GB',
-                  { day: 'numeric', month: 'long', year: 'numeric' }
-                )}
+                value={formatInAppTimeZone(certificate.issued_at, {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
               />
             </div>
           </div>

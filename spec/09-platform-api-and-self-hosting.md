@@ -375,15 +375,91 @@ spec 07.
 
 ### LLM
 
-`lib/ai/llm.ts` calls `<OPENAI_BASE_URL>/chat/completions` for ordinary text
+Provider resolution lives in `lib/ai/provider.ts` (`resolveLlmProvider`):
+`LLM_PROVIDER=anthropic|openai` pins the provider (a pinned provider without
+its key stays unconfigured; any other value disables AI with a configuration
+error); with no pin, `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` + `OPENAI_BASE_URL`
+is a configuration error (AI off — a custom OpenAI-compatible endpoint is a data
+residency signal, so a second key must not silently redirect traffic); otherwise
+`ANTHROPIC_API_KEY` selects Anthropic and `OPENAI_API_KEY` the OpenAI-compatible
+adapter. With both keys and no pin the choice (or error) is logged once.
+`lib/ai/llm.ts` dispatches every call; null means unconfigured.
+
+#### Anthropic (default)
+
+The official `@anthropic-ai/sdk` (pinned 0.132.1) client is built once per
+process/isolate with the API key passed explicitly (no profile/credential-file
+discovery, no `ANTHROPIC_AUTH_TOKEN`), log level pinned to `warn`, a 5-minute
+per-attempt timeout, 2 SDK retries, and `cache: 'no-store'`. `ANTHROPIC_MODEL`
+defaults to `claude-opus-5-5`; `ANTHROPIC_BASE_URL` selects a gateway.
+
+Every model call streams `client.beta.messages.stream(...).finalMessage()` with
+`fallbacks: 'default'` and beta `server-side-fallback-2026-07-01`
+(`ANTHROPIC_FALLBACKS=off` removes both). `thinking` is never sent (adaptive and
+always on); effort is explicit in `output_config.effort` per purpose (spec 06);
+`max_tokens = min(64000, max(requested, floor))` with floors 8,192/16,384/32,768
+for low/medium/high. No sampling parameters, prefill or forced `tool_choice`.
+File-backed and assistant calls set top-level `cache_control: ephemeral`.
+`end_turn` returns the text; `refusal`, `max_tokens`,
+`model_context_window_exceeded` and unexpected `tool_use` throw; `pause_turn`
+(server tools) resumes with the same tools and the echoed content, at most 5
+times. After a mid-output refusal fallback, echoed content omits the declined
+attempt's thinking/tool_use and unpaired server_tool_use blocks. Token counts
+include cache reads/writes and sum `usage.iterations` when present; the result
+reports the serving model.
+
+Documents (Audio Recap, newsletter) go through the Files API, one at a time:
+a streamed multipart `POST /v1/files` via `client.post` (the SDK's
+`files.upload()` buffers the whole file) with `expires_in_seconds=3600` and an
+opaque `petrios-ai-<uuid>.pdf|.txt` filename, `redirect: 'error'` (Node) /
+`'manual'` (Workers) and `cache: 'no-store'`. PDFs upload their verified bytes;
+DOCX/PPTX upload extracted UTF-8 text (`lib/ai/office-text.ts`: two bounded
+streaming passes over the stored object — the ZIP central directory from a
+~1.1 MiB tail, then each wanted part inflated through
+`DecompressionStream('deflate-raw')` into a streaming XML scanner; at most
+1,000,000 characters, 64 MiB inflated, 2,000 slides; structure parts ≤2 MiB are
+scanned for slide order and notes relationships only; nothing is inflated after
+the character budget is spent; text is accepted only after the size/SHA-256
+check). One retry on 429/5xx/connection errors re-opens the source; a source
+(storage/integrity) failure is never retried and any file the endpoint accepted
+from a failed body is deleted. Each attempt releases its source when it ends.
+The Messages request references `{type: 'document', source: {type: 'file',
+file_id}, title}` blocks before the prompt (Office text adds a `context` note).
+Every uploaded id is deleted in `finally` (`Promise.allSettled`, 30 s timeout,
+404 counts as deleted); the `ops-synthesis` cron sweeps `petrios-ai-` files
+older than 2 hours on every run. Files are workspace-scoped: use a dedicated
+workspace and key. A 400 on a document request (600-page/context limits, an
+unreadable file, web search disabled for the workspace) maps to a
+provider-neutral message.
+
+Research adds `web_search_20260209` (`allowed_callers: ['direct']`, the
+allow-list, `max_uses` 6, approximate GB location) and a fixed instruction to
+search before writing; the caller requires at least one completed search
+(usage counter or paired result blocks, whichever is larger) and one
+allow-listed source. The answer is the text after the last tool result.
+Sources: citations first, then results; allow-listed HTTP(S) hosts only,
+normalized, de-duplicated, at most 20; `cited_text`/encrypted fields never kept.
+In-band search error codes are logged as codes only.
+
+Errors are typed SDK errors. Logs/audit carry class, status, request id and API
+error type; a non-HTTP SDK error (unreadable stream, unparseable tool input) is
+reported only as `unreadable_response`.
+
+#### OpenAI-compatible adapter (optional)
+
+The adapter calls `<OPENAI_BASE_URL>/chat/completions` for ordinary text
 inference and `<OPENAI_BASE_URL>/responses` for document input (Audio Recap
 with hosted research, and the department newsletter), defaulting to the OpenAI
 API with Bearer `OPENAI_API_KEY`.
 `OPENAI_MODEL` defaults to `gpt-5.5`. Chat uses `max_completion_tokens`, optional
 `reasoning_effort`, and optional JSON object response format.
 
-The file-input path uses `instructions`, `max_output_tokens`, Base64 data-URL
-`input_file` parts, and a final `input_text`. That body is streamed rather than
+The file-input path uses `instructions`, `max_output_tokens`, `store: false`,
+Base64 data-URL `input_file` parts, and a final `input_text`. The Responses
+API otherwise stores the response and its input items (here the documents) as
+retrievable application state; Petrios never reads a response back and sends
+no `previous_response_id`, so it opts out. `store: false` does not change the
+provider's separate abuse-monitoring retention (spec 13). That body is streamed rather than
 built in memory (`lib/ai/streaming-body.ts`): the non-file JSON comes from one
 `JSON.stringify` call with a placeholder per file, and each document's data URL
 is base64-encoded in pieces from its storage stream while the request uploads,
@@ -412,7 +488,7 @@ prompt hash. Raw document bytes, prompt text, provider-generated search queries,
 and fetched public-page bodies are not written to the Ops audit. The provider may
 still process or retain those values according to its own service terms. No key
 returns null; HTTP failure, refusal, incomplete output, or missing required
-research sources fails generation safely. An OpenAI-compatible custom base URL
+research sources fails generation safely. On the adapter, an OpenAI-compatible custom base URL
 must support both endpoint shapes plus Responses file inputs sent as a chunked
 (streamed) request body at the configured URL without redirects, the hosted
 `web_search` request fields, and source-bearing response items for the full
@@ -435,7 +511,7 @@ Provider selection is deterministic:
 2. otherwise the presence of either `ELEVENLABS_API_KEY` or
    `ELEVENLABS_VOICE_ID` selects ElevenLabs, making a partially configured setup
    visible as an error instead of silently falling back; and
-3. otherwise OpenAI remains the historical default.
+3. otherwise `OPENAI_API_KEY` selects OpenAI (the historical default); with none of these, speech is unconfigured. The LLM provider never selects speech.
 
 OpenAI speech posts JSON to `<OPENAI_BASE_URL>/audio/speech` with Bearer
 `OPENAI_API_KEY`, `input`, `model`, `voice`, and `response_format: mp3`.
@@ -599,6 +675,7 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Required | RLS-constrained browser key; public but not authorization by itself |
 | `SUPABASE_SERVICE_ROLE_KEY` | Required server-side | RLS bypass, GoTrue admin, Recall/other HMAC secret; critical secret |
 | `NEXT_PUBLIC_APP_URL` | Required in production by helper | Canonical public origin for links/federation |
+| `APP_TIME_ZONE` | Default `Europe/London` | IANA zone for server-rendered dates and teaching-slot wall times (`lib/datetime.ts`); an invalid value falls back to the default with one logged error per distinct value. Not secret; server-only (client panels that show slot or Ops times receive the server's value as a prop). On Workers it is a plain `vars` entry when set; `TZ` is neither needed nor honoured there |
 | `NEXT_PUBLIC_BASE_URL` | Legacy fallback | Older URL construction |
 | `NEXTAUTH_URL`, `VERCEL_PROJECT_PRODUCTION_URL`, `VERCEL_URL`, `RENDER_EXTERNAL_URL` | Optional fallback | App-origin discovery |
 | `MAIL_FROM` | Required for production mail | Display/sender address; bare addresses receive the Petrios display name and old Byte/Bytes Teaching names are normalized |
@@ -615,9 +692,14 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `CRON_ENABLED` | Unset on Render; set in `wrangler.jsonc` on Workers | `scheduled()` in `cfw/worker.ts` dispatches cron routes only when exactly `true`. Exactly `false` also makes every `/api/cron/*` route answer 503 after authentication (`lib/cron-auth.ts`), so the staging Worker cannot run jobs over HTTP either. `false` at the top level, `true` in `env.production`; unset means routes run |
 | `TRUSTED_CLIENT_IP_HEADER` | Optional; `cf-connecting-ip` on Workers | Header `lib/rate-limit.ts` trusts for the client IP of login-link and group-code throttles. When set, only that header is read (missing = no IP). Unset keeps first `x-forwarded-for` hop, then `x-real-ip` |
 | `ATTENDANCE_RATE_LIMIT_SECRET` | Optional HMAC key pseudonymizing check-in IPs for rate limiting; falls back to the service-role key |
-| `OPENAI_API_KEY` | Optional | Enables LLM and default OpenAI speech; server secret |
-| `OPENAI_BASE_URL` | Default OpenAI v1 | Compatible internal/gateway/provider base |
-| `OPENAI_MODEL` | Default `gpt-5.5` | Chat model |
+| `LLM_PROVIDER` | Optional `anthropic` or `openai` | Provider pin; other values disable AI with a configuration error. Required when both keys and `OPENAI_BASE_URL` are set |
+| `ANTHROPIC_API_KEY` | Optional | Enables Anthropic (default LLM); server secret; dedicated workspace recommended (Files API is workspace-scoped) |
+| `ANTHROPIC_MODEL` | Default `claude-opus-5-5` | Must support adaptive thinking, `output_config.effort`, Files API PDFs and `web_search_20260209` |
+| `ANTHROPIC_BASE_URL` | Optional | Anthropic-compatible gateway; must pass `anthropic-beta`, Files API uploads without redirects, web search |
+| `ANTHROPIC_FALLBACKS` | On unless `off` | Server-side refusal fallbacks |
+| `OPENAI_API_KEY` | Optional | Enables the OpenAI-compatible LLM adapter (when it is the only key or pinned) and OpenAI speech; server secret |
+| `OPENAI_BASE_URL` | Default OpenAI v1 | Compatible internal/gateway/provider base (LLM adapter and OpenAI speech) |
+| `OPENAI_MODEL` | Default `gpt-5.5` | OpenAI adapter model |
 | `TTS_PROVIDER` | Optional `openai` or `elevenlabs` | Explicit speech-provider pin; invalid values disable speech with a configuration error |
 | `ELEVENLABS_API_KEY` | Required when ElevenLabs selected | Speech API credential; server secret |
 | `ELEVENLABS_VOICE_ID` | Required when ElevenLabs selected | Voice selected for new Audio Recap MP3 generation |
@@ -634,6 +716,11 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `PRIVACY_CONTACT_EMAIL` | Required production disclosure | Public monitored privacy/DPO inbox |
 | `DATA_HOSTING_REGION` | Required production disclosure | Accurate application/database/backup region summary |
 | `DATA_TRANSFER_SAFEGUARDS` | Required where relevant | Public reviewed transfer-mechanism summary |
+| `HOSTING_PROVIDER` | `cloudflare-workers` in both `wrangler.jsonc` `vars` blocks; unset elsewhere | Names "Cloudflare Workers" as the application host on `/privacy` and `/subprocessors` (`detectHostingProvider`, spec 13). Any other value is ignored; Render/Vercel/Railway are detected from their own platform variables |
+
+Runtime: Node.js ≥ 20.12 (`package.json` engines) for Office text extraction
+(`DecompressionStream('deflate-raw')`); Docker uses Node 22, Render Node 24,
+Workers workerd.
 
 `NODE_ENV`, `CI`, and hosting-provided variables also influence diagnostics and
 test/development behavior. Only `NEXT_PUBLIC_*` variables may be intentionally

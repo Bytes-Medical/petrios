@@ -2,6 +2,7 @@ import React from 'react'
 import { Document, Page, Text, View, renderToBuffer } from '@react-pdf/renderer'
 import type { AttendanceLogEntry } from '@/lib/db/trainee-dashboard'
 import { docStyles as s, formatPdfDate } from './pdf-shared'
+import { formatAppDate } from '@/lib/datetime'
 
 /**
  * ARCP portfolio pack: verifiable teaching-attendance evidence for a
@@ -60,7 +61,7 @@ function PackDocument({ data }: { data: PortfolioPackData }) {
             <View key={i} style={s.row} wrap={false}>
               <Text style={{ width: '44%' }}>{e.session_title}</Text>
               <Text style={{ width: '20%' }}>
-                {new Date(e.session_date).toLocaleDateString('en-GB')}
+                {formatAppDate(e.session_date)}
               </Text>
               <Text style={{ width: '12%' }}>{e.status}</Text>
               <Text style={{ width: '24%' }}>{sourceLabel(e.primary_source)}</Text>

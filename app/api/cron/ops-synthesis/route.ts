@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { activeLlmProvider, describeLlmError } from '@/lib/ai/llm'
+import { sweepAnthropicFiles } from '@/lib/ai/anthropic-files'
 import { unauthorizedCronResponse } from '@/lib/cron-auth'
 import { notifyUser } from '@/lib/notify'
 import { opsEnabled } from '@/lib/ops/flags'
-import { startRun } from '@/lib/ops/run'
+import { startRun, type OpsRun } from '@/lib/ops/run'
 import { runSynthesisForSession } from '@/lib/ops/synthesis'
 import { draftRecallQuestions } from '@/lib/ops/recall'
 import { formatDateLong } from '@/lib/ops/format'
@@ -31,6 +33,10 @@ import * as onboardingDb from '@/lib/db/onboarding'
  * moderators have current privacy-safe teaching feedback artifacts. The
  * separate newsletter is now moderator-triggered and document-led. Cap 5
  * sessions per run.
+ *
+ * With Anthropic as the LLM provider, every run (including one whose
+ * synthesis work failed) ends with a best-effort sweep of leftover Files API
+ * uploads (petrios-ai- prefix, older than 2 h); only counts are logged.
  * Run daily: GET /api/cron/ops-synthesis with Authorization: Bearer CRON_SECRET
  */
 
@@ -43,8 +49,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: 'Petrios Ops is disabled', skipped: true })
   }
 
-  const run = await startRun('ops_synthesis', 'cron')
+  let run: OpsRun | null = null
   try {
+    run = await startRun('ops_synthesis', 'cron')
     const candidates = await opsReads.listSessionsEndedBetween(2, 45)
     const synthesized = await opsDb.listSynthesizedSessionIds(candidates.map((s) => s.id))
     const unsynthesized = candidates.filter((s) => !synthesized.has(s.id))
@@ -159,12 +166,34 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    await sweepLeftoverUploads(run)
     const summary = `${processed} session(s) synthesised, ${drafted} thank-you draft(s), ${recallDrafted} recall set(s) drafted`
     await run.finish('succeeded', summary)
     return NextResponse.json({ message: summary, processed, drafted, recallDrafted })
   } catch (err) {
     console.error('ops-synthesis failed:', err)
-    await run.finish('failed', err instanceof Error ? err.message : 'unknown error')
+    // A failed synthesis (or audit run) must not also skip the cleanup.
+    await sweepLeftoverUploads(run)
+    await run?.finish('failed', err instanceof Error ? err.message : 'unknown error')
     return NextResponse.json({ error: 'ops-synthesis failed' }, { status: 500 })
+  }
+}
+
+/**
+ * Generations delete their uploads in `finally` and every upload expires
+ * after an hour; this removes what an interrupted request left behind (an
+ * upload whose id never came back, a killed isolate) and the metadata of
+ * expired files. Never throws; logs counts only.
+ */
+async function sweepLeftoverUploads(run: OpsRun | null): Promise<void> {
+  if (activeLlmProvider() !== 'anthropic') return
+  try {
+    const result = await sweepAnthropicFiles()
+    if (run) await run.log('files:sweep', { ...result })
+    else console.warn(`[ai] Anthropic file sweep: ${result.deleted} deleted, ${result.failed} failed`)
+  } catch (err) {
+    const error = describeLlmError(err)
+    if (run) await run.log('files:sweep:error', { error })
+    else console.warn(`[ai] Anthropic file sweep failed: ${error}`)
   }
 }

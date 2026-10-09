@@ -48,9 +48,13 @@ its architecture, contracts, policies, users, and intended use.
 - The canonical privacy boundary is `spec/13-privacy-security-and-compliance.md`;
   feedback-specific identity/release behaviour is in spec 05.
 - Feedback entry is public and accountless but **identified**: name and email are
-  stored. Authorised moderators can view raw identity, and current teacher
-  feedback-release email includes submitter names. It must not be described as
-  anonymous.
+  stored, and authorised moderators can view raw identity. It must not be
+  described as anonymous. Teacher feedback-release email contains aggregate
+  scores, question-level analytics and an optional moderator-reviewed,
+  name-stripped AI summary, and never respondent names, email addresses or raw
+  comments (spec 05 invariant 3). With a small cohort the teacher may still
+  infer who responded, so reports under five responses carry a limited-evidence
+  warning.
 - The public `/privacy`, `/privacy/choices`, `/subprocessors`, and
   `/data-processing-agreement` pages expose deployment-specific gaps rather than
   substituting invented controller or location details.
@@ -60,9 +64,13 @@ its architecture, contracts, policies, users, and intended use.
   (`petrios-display`) only when a visitor chooses Night or Match device; it is
   disclosed on `/privacy`, and spec 13 records the PECR rationale for operators
   to review.
-- Optional AI can be disabled or directed to an operator-controlled compatible
-  endpoint. The Ops audit stores hashes and operational metadata, not raw prompt
-  text; this does not override an AI provider's own logging or retention.
+- Optional AI (Anthropic Claude by default, or an optional OpenAI-compatible
+  adapter) can be disabled or directed to an operator-controlled compatible
+  endpoint pinned with `LLM_PROVIDER=openai`. With Anthropic, learning documents
+  are uploaded to the provider's Files API for one generation only (one-hour
+  expiry, deleted afterwards, daily orphan sweep). The Ops audit stores hashes
+  and operational metadata, not raw prompt text; this does not override an AI
+  provider's own logging or retention.
 - Data subject export/erasure is not a one-click universal workflow. Controllers
   must map related data, public verification records, audit needs, provider logs,
   backups, lawful exemptions, and retention before operating the service.

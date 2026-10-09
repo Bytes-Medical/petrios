@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from './Button'
 import { Input } from './Input'
 import { respondToInvitation } from '@/app/actions/teacher-invitations'
@@ -10,6 +11,7 @@ interface TeacherRsvpFormProps {
 }
 
 export function TeacherRsvpForm({ inviteCode }: TeacherRsvpFormProps) {
+  const router = useRouter()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [loading, setLoading] = useState<string | null>(null)
@@ -27,12 +29,18 @@ export function TeacherRsvpForm({ inviteCode }: TeacherRsvpFormProps) {
 
     try {
       const response = await respondToInvitation(inviteCode, firstName, lastName, accepted)
+      if (!response.ok) {
+        setError(response.message)
+        if (response.final) router.refresh()
+        return
+      }
       setResult(response.status === 'ACCEPTED'
         ? 'Thank you! You have accepted the invitation.'
         : 'You have declined the invitation.'
       )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } catch {
+      // Production masks unexpected action errors, so their text is never useful here.
+      setError('Something went wrong while sending your response. Please try again in a moment.')
     } finally {
       setLoading(null)
     }
@@ -53,7 +61,7 @@ export function TeacherRsvpForm({ inviteCode }: TeacherRsvpFormProps) {
       </p>
 
       {error && (
-        <div className="p-4 border border-red-500 bg-red-50">
+        <div role="alert" className="p-4 border border-red-500 bg-red-50">
           <p className="font-mono text-sm text-red-800">{error}</p>
         </div>
       )}

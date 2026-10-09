@@ -13,6 +13,7 @@ import {
 } from '@/lib/email-templates'
 import {
   buildSlotDrafts,
+  claimPrecheck,
   dedupeSlotRecipients,
   describeSlot,
   generateClaimCode,
@@ -21,6 +22,7 @@ import {
   splitSlotDraft,
 } from '@/lib/slot-schedule'
 import { generateCode } from '@/lib/codes'
+import { formatInAppTimeZone } from '@/lib/datetime'
 import { contactDisplayName, profileDisplayName } from '@/lib/contacts'
 import { notifyUser } from '@/lib/notify'
 import { emitWebhook } from '@/lib/webhooks'
@@ -304,8 +306,28 @@ interface ClaimContext {
   attachExternal?: (sessionId: string) => Promise<void>
 }
 
+// Next.js masks thrown action errors in production, so claim actions return
+// expected failures for the UI to show; only unexpected ones throw.
+// `slotUnavailable` tells the UI to refresh so the lost slot disappears.
+export type ClaimSlotResult =
+  | { ok: true; sessionId: string }
+  | { ok: false; message: string; slotUnavailable?: true }
+
+const SLOT_GONE: ClaimSlotResult = {
+  ok: false,
+  message: 'This slot is no longer available.',
+  slotUnavailable: true,
+}
+
+/** A retry after the caller's own claim succeeded but its response was lost. */
+function alreadyClaimedByCaller(slot: TeachingSlot): ClaimSlotResult {
+  return slot.session_id
+    ? { ok: true, sessionId: slot.session_id }
+    : { ok: false, message: 'You have already claimed this slot.', slotUnavailable: true }
+}
+
 /** Shared claim orchestration: atomic claim -> session -> attach -> notify. */
-async function performClaim(ctx: ClaimContext) {
+async function performClaim(ctx: ClaimContext): Promise<ClaimSlotResult> {
   const claimed = await slotsDb.claimSlot({
     slotId: ctx.slotId,
     orgId: ctx.orgId,
@@ -316,7 +338,11 @@ async function performClaim(ctx: ClaimContext) {
   })
 
   if (!claimed) {
-    throw new Error('Sorry — this slot was just claimed by someone else.')
+    return {
+      ok: false,
+      message: 'Sorry — this slot was just claimed by someone else.',
+      slotUnavailable: true,
+    }
   }
 
   let sessionId: string
@@ -369,14 +395,13 @@ async function performClaim(ctx: ClaimContext) {
   )
 
   // Notify the slot creator (bell + email). Non-fatal.
-  const startDate = new Date(claimed.date_start)
-  const slotDateStr = startDate.toLocaleDateString('en-GB', {
+  const slotDateStr = formatInAppTimeZone(claimed.date_start, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   })
-  const slotTimeStr = startDate.toLocaleTimeString('en-GB', {
+  const slotTimeStr = formatInAppTimeZone(claimed.date_start, {
     hour: '2-digit',
     minute: '2-digit',
   })
@@ -410,10 +435,13 @@ async function performClaim(ctx: ClaimContext) {
   revalidatePath('/dashboard')
   revalidatePath(`/departments/${claimed.department_id}/schedule`)
   revalidatePath(`/sessions/${sessionId}/manage`)
-  return { success: true, sessionId }
+  return { ok: true, sessionId }
 }
 
-export async function claimSlotAsMember(slotId: string, topicSuggestion?: string) {
+export async function claimSlotAsMember(
+  slotId: string,
+  topicSuggestion?: string
+): Promise<ClaimSlotResult> {
   const userId = await requireAuth()
   const orgId = await requireOrg()
 
@@ -422,10 +450,13 @@ export async function claimSlotAsMember(slotId: string, topicSuggestion?: string
     slotsDb.hasClaimLinkForSlot({ slotId, userId }),
     onboardingDb.findProfileByUserId(userId).catch(() => null),
   ])
-  if (!slot) throw new DbNotFoundError('Slot not found')
+  if (!slot) return SLOT_GONE
   if (!invited) {
-    throw new Error('This slot has not been offered to you')
+    return { ok: false, message: 'This slot has not been offered to you' }
   }
+  const precheck = claimPrecheck(slot, { userId })
+  if (precheck === 'ALREADY_YOURS') return alreadyClaimedByCaller(slot)
+  if (precheck === 'UNAVAILABLE') return SLOT_GONE
 
   return performClaim({
     slotId: slot.id,
@@ -443,27 +474,30 @@ export async function claimSlotByCode(
   firstName: string,
   lastName: string,
   topicSuggestion?: string
-) {
+): Promise<ClaimSlotResult> {
   const link = await slotsDb.findClaimLinkByCode(code)
   if (!link || !link.contact_id) {
-    throw new DbNotFoundError('This claim link is not valid')
+    return { ok: false, message: 'This claim link is not valid' }
   }
   if (!firstName.trim() || !lastName.trim()) {
-    throw new Error('Please enter your name')
+    return { ok: false, message: 'Please enter your name' }
   }
 
   const [slot, offered] = await Promise.all([
-    slotsDb.findSlot(slotId, link.org_id),
+    slotsDb.findSlotAsSystem(slotId, link.org_id),
     slotsDb.hasClaimLinkForSlot({
       slotId,
       contactId: link.contact_id,
       publicationId: link.publication_id,
     }),
   ])
-  if (!slot) throw new DbNotFoundError('Slot not found')
+  if (!slot) return SLOT_GONE
   if (!offered) {
-    throw new Error('This slot is not part of your invitation')
+    return { ok: false, message: 'This slot is not part of your invitation' }
   }
+  const precheck = claimPrecheck(slot, { contactId: link.contact_id })
+  if (precheck === 'ALREADY_YOURS') return alreadyClaimedByCaller(slot)
+  if (precheck === 'UNAVAILABLE') return SLOT_GONE
 
   // Self-reported names are authoritative.
   const contact = await contactsDb.upsertContactByEmail({

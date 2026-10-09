@@ -1,6 +1,7 @@
 import React from 'react'
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import type { AuditSessionRow } from '@/app/actions/audit'
+import { formatInAppTimeZone } from '@/lib/datetime'
 
 const styles = StyleSheet.create({
   page: { padding: 40, fontFamily: 'Courier', fontSize: 9 },
@@ -46,7 +47,7 @@ export function buildAuditReportDocument(props: AuditReportProps) {
           {departmentNames.join(', ')} — {dateRange}
         </Text>
         <Text style={styles.subtitle}>
-          Generated: {new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}
+          Generated: {formatInAppTimeZone(new Date(), { year: 'numeric', month: 'long', day: 'numeric' })}
         </Text>
 
         {/* Summary Stats */}
@@ -83,7 +84,7 @@ export function buildAuditReportDocument(props: AuditReportProps) {
           const rate = s.attendanceTotal > 0
             ? Math.round((s.attendancePresent / s.attendanceTotal) * 100)
             : 0
-          const date = new Date(s.dateStart).toLocaleDateString('en-GB', {
+          const date = formatInAppTimeZone(s.dateStart, {
             day: '2-digit',
             month: 'short',
             year: '2-digit',
@@ -145,7 +146,7 @@ export function buildMemberReportDocument(props: MemberReportProps) {
           {email}{grade ? ` — ${grade}` : ''}
         </Text>
         <Text style={styles.subtitle}>
-          {departmentNames.join(', ')} — Generated: {new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}
+          {departmentNames.join(', ')} — Generated: {formatInAppTimeZone(new Date(), { year: 'numeric', month: 'long', day: 'numeric' })}
         </Text>
 
         {/* Summary */}
@@ -173,7 +174,7 @@ export function buildMemberReportDocument(props: MemberReportProps) {
           <Text style={[styles.cellNarrow, styles.bold]}>Source</Text>
         </View>
         {sessions.map((s, i) => {
-          const date = new Date(s.date).toLocaleDateString('en-GB', {
+          const date = formatInAppTimeZone(s.date, {
             day: '2-digit',
             month: 'short',
             year: '2-digit',

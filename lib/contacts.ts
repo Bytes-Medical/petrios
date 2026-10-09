@@ -62,6 +62,25 @@ export function contactDisplayName(contact: {
   )
 }
 
+/**
+ * Name shown to other people in a third-party video room: the profile name
+ * only, never the email address, which would otherwise reach the Jitsi
+ * service and every participant.
+ */
+export function meetingDisplayName(
+  profile: {
+    full_name?: string | null
+    first_name?: string | null
+    last_name?: string | null
+  } | null
+): string {
+  return (
+    profile?.full_name?.trim() ||
+    [profile?.first_name?.trim(), profile?.last_name?.trim()].filter(Boolean).join(' ') ||
+    'Attendee'
+  )
+}
+
 /** Display name for a profiles row: full name → first+last → email → fallback. */
 export function profileDisplayName(
   profile: {

@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createDocumentInspector,
   DOCUMENT_INSPECTION_ERRORS,
+  forEachZipEntry,
+  forEachZipEntryName,
+  type ZipEntry as CentralEntry,
   inspectDocumentStream,
   ZIP_CENTRAL_DIRECTORY_MAX_BYTES,
   ZIP_TAIL_WINDOW_BYTES,
@@ -308,5 +311,60 @@ describe('inspectDocumentStream', () => {
 
   it('treats a missing body as empty', async () => {
     await expect(inspectDocumentStream(null, { extension: 'pdf', expectedSize: 5 })).rejects.toThrow('empty')
+  })
+})
+
+describe('forEachZipEntry', () => {
+  it('reports each entry with flags, method, sizes and local header offset', () => {
+    const bytes = zip(DOCX_ENTRIES)
+    const entries: CentralEntry[] = []
+    forEachZipEntry(bytes, 0, (entry) => entries.push(entry))
+    expect(entries.map((entry) => entry.name)).toEqual(DOCX_ENTRIES.map((entry) => entry.name))
+    for (const entry of entries) {
+      expect(entry).toMatchObject({ flags: 0, method: 0 })
+      expect(bytes.readUInt32LE(entry.localHeaderOffset)).toBe(0x04034b50)
+      const nameLength = bytes.readUInt16LE(entry.localHeaderOffset + 26)
+      expect(bytes.subarray(entry.localHeaderOffset + 30, entry.localHeaderOffset + 30 + nameLength).toString('latin1'))
+        .toBe(entry.name)
+      expect(entry.compressedSize).toBe(entry.uncompressedSize)
+    }
+  })
+
+  /** A tail holding only a central directory (one entry) and its end record. */
+  function centralOnly(options: { zip64Extra: boolean }) {
+    const name = Buffer.from('word/document.xml', 'latin1')
+    const extra = options.zip64Extra
+      ? Buffer.concat([u16(0x5455), u16(1), Buffer.from([0]), u16(0x0001), u16(24), u64(5_000_000_000), u64(4_900_000_000), u64(4_800_000_000)])
+      : Buffer.alloc(0)
+    const central = Buffer.concat([
+      u32(0x02014b50), u16(45), u16(45), u16(0x0008), u16(8), u16(0), u16(0), u32(0),
+      u32(0xffffffff), u32(0xffffffff), u16(name.length), u16(extra.length), u16(0), u16(0), u16(0), u32(0),
+      u32(0xffffffff), name, extra,
+    ])
+    const end = Buffer.concat([
+      u32(0x06054b50), u16(0), u16(0), u16(1), u16(1), u32(central.length), u32(0), u16(0),
+    ])
+    return Buffer.concat([central, end])
+  }
+
+  it('resolves saturated sizes and offsets from the ZIP64 extra field', () => {
+    const entries: CentralEntry[] = []
+    forEachZipEntry(centralOnly({ zip64Extra: true }), 0, (entry) => entries.push(entry))
+    expect(entries).toEqual([{
+      name: 'word/document.xml',
+      flags: 0x0008,
+      method: 8,
+      uncompressedSize: 5_000_000_000,
+      compressedSize: 4_900_000_000,
+      localHeaderOffset: 4_800_000_000,
+    }])
+  })
+
+  it('rejects saturated values without a ZIP64 extra field, while name listing is unchanged', () => {
+    const tail = centralOnly({ zip64Extra: false })
+    expect(() => forEachZipEntry(tail, 0, () => {})).toThrow(DOCUMENT_INSPECTION_ERRORS.package)
+    const names: string[] = []
+    forEachZipEntryName(tail, 0, (name) => names.push(name))
+    expect(names).toEqual(['word/document.xml'])
   })
 })

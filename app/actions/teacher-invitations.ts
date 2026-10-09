@@ -159,29 +159,50 @@ export async function deleteTeacherInvitation(sessionId: string, invitationId: s
   revalidatePath(`/sessions/${sessionId}/manage`)
 }
 
+// Next.js masks thrown action errors in production, so this public action
+// returns expected failures for the form to show; only unexpected ones throw.
+// `final` means retrying cannot help: the form refreshes so the page shows the
+// invitation's current state (Already Responded with its join link, or Not Found).
+export type RespondToInvitationResult =
+  | { ok: true; status: 'ACCEPTED' | 'DECLINED' }
+  | { ok: false; message: string; final?: true }
+
+const ALREADY_RESPONDED: RespondToInvitationResult = {
+  ok: false,
+  message: 'This invitation has already been responded to',
+  final: true,
+}
+
 export async function respondToInvitation(
   inviteCode: string,
   firstName: string,
   lastName: string,
   accepted: boolean
-) {
+): Promise<RespondToInvitationResult> {
   const invitation = await teacherInvitationsDb.findInvitationByCode(inviteCode)
   if (!invitation) {
-    throw new DbNotFoundError('Invitation not found')
+    return { ok: false, message: 'This invitation link is invalid or has expired.', final: true }
   }
 
   if (invitation.status !== 'PENDING') {
-    throw new Error('This invitation has already been responded to')
+    return ALREADY_RESPONDED
+  }
+
+  if (!firstName.trim() || !lastName.trim()) {
+    return { ok: false, message: 'Please enter your first and last name' }
   }
 
   const status = accepted ? 'ACCEPTED' : 'DECLINED'
 
-  await teacherInvitationsDb.updateInvitationResponse({
+  const recorded = await teacherInvitationsDb.updateInvitationResponse({
     invitationId: invitation.id,
     firstName: firstName.trim(),
     lastName: lastName.trim(),
     status,
   })
+  if (!recorded) {
+    return ALREADY_RESPONDED
+  }
 
   // Self-reported names are authoritative — overwrite the address book entry.
   try {
@@ -196,5 +217,5 @@ export async function respondToInvitation(
     console.error('Failed to update address book from RSVP:', err)
   }
 
-  return { success: true, status }
+  return { ok: true, status }
 }

@@ -1,10 +1,12 @@
 import { z } from 'zod'
+import type { BetaTool } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import * as opsDb from '@/lib/db/ops'
 import * as opsReads from '@/lib/db/ops-reads'
 import * as auditDb from '@/lib/db/audit'
 import * as teachingSlotsDb from '@/lib/db/teaching-slots'
 import * as onboardingDb from '@/lib/db/onboarding'
 import { buildOpsEmailHtml } from './email-html'
+import { formatInAppTimeZone } from '@/lib/datetime'
 import { averageRating } from './format'
 import type { OpsRun } from './run'
 
@@ -33,6 +35,111 @@ export interface OpsTool {
 
 const ROW_CAP = 20
 
+/**
+ * JSON Schema keywords that strict tool use (Anthropic structured outputs)
+ * does not accept: numeric/string/array constraints and the composition or
+ * reference forms we do not use. Handlers enforce ranges with zod instead.
+ */
+const STRICT_UNSUPPORTED_KEYWORDS = [
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+  'minLength',
+  'maxLength',
+  'pattern',
+  'minItems',
+  'maxItems',
+  'uniqueItems',
+  'contains',
+  'prefixItems',
+  'minProperties',
+  'maxProperties',
+  'patternProperties',
+  'propertyNames',
+  'dependentRequired',
+  'dependentSchemas',
+  'not',
+  'if',
+  'then',
+  'else',
+  '$ref',
+  '$defs',
+  'definitions',
+] as const
+
+const STRICT_TYPES = new Set(['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'])
+const STRICT_STRING_FORMATS = new Set([
+  'date-time', 'time', 'date', 'duration', 'email', 'hostname', 'uri', 'ipv4', 'ipv6', 'uuid',
+])
+
+function isSchemaRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isStrictCompatibleNode(node: unknown): boolean {
+  if (!isSchemaRecord(node)) return false
+  if (STRICT_UNSUPPORTED_KEYWORDS.some((keyword) => keyword in node)) return false
+
+  const types = node.type === undefined ? [] : Array.isArray(node.type) ? node.type : [node.type]
+  if (!types.every((type) => typeof type === 'string' && STRICT_TYPES.has(type))) return false
+  if (node.format !== undefined && !(typeof node.format === 'string' && STRICT_STRING_FORMATS.has(node.format))) {
+    return false
+  }
+
+  if (types.includes('object') || 'properties' in node) {
+    // Strict mode requires every object to forbid unknown keys.
+    if (node.additionalProperties !== false) return false
+    const properties = node.properties ?? {}
+    if (!isSchemaRecord(properties)) return false
+    if (!Object.values(properties).every(isStrictCompatibleNode)) return false
+    if (node.required !== undefined) {
+      if (!Array.isArray(node.required)) return false
+      if (!node.required.every((name) => typeof name === 'string' && name in properties)) return false
+    }
+  } else if ('additionalProperties' in node) {
+    return false
+  }
+
+  if ('items' in node && !isStrictCompatibleNode(node.items)) return false
+  for (const key of ['anyOf', 'allOf'] as const) {
+    if (key in node) {
+      const branches = node[key]
+      if (!Array.isArray(branches) || !branches.every(isStrictCompatibleNode)) return false
+    }
+  }
+  return true
+}
+
+/**
+ * True when a tool input schema can be sent with `strict: true`: an object
+ * root, `additionalProperties: false` on every object, and no constraint
+ * keywords strict mode rejects. Unit-tested against every OPS_TOOLS schema.
+ */
+export function isStrictCompatibleSchema(schema: unknown): boolean {
+  return isSchemaRecord(schema) && schema.type === 'object' && isStrictCompatibleNode(schema)
+}
+
+/**
+ * The Anthropic Messages tool definition for an Ops tool. Only the wire
+ * format changes: the name, description and JSON Schema are passed through
+ * unchanged, the handler still zod-validates its own input, and org scope
+ * still comes only from the caller's ToolContext. `strict: true` (server-side
+ * schema validation of tool names and inputs) is set whenever the schema
+ * allows it. `eager_input_streaming` is deliberately not set: it would turn
+ * that server-side validation off, our tool inputs are small, and the loop
+ * does not render input deltas.
+ */
+export function toAnthropicTool(tool: OpsTool): BetaTool {
+  return {
+    name: tool.name,
+    description: tool.description,
+    input_schema: tool.inputSchema as BetaTool.InputSchema,
+    ...(isStrictCompatibleSchema(tool.inputSchema) ? { strict: true } : {}),
+  }
+}
+
 const NO_INPUT: Record<string, unknown> = { type: 'object', properties: {}, additionalProperties: false }
 
 const sessionIdInput = {
@@ -49,6 +156,16 @@ function sessionSummaryLine(s: opsReads.OpsSessionRow) {
     id: s.id,
     title: s.title,
     date_start: s.date_start,
+    // The model would otherwise quote the UTC instant as the local time.
+    date_label: formatInAppTimeZone(s.date_start, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }),
     location_type: s.location_type,
     session_type: s.session_type,
   }

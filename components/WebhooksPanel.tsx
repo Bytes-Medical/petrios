@@ -12,6 +12,7 @@ import type { WebhookDelivery } from '@/lib/db/api-platform'
 import { WEBHOOK_EVENTS } from '@/lib/webhook-events'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { LocalDateTime } from './LocalSessionDateTime'
 import { Input } from './Input'
 
 interface WebhooksPanelProps {
@@ -146,7 +147,7 @@ export function WebhooksPanel({ endpoints, deliveries }: WebhooksPanelProps) {
               <div key={delivery.id} className="flex items-center justify-between gap-3 px-3 py-1.5">
                 <span className="font-mono text-xs">
                   {delivery.event} ·{' '}
-                  {new Date(delivery.created_at).toLocaleString('en-GB')}
+                  <LocalDateTime value={delivery.created_at} />
                 </span>
                 <Badge variant={delivery.status === 'ok' ? 'success' : 'danger'}>
                   {delivery.status}

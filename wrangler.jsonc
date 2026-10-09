@@ -37,7 +37,9 @@
     "OUTBOUND_EMAIL_ENABLED": "false",
     // Cloudflare overwrites this header; the first x-forwarded-for hop is
     // client-supplied, so rate limits (lib/rate-limit.ts) must not trust it.
-    "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip"
+    "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip",
+    // Names Cloudflare Workers as the host on /privacy and /subprocessors.
+    "HOSTING_PROVIDER": "cloudflare-workers"
   },
   // Deploy fails unless these exist as Worker secrets (wrangler secret put).
   "secrets": {
@@ -62,7 +64,8 @@
         "APP_URL": "",
         "CRON_ENABLED": "true",
         "OUTBOUND_EMAIL_ENABLED": "true",
-        "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip"
+        "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip",
+        "HOSTING_PROVIDER": "cloudflare-workers"
       },
       "secrets": {
         "required": [

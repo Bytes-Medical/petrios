@@ -1,5 +1,6 @@
 import { getAppUrl } from '@/lib/app-url'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
+import { formatAppDate } from '@/lib/datetime'
 import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
 import { requireCertificateEligibility } from '@/lib/certificates/eligibility'
 import { generateCertificateCode } from '@/lib/certificates/utils'
@@ -137,11 +138,11 @@ export async function awardRecallCompletion(
       orgName: session.organizations?.name || 'Organization',
       departmentName: session.departments?.name || 'Unknown',
       sessionTitle: session.title,
-      sessionDate: new Date(session.date_start).toLocaleDateString('en-GB'),
+      sessionDate: formatAppDate(session.date_start),
       recipientName,
       role: 'Attendee',
       certificateCode: certificate.certificate_code,
-      issuedDate: new Date(certificate.issued_at).toLocaleDateString('en-GB'),
+      issuedDate: formatAppDate(certificate.issued_at),
       verifyUrl: `${getAppUrl()}/verify/${certificate.certificate_code}`,
       coordinatorNames: certificate.coordinator_names ?? coordinatorNames,
       recognitionBasis: 'AUDIO_RECAP_CATCH_UP',

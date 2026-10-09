@@ -24,8 +24,9 @@ generic Next.js architecture recommendation.
 | Browser database client | Supabase browser client for auth-plane operations only |
 | Server database clients | Request-scoped RLS client and service-role client, created by `lib/db/client.ts` |
 | Email | `lib/email/adapter.ts`: SMTP first, then Resend, then development sink |
-| AI | OpenAI-compatible Chat Completions through `lib/ai/llm.ts`; constrained Ops gateway and one sanctioned tool loop |
-| Speech | Provider-neutral `lib/ai/tts.ts` boundary selecting OpenAI-compatible or ElevenLabs speech and returning auditable provider/model/voice metadata |
+| AI | Anthropic Claude by default (official SDK, streamed beta Messages with refusal fallbacks, Files API documents, hosted web search) or an optional OpenAI-compatible adapter, both through `lib/ai/llm.ts` (provider resolution in `lib/ai/provider.ts`); constrained Ops gateway and one sanctioned tool loop |
+| Speech | Provider-neutral `lib/ai/tts.ts` boundary selecting OpenAI-compatible or ElevenLabs speech (independent of the LLM provider; unconfigured when neither is set up) and returning auditable provider/model/voice metadata |
+| Dates | Server-rendered dates and teaching-slot wall times use `APP_TIME_ZONE` (default `Europe/London`) through `lib/datetime.ts`, because server clocks are UTC on both runtimes; client components otherwise use the viewer's zone (rules and exceptions in spec 07) |
 | Meetings | Jitsi iframe integration or stored Microsoft Teams link; in-person and hybrid locations also supported |
 | Documents | React PDF for certificate, portfolio, dossier, audit, and member-report documents |
 | Unit tests | Vitest, primarily pure library tests |

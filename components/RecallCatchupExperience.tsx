@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { recordRecallPlayback, type PublicRecallQuestion } from '@/app/actions/recall'
 import { RecallAnswerForm } from '@/components/RecallAnswerForm'
+import { AudioRecapSources } from '@/components/AudioRecapSources'
+import type { AudioRecapResearchSource } from '@/lib/audio-recap-types'
 
 interface RecallCatchupExperienceProps {
   token: string
@@ -17,6 +19,7 @@ interface RecallCatchupExperienceProps {
   questions?: PublicRecallQuestion[]
   attemptsRemaining?: number
   completion?: { awardStatus: 'PENDING' | 'ISSUED' | 'DELIVERED' | 'FAILED' }
+  researchSources?: AudioRecapResearchSource[]
 }
 
 function formatDuration(seconds: number): string {
@@ -38,6 +41,7 @@ export function RecallCatchupExperience({
   questions,
   attemptsRemaining,
   completion,
+  researchSources = [],
 }: RecallCatchupExperienceProps) {
   const router = useRouter()
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -117,6 +121,10 @@ export function RecallCatchupExperience({
           Listen to the approved learning recap for “{sessionTitle}”. The five mastery
           questions unlock when playback reaches the end with sufficient listening progress.
         </p>
+        <p className="mt-2 font-mono text-xs text-gray-600">
+          AI-generated narration, led by the session learning documents and reviewed and
+          approved by your organiser.
+        </p>
         <audio
           ref={audioRef}
           src={audioUrl}
@@ -145,6 +153,7 @@ export function RecallCatchupExperience({
             {playbackError}
           </p>
         )}
+        <AudioRecapSources sources={researchSources} />
       </section>
 
       <section className="border border-black bg-white p-5">

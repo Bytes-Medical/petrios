@@ -35,6 +35,8 @@ interface PersonalDashboardProps {
   passport: Passport
   /** Deep-link target, e.g. /dashboard?tab=teaching from invitation emails. */
   initialTab?: string
+  /** Server `appTimeZone()` for slot times (see OpenSlotsPanel). */
+  timeZone: string
 }
 
 type Tab = 'sessions' | 'calendar' | 'teaching' | 'feedback' | 'attendance' | 'portfolio'
@@ -59,6 +61,7 @@ export function PersonalDashboard({
   calendarUrl,
   passport,
   initialTab,
+  timeZone,
 }: PersonalDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>(
     TABS.some((tab) => tab.key === initialTab) ? (initialTab as Tab) : 'sessions'
@@ -104,7 +107,7 @@ export function PersonalDashboard({
       )}
       {activeTab === 'teaching' && (
         <div className="space-y-6">
-          <OpenSlotsPanel slots={claimableSlots} />
+          <OpenSlotsPanel slots={claimableSlots} timeZone={timeZone} />
           <TeachingAssignmentsPanel assignments={teaching} />
           <TeachingDossierPanel
             hasTaught={teaching.some((t) => t.status === 'ACCEPTED')}

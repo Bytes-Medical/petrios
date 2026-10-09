@@ -1,6 +1,30 @@
 import { LOCATION_TYPE_LABELS } from '@/lib/types'
 import type { Session } from '@/lib/types'
 import { escapeHtml } from '@/lib/html'
+import { formatInAppTimeZone } from '@/lib/datetime'
+
+export interface SessionEmailTimes {
+  /** "Friday, 9 October 2026" */
+  dateStr: string
+  /** "16:15" */
+  startTime: string
+  endTime: string
+}
+
+/** Session date and times as emails show them, in the app time zone. */
+export function sessionEmailTimes(dateStart: string, dateEnd: string): SessionEmailTimes {
+  const time: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
+  return {
+    dateStr: formatInAppTimeZone(dateStart, {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }),
+    startTime: formatInAppTimeZone(dateStart, time),
+    endTime: formatInAppTimeZone(dateEnd, time),
+  }
+}
 
 interface TeacherFeedbackEmailParams {
   teacherName: string
@@ -196,8 +220,8 @@ function slotOfferTableRows(slots: SlotOfferEmailSlot[]): string {
     .map(
       (slot) => `
         <tr>
-          <td style="padding:8px 8px 8px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">${slot.dateStr}</td>
-          <td style="padding:8px 0;">${slot.timeRangeStr} (${slot.durationStr}${slot.lightning ? ' · lightning' : ''}) — ${slot.locationLabel}</td>
+          <td style="padding:8px 8px 8px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">${escapeHtml(slot.dateStr)}</td>
+          <td style="padding:8px 0;">${escapeHtml(slot.timeRangeStr)} (${escapeHtml(slot.durationStr)}${slot.lightning ? ' · lightning' : ''}) — ${escapeHtml(slot.locationLabel)}</td>
         </tr>`
     )
     .join('')
@@ -221,9 +245,9 @@ function buildSlotOfferEmailHtml(params: SlotOfferEmailParams): string {
         ${slotOfferTableRows(slots)}
       </table>
       <p style="margin:20px 0;">
-        <a href="${ctaUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">${ctaLabel}</a>
+        <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">${ctaLabel}</a>
       </p>
-      <p style="font-size:12px;color:#666;">Slots are first come, first served — once a slot is claimed it disappears for everyone else. The ${departmentName} organiser will confirm the topic with you afterwards.</p>
+      <p style="font-size:12px;color:#666;">Slots are first come, first served — once a slot is claimed it disappears for everyone else. The ${escapeHtml(departmentName)} organiser will confirm the topic with you afterwards.</p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
         This email was sent via Petrios.
       </p>
@@ -241,7 +265,7 @@ export function buildSlotOfferExternalEmailHtml(params: {
     slots: params.slots,
     ctaUrl: params.claimUrl,
     ctaLabel: 'View & claim a slot',
-    intro: `${params.departmentName} is looking for teachers and has opened the following teaching slots. Pick one that suits you — no account needed.${params.slots.some((slot) => slot.lightning) ? LIGHTNING_INTRO_SENTENCE : ''}`,
+    intro: `${escapeHtml(params.departmentName)} is looking for teachers and has opened the following teaching slots. Pick one that suits you — no account needed.${params.slots.some((slot) => slot.lightning) ? LIGHTNING_INTRO_SENTENCE : ''}`,
   })
 }
 
@@ -255,7 +279,7 @@ export function buildSlotOfferMemberEmailHtml(params: {
     slots: params.slots,
     ctaUrl: params.dashboardUrl,
     ctaLabel: 'Claim a slot on your dashboard',
-    intro: `${params.departmentName} is looking for teachers and has opened the following teaching slots. Sign in and claim one from the Teaching tab on your dashboard.${params.slots.some((slot) => slot.lightning) ? LIGHTNING_INTRO_SENTENCE : ''}`,
+    intro: `${escapeHtml(params.departmentName)} is looking for teachers and has opened the following teaching slots. Sign in and claim one from the Teaching tab on your dashboard.${params.slots.some((slot) => slot.lightning) ? LIGHTNING_INTRO_SENTENCE : ''}`,
   })
 }
 
@@ -271,12 +295,12 @@ export function buildSlotClaimedEmailHtml(params: {
     <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
       <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Teaching slot claimed</h2>
       <p style="margin:20px 0;">
-        <strong>${claimerName}</strong> has claimed the ${departmentName} teaching slot on
-        <strong>${slotDateStr}</strong> at ${slotTimeStr}. A draft session has been created —
+        <strong>${escapeHtml(claimerName)}</strong> has claimed the ${escapeHtml(departmentName)} teaching slot on
+        <strong>${escapeHtml(slotDateStr)}</strong> at ${escapeHtml(slotTimeStr)}. A draft session has been created —
         assign the topic and publish it when you're ready.
       </p>
       <p style="margin:20px 0;">
-        <a href="${manageUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Manage Session</a>
+        <a href="${escapeHtml(manageUrl)}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Manage Session</a>
       </p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
         This email was sent via Petrios.
@@ -301,11 +325,11 @@ export function buildTeacherResponseEmailHtml(params: TeacherResponseEmailParams
     <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
       <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Teaching invitation ${verb}</h2>
       <p style="margin:20px 0;">
-        <strong>${teacherName}</strong> has ${verb} your invitation to teach
-        <strong>${sessionTitle}</strong> on ${dateStr}.
+        <strong>${escapeHtml(teacherName)}</strong> has ${verb} your invitation to teach
+        <strong>${escapeHtml(sessionTitle)}</strong> on ${escapeHtml(dateStr)}.
       </p>
       <p style="margin:20px 0;">
-        <a href="${manageUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">View Session</a>
+        <a href="${escapeHtml(manageUrl)}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">View Session</a>
       </p>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
         This email was sent via Petrios.
@@ -343,7 +367,7 @@ export function buildSessionReminderEmailHtml(params: SessionReminderEmailParams
     ? `
       <tr>
         <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Join link:</td>
-        <td style="padding:8px 0;"><a href="${meetingUrl}" style="color:#000;">${meetingUrl}</a></td>
+        <td style="padding:8px 0;"><a href="${escapeHtml(meetingUrl)}" style="color:#000;">${escapeHtml(meetingUrl)}</a></td>
       </tr>
     `
     : ''
@@ -351,23 +375,23 @@ export function buildSessionReminderEmailHtml(params: SessionReminderEmailParams
   return `
     <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:20px;">
       <h2 style="border-bottom:2px solid #000;padding-bottom:10px;">Teaching Session Tomorrow</h2>
-      <p style="margin:20px 0;">Dear ${recipientName},</p>
-      <p style="margin:20px 0;">A reminder that <strong>${sessionTitle}</strong> (${departmentName}) is coming up.</p>
+      <p style="margin:20px 0;">Dear ${escapeHtml(recipientName)},</p>
+      <p style="margin:20px 0;">A reminder that <strong>${escapeHtml(sessionTitle)}</strong> (${escapeHtml(departmentName)}) is coming up.</p>
 
       <table style="width:100%;border-collapse:collapse;margin:20px 0;">
         <tr>
           <td style="padding:8px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">When:</td>
-          <td style="padding:8px 0;">${dateStr}, ${startTime}&ndash;${endTime}</td>
+          <td style="padding:8px 0;">${escapeHtml(dateStr)}, ${escapeHtml(startTime)}&ndash;${escapeHtml(endTime)}</td>
         </tr>
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Where:</td>
-          <td style="padding:8px 0;">${locationLabel}</td>
+          <td style="padding:8px 0;">${escapeHtml(locationLabel)}</td>
         </tr>
         ${meetingRow}
       </table>
 
       <p style="margin:20px 0;">
-        <a href="${sessionUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">View Session</a>
+        <a href="${escapeHtml(sessionUrl)}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">View Session</a>
       </p>
 
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
@@ -382,23 +406,12 @@ export function buildInvitationEmailHtml(
   departmentName: string,
   rsvpUrl: string
 ): string {
-  const startDate = new Date(session.date_start)
-  const endDate = new Date(session.date_end)
-  const dateStr = startDate.toLocaleDateString('en-GB', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-  })
-  const startTime = startDate.toLocaleTimeString('en-GB', {
-    hour: '2-digit', minute: '2-digit'
-  })
-  const endTime = endDate.toLocaleTimeString('en-GB', {
-    hour: '2-digit', minute: '2-digit'
-  })
-
+  const { dateStr, startTime, endTime } = sessionEmailTimes(session.date_start, session.date_end)
 
   const descriptionSection = session.description
     ? `<tr>
          <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Description:</td>
-         <td style="padding:8px 0;">${session.description}</td>
+         <td style="padding:8px 0;">${escapeHtml(session.description)}</td>
        </tr>`
     : ''
 
@@ -408,11 +421,11 @@ export function buildInvitationEmailHtml(
       <table style="width:100%;border-collapse:collapse;margin:20px 0;">
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Session:</td>
-          <td style="padding:8px 0;">${session.title}</td>
+          <td style="padding:8px 0;">${escapeHtml(session.title)}</td>
         </tr>
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Department:</td>
-          <td style="padding:8px 0;">${departmentName}</td>
+          <td style="padding:8px 0;">${escapeHtml(departmentName)}</td>
         </tr>
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Date:</td>
@@ -424,12 +437,12 @@ export function buildInvitationEmailHtml(
         </tr>
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Location:</td>
-          <td style="padding:8px 0;">${LOCATION_TYPE_LABELS[session.location_type] || session.location_type}</td>
+          <td style="padding:8px 0;">${escapeHtml(LOCATION_TYPE_LABELS[session.location_type] || session.location_type)}</td>
         </tr>
         ${descriptionSection}
       </table>
       <p style="margin:20px 0;">Please confirm your participation by clicking the link below:</p>
-      <a href="${rsvpUrl}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
+      <a href="${escapeHtml(rsvpUrl)}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
         Respond to Invitation
       </a>
       <p style="font-size:12px;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
@@ -466,20 +479,20 @@ function buildMonospaceEmailShell(title: string, body: string) {
 export function buildDepartmentInviteActivationEmailHtml(
   params: DepartmentInviteEmailParams
 ) {
-  const greeting = params.firstName ? `Dear ${params.firstName},` : 'Hello,'
+  const greeting = params.firstName ? `Dear ${escapeHtml(params.firstName)},` : 'Hello,'
 
   return buildMonospaceEmailShell(
     'Activate Your Department Access',
     `
       <p style="margin:20px 0;">${greeting}</p>
       <p style="margin:20px 0;">
-        You have been invited to join <strong>${params.departmentName}</strong> in
-        <strong>${params.organizationName}</strong>.
+        You have been invited to join <strong>${escapeHtml(params.departmentName)}</strong> in
+        <strong>${escapeHtml(params.organizationName)}</strong>.
       </p>
       <p style="margin:20px 0;">
         Click the link below to activate your access and finish joining the department.
       </p>
-      <a href="${params.inviteUrl}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
+      <a href="${escapeHtml(params.inviteUrl)}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
         Activate Access
       </a>
     `
@@ -489,20 +502,20 @@ export function buildDepartmentInviteActivationEmailHtml(
 export function buildDepartmentJoinMagicLinkEmailHtml(
   params: DepartmentInviteEmailParams
 ) {
-  const greeting = params.firstName ? `Dear ${params.firstName},` : 'Hello,'
+  const greeting = params.firstName ? `Dear ${escapeHtml(params.firstName)},` : 'Hello,'
 
   return buildMonospaceEmailShell(
     'Confirm Department Join',
     `
       <p style="margin:20px 0;">${greeting}</p>
       <p style="margin:20px 0;">
-        Use the secure sign-in link below to join <strong>${params.departmentName}</strong>
-        in <strong>${params.organizationName}</strong>.
+        Use the secure sign-in link below to join <strong>${escapeHtml(params.departmentName)}</strong>
+        in <strong>${escapeHtml(params.organizationName)}</strong>.
       </p>
       <p style="margin:20px 0;">
         If you currently belong to another organization, your access will move when you complete this sign-in.
       </p>
-      <a href="${params.inviteUrl}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
+      <a href="${escapeHtml(params.inviteUrl)}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
         Join Department
       </a>
     `
@@ -512,7 +525,7 @@ export function buildDepartmentJoinMagicLinkEmailHtml(
 export function buildPasswordlessLoginEmailHtml(
   params: PasswordlessLoginEmailParams
 ) {
-  const greeting = params.firstName ? `Dear ${params.firstName},` : 'Hello,'
+  const greeting = params.firstName ? `Dear ${escapeHtml(params.firstName)},` : 'Hello,'
 
   return buildMonospaceEmailShell(
     'Your Sign-In Link',
@@ -521,7 +534,7 @@ export function buildPasswordlessLoginEmailHtml(
       <p style="margin:20px 0;">
         Click the link below to sign in to Petrios.
       </p>
-      <a href="${params.inviteUrl}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
+      <a href="${escapeHtml(params.inviteUrl)}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
         Sign In
       </a>
     `
@@ -576,7 +589,7 @@ export function buildTraineeSessionReportEmailHtml(params: TraineeSessionReportP
       <h3 style="font-size:13px;margin:16px 0 8px;">Session Comments</h3>
       ${comments.map(c => `
         <div style="border-left:3px solid #000;padding:6px 10px;margin:6px 0;background:#fafafa;">
-          <p style="margin:0;font-size:12px;">${c}</p>
+          <p style="margin:0;font-size:12px;">${escapeHtml(c)}</p>
         </div>
       `).join('')}
     `
@@ -585,13 +598,13 @@ export function buildTraineeSessionReportEmailHtml(params: TraineeSessionReportP
   return buildMonospaceEmailShell(
     'Your Session Report',
     `
-      <p style="margin:16px 0;">Dear ${recipientName},</p>
-      <p style="margin:16px 0;">Here is your report for <strong>${sessionTitle}</strong> on ${sessionDate} (${departmentName}).</p>
+      <p style="margin:16px 0;">Dear ${escapeHtml(recipientName)},</p>
+      <p style="margin:16px 0;">Here is your report for <strong>${escapeHtml(sessionTitle)}</strong> on ${escapeHtml(sessionDate)} (${escapeHtml(departmentName)}).</p>
 
       <table style="width:100%;border-collapse:collapse;margin:16px 0;">
         <tr>
           <td style="padding:6px 0;font-weight:bold;">Your Attendance:</td>
-          <td style="padding:6px 0;"><span style="color:${statusColor};font-weight:bold;">${attendanceStatus}</span></td>
+          <td style="padding:6px 0;"><span style="color:${statusColor};font-weight:bold;">${escapeHtml(attendanceStatus)}</span></td>
         </tr>
       </table>
 
@@ -634,13 +647,13 @@ export function buildModeratorWelcomeEmailHtml(params: ModeratorWelcomeEmailPara
       <p style="margin:20px 0;">Hello,</p>
       <p style="margin:20px 0;">
         You have been added as a <strong>moderator</strong> for
-        <strong>${params.departmentName}</strong> in
-        <strong>${params.organizationName}</strong>.
+        <strong>${escapeHtml(params.departmentName)}</strong> in
+        <strong>${escapeHtml(params.organizationName)}</strong>.
       </p>
       <p style="margin:20px 0;">
         As a moderator you can create sessions, manage teachers, track attendance, and release feedback reports.
       </p>
-      <a href="${params.loginUrl}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
+      <a href="${escapeHtml(params.loginUrl)}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;text-decoration:none;font-family:monospace;font-size:14px;">
         Sign In
       </a>
     `
@@ -656,30 +669,32 @@ interface RecallEmailParams {
 }
 
 export function buildRecallEmailHtml(params: RecallEmailParams): string {
+  const sessionTitle = escapeHtml(params.sessionTitle)
+  const deadlineStr = escapeHtml(params.deadlineStr)
   const intro =
     params.kind === 'CATCH_UP'
-      ? `You were marked absent from <strong>${params.sessionTitle}</strong>.
+      ? `You were marked absent from <strong>${sessionTitle}</strong>.
          You can complete the approved learning pathway by
-         <strong>${params.deadlineStr}</strong>: sign in, listen to the Audio
+         <strong>${deadlineStr}</strong>: sign in, listen to the Audio
          Recap, then answer all five mastery questions correctly. Successful
          completion records PRESENT with the transparent “Audio recap catch-up”
          source and emails your attendance certificate; it does not claim you
          were physically at the original session.`
       : params.kind === 'BOOST'
         ? `One week left: a final chance to lock in the learning from
-           <strong>${params.sessionTitle}</strong>. Five quick questions,
-           open until <strong>${params.deadlineStr}</strong>.`
-        : `Quick knowledge check from <strong>${params.sessionTitle}</strong> —
+           <strong>${sessionTitle}</strong>. Five quick questions,
+           open until <strong>${deadlineStr}</strong>.`
+        : `Quick knowledge check from <strong>${sessionTitle}</strong> —
            five questions. Spaced recall is the best-evidenced
            way to make teaching stick.`
 
   return buildMonospaceEmailShell(
     params.kind === 'CATCH_UP' ? 'Catch up on a missed session' : 'Quick recall check',
     `
-      <p style="margin:20px 0;">Hi ${params.recipientName},</p>
+      <p style="margin:20px 0;">Hi ${escapeHtml(params.recipientName)},</p>
       <p style="margin:20px 0;">${intro}</p>
       <p style="margin:20px 0;">
-        <a href="${params.answerUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Start Audio Recap catch-up</a>
+        <a href="${escapeHtml(params.answerUrl)}" style="display:inline-block;background:#000;color:#fff;padding:10px 20px;text-decoration:none;font-weight:bold;">Start Audio Recap catch-up</a>
       </p>
       <p style="font-size:12px;color:#666;">Sign-in is required. You have up to three attempts; the answer key stays hidden while a retry remains.</p>
     `

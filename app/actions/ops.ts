@@ -17,7 +17,7 @@ import {
   newsletterSchemaForSessions,
   newsletterWindowFromWeekStart,
 } from '@/lib/ops/newsletter'
-import { formatDateLong } from '@/lib/ops/format'
+import { formatDayKeyLong } from '@/lib/ops/format'
 import * as opsDb from '@/lib/db/ops'
 import * as opsReads from '@/lib/db/ops-reads'
 import * as departmentsDb from '@/lib/db/departments'
@@ -203,7 +203,7 @@ export async function generateWeeklyNewsletter(
       run,
     })
     const organizationName = (await organizationsDb.findOrganizationName(orgId)) ?? 'Petrios'
-    const weekLabel = `Week commencing ${formatDateLong(window.weekStart.toISOString())}`
+    const weekLabel = `Week commencing ${formatDayKeyLong(window.weekStartKey)}`
     const html = buildNewsletterHtml({
       organizationName,
       departmentName: department.name,
@@ -281,7 +281,7 @@ async function saveNewsletterContent(input: {
   const parsed = newsletterSchemaForSessions(scope.issue.source_session_ids).safeParse(normalizedContent)
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Newsletter content is invalid')
   const organizationName = (await organizationsDb.findOrganizationName(scope.orgId)) ?? 'Petrios'
-  const weekLabel = `Week commencing ${formatDateLong(`${scope.issue.week_start}T00:00:00.000Z`)}`
+  const weekLabel = `Week commencing ${formatDayKeyLong(scope.issue.week_start)}`
   const issue = await opsDb.saveNewsletterDraft({
     id: scope.issue.id,
     orgId: scope.orgId,

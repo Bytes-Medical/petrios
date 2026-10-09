@@ -5,6 +5,7 @@ import { getCurrentUser, isOrgManager } from '@/lib/auth'
 import { getOpsOverview } from '@/app/actions/ops'
 import { NavShell } from '@/components/NavShell'
 import { PendingActionsPanel } from '@/components/ops/PendingActionsPanel'
+import { appTimeZone } from '@/lib/datetime'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,7 +57,11 @@ export default async function OpsPage() {
           </p>
         )}
 
-        <PendingActionsPanel pending={overview.pending} reviewed={overview.reviewed} />
+        <PendingActionsPanel
+          pending={overview.pending}
+          reviewed={overview.reviewed}
+          timeZone={appTimeZone()}
+        />
       </div>
     </div>
   )

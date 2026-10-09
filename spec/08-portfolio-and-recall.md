@@ -110,6 +110,14 @@ The generated payload snapshots:
 The same content is rendered into a PDF, with certificate codes and a pack
 verification code.
 
+Session dates in the pack PDF and on `/verify/pack/:code` are rendered en-GB in
+`APP_TIME_ZONE` (default `Europe/London`; spec 07). Period labels
+(`formatPdfDate`) are pinned to UTC because the period bounds are UTC
+calendar-day edges; labelling them in London time would roll the end date into
+the next day during British Summer Time. Period filtering likewise stays on UTC
+calendar days, so a session starting between 00:00 and 01:00 BST falls into the
+adjacent UTC day's period.
+
 ### Storage and verification
 
 The service generates 16 random bytes encoded as 32 lowercase hex characters,
@@ -150,7 +158,9 @@ first ten themes flattened from stored syntheses that do not require human
 review.
 
 The dossier is rendered to PDF and returned but not stored, signed, assigned a
-verification code, or publicly verified. External teachers cannot generate a
+verification code, or publicly verified. As in the pack, session dates are
+rendered in `APP_TIME_ZONE` while the period label and the lexical period bounds
+stay UTC calendar days. External teachers cannot generate a
 self-service dossier because they have no `session_teachers.user_id` auth
 relationship.
 
@@ -218,7 +228,9 @@ estimate only when the returned bytes cannot be parsed. Duration is not accepted
 from the browser.
 
 Audio Recap generation automatically asks gateway purpose `recall_questions`
-for five questions derived from the stored spoken script. Question answers must
+for five questions derived from the stored spoken script, drafted by the
+configured LLM provider (Anthropic Claude by default) at effort medium. The
+question set records the model that served the accepted draft. Question answers must
 be taught in that script; research/document material omitted from the spoken
 recap cannot become a hidden test requirement. The question prompt treats the
 script as untrusted reference text. A question-draft failure is logged but does
@@ -309,6 +321,12 @@ stream (spec 06); audio that changed or was cleared after authorization returns
 404. It is separate from the normal organization-member recap stream so a valid
 expected attendee is not broken by “current org” selection in a
 multi-membership account.
+
+The catch-up player labels the narration as AI-generated (led by the session
+documents and approved by the organiser) and lists the approved recap's stored
+research citations (`research_sources`, through the shared
+`AudioRecapSources` component, `rel="noopener noreferrer"`), exactly as the
+session-page player does (spec 13).
 
 The browser sends an authenticated heartbeat approximately every eight seconds
 while audio is playing and a final heartbeat on `ended`. The service action
@@ -471,7 +489,8 @@ absentee-only pathway.
 
 The invitation states the deadline, sign-in requirement, Audio Recap, 5/5
 requirement, three-attempt limit, attendance-source wording, certificate effect,
-and physical-presence caveat.
+and physical-presence caveat. Its dates are formatted by `lib/ops/format.ts` in
+`APP_TIME_ZONE` (spec 06).
 
 ### Analytics and privacy
 

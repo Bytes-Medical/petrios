@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   contactDisplayName,
+  meetingDisplayName,
   mergeContactNames,
   normalizeContactEmail,
 } from './contacts'
@@ -63,5 +64,17 @@ describe('contactDisplayName', () => {
     expect(
       contactDisplayName({ first_name: null, last_name: null, email: 'a@b.c' })
     ).toBe('a@b.c')
+  })
+})
+
+describe('meetingDisplayName', () => {
+  it('uses the profile name', () => {
+    expect(meetingDisplayName({ full_name: 'Dr Ada Lovelace', email: 'ada@nhs.net' } as never)).toBe('Dr Ada Lovelace')
+    expect(meetingDisplayName({ first_name: 'Ada', last_name: 'Lovelace' })).toBe('Ada Lovelace')
+  })
+
+  it('never falls back to the email address', () => {
+    expect(meetingDisplayName({ full_name: ' ', first_name: null, last_name: null, email: 'ada@nhs.net' } as never)).toBe('Attendee')
+    expect(meetingDisplayName(null)).toBe('Attendee')
   })
 })

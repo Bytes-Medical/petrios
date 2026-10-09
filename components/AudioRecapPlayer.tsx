@@ -1,4 +1,5 @@
 import { Card } from './Card'
+import { AudioRecapSources } from './AudioRecapSources'
 import type { AudioRecapResearchSource } from '@/lib/audio-recap-types'
 
 /** Attendee-facing card for an approved session audio recap. */
@@ -22,27 +23,7 @@ export function AudioRecapPlayer({
         src={`/api/sessions/${sessionId}/recap-audio`}
         className="w-full"
       />
-      {researchSources.length > 0 ? (
-        <details className="mt-4 border-t border-gray-200 pt-3">
-          <summary className="cursor-pointer select-none font-mono text-xs font-bold uppercase tracking-wide marker:text-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
-            Supporting research ({researchSources.length})
-          </summary>
-          <ul className="mt-2 space-y-1.5 pl-5 font-mono text-xs">
-            {researchSources.map((source) => (
-              <li key={source.url}>
-                <a
-                  href={source.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="break-words underline decoration-1 underline-offset-2 hover:no-underline"
-                >
-                  {source.title || source.url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
+      <AudioRecapSources sources={researchSources} />
     </Card>
   )
 }

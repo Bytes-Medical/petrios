@@ -69,6 +69,13 @@ export const docStyles = StyleSheet.create({
   },
 })
 
+/** Period bounds are UTC calendar-day edges (…T23:59:59.999Z), so label them
+ *  in UTC: in BST an app-zone label would roll the end into the next day. */
 export function formatPdfDate(date: Date): string {
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
 }

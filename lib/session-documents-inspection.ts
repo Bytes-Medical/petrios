@@ -72,7 +72,8 @@ class MarkerScanner {
   }
 }
 
-class TailWindow {
+/** Keeps the last `capacity` bytes of a stream (used to read a ZIP's central directory). */
+export class TailWindow {
   private readonly bytes: Uint8Array
   private written = 0
 
@@ -125,6 +126,22 @@ function findEndOfCentralDirectory(view: DataView): number {
   return -1
 }
 
+/** One central-directory record (sizes and offsets resolved through ZIP64 when needed). */
+export interface ZipEntry {
+  name: string
+  /** General-purpose bit flags (bit 0 = encrypted, bit 3 = data descriptor). */
+  flags: number
+  /** 0 = stored, 8 = deflate. */
+  method: number
+  compressedSize: number
+  uncompressedSize: number
+  /** File offset of the entry's local header. */
+  localHeaderOffset: number
+}
+
+const ZIP64_EXTRA_ID = 0x0001
+const ZIP32_SATURATED = 0xffffffff
+
 /**
  * Visits every central-directory entry name. `tail` holds the last bytes of
  * the file and `tailOffset` is the file offset of tail[0].
@@ -133,6 +150,73 @@ export function forEachZipEntryName(
   tail: Uint8Array,
   tailOffset: number,
   visit: (name: string) => void
+): void {
+  walkCentralDirectory(tail, tailOffset, (_view, _position, name) => visit(name))
+}
+
+/**
+ * Visits every central-directory entry with the fields needed to read its
+ * data (same bounds and validation as forEachZipEntryName). A saturated
+ * 32-bit size/offset is resolved from the entry's ZIP64 extra field; a
+ * saturated value without one rejects the package.
+ */
+export function forEachZipEntry(
+  tail: Uint8Array,
+  tailOffset: number,
+  visit: (entry: ZipEntry) => void
+): void {
+  const invalid = () => new Error(DOCUMENT_INSPECTION_ERRORS.package)
+  walkCentralDirectory(tail, tailOffset, (view, position, name, extraStart, extraLength) => {
+    let uncompressedSize = view.getUint32(position + 24, true)
+    let compressedSize = view.getUint32(position + 20, true)
+    let localHeaderOffset = view.getUint32(position + 42, true)
+    if (
+      uncompressedSize === ZIP32_SATURATED ||
+      compressedSize === ZIP32_SATURATED ||
+      localHeaderOffset === ZIP32_SATURATED
+    ) {
+      // ZIP64 extra field: only the saturated values are present, in this order.
+      let cursor = extraStart
+      const extraEnd = extraStart + extraLength
+      let found = false
+      while (cursor + 4 <= extraEnd) {
+        const id = view.getUint16(cursor, true)
+        const size = view.getUint16(cursor + 2, true)
+        const dataStart = cursor + 4
+        if (dataStart + size > extraEnd) throw invalid()
+        if (id === ZIP64_EXTRA_ID) {
+          let field = dataStart
+          const take = (): number => {
+            if (field + 8 > dataStart + size) throw invalid()
+            const value = readUint64(view, field)
+            field += 8
+            return value
+          }
+          if (uncompressedSize === ZIP32_SATURATED) uncompressedSize = take()
+          if (compressedSize === ZIP32_SATURATED) compressedSize = take()
+          if (localHeaderOffset === ZIP32_SATURATED) localHeaderOffset = take()
+          found = true
+          break
+        }
+        cursor = dataStart + size
+      }
+      if (!found) throw invalid()
+    }
+    visit({
+      name,
+      flags: view.getUint16(position + 8, true),
+      method: view.getUint16(position + 10, true),
+      compressedSize,
+      uncompressedSize,
+      localHeaderOffset,
+    })
+  })
+}
+
+function walkCentralDirectory(
+  tail: Uint8Array,
+  tailOffset: number,
+  visit: (view: DataView, position: number, name: string, extraStart: number, extraLength: number) => void
 ): void {
   const invalid = () => new Error(DOCUMENT_INSPECTION_ERRORS.package)
   const view = new DataView(tail.buffer, tail.byteOffset, tail.byteLength)
@@ -176,15 +260,22 @@ export function forEachZipEntryName(
       throw invalid()
     }
     const nameLength = view.getUint16(position + 28, true)
+    const extraLength = view.getUint16(position + 30, true)
     const next =
       position +
       CENTRAL_HEADER_BYTES +
       nameLength +
-      view.getUint16(position + 30, true) +
+      extraLength +
       view.getUint16(position + 32, true)
     if (next > end) throw invalid()
     const nameStart = tail.byteOffset + position + CENTRAL_HEADER_BYTES
-    visit(Buffer.from(tail.buffer, nameStart, nameLength).toString('latin1'))
+    visit(
+      view,
+      position,
+      Buffer.from(tail.buffer, nameStart, nameLength).toString('latin1'),
+      position + CENTRAL_HEADER_BYTES + nameLength,
+      extraLength
+    )
     position = next
     count += 1
   }

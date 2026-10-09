@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { askLlmWithFileInputs, LLM_MODEL, type LlmFileInput, type LlmWebSearchOptions } from './llm'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { askLlmWithFileInputs, askLlmWithUsage, type LlmFileInput, type LlmWebSearchOptions } from './llm'
 import { verifiedFileSources } from './streaming-body'
+
+// The OpenAI-compatible adapter: a developer shell with an Anthropic key or a
+// provider pin must not flip these tests to another provider.
+beforeEach(() => {
+  for (const name of ['LLM_PROVIDER', 'ANTHROPIC_API_KEY', 'OPENAI_MODEL']) vi.stubEnv(name, '')
+})
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -93,6 +99,7 @@ describe('Responses file-input adapter', () => {
     expect(result?.text).toBe('A document-grounded recap.')
     expect(result?.usage).toEqual({ inputTokens: 123, outputTokens: 45 })
     expect(result?.sources).toEqual([])
+    expect(result?.webSearchRequests).toBe(0)
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { duplex?: string }]
     expect(url).toMatch(/\/responses$/)
     expect(init.duplex).toBe('half')
@@ -102,6 +109,8 @@ describe('Responses file-input adapter', () => {
     const body = JSON.parse(bodies[0])
     expect(body.instructions).toBe('Use only the files.')
     expect(body.max_output_tokens).toBe(900)
+    expect(body.store).toBe(false)
+    expect(body).not.toHaveProperty('previous_response_id')
     expect(body.input[0].content).toEqual([
       expect.objectContaining({
         type: 'input_file',
@@ -164,6 +173,7 @@ describe('Responses file-input adapter', () => {
       url: 'https://www.nice.org.uk/guidance/ng80',
       title: 'NICE guidance',
     }])
+    expect(result?.webSearchRequests).toBe(1)
     const body = JSON.parse(bodies[0])
     expect(body.tools).toEqual([expect.objectContaining({
       type: 'web_search',
@@ -178,7 +188,7 @@ describe('Responses file-input adapter', () => {
 
   it('streams exactly the bytes of the previous JSON.stringify body', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key')
-    // The pre-streaming request builder, kept verbatim as the reference.
+    // The pre-streaming request builder (plus `store: false`), kept as the reference.
     const previousBody = (input: {
       system: string
       prompt: string
@@ -186,9 +196,10 @@ describe('Responses file-input adapter', () => {
       maxTokens?: number
       webSearch?: LlmWebSearchOptions
     }) => JSON.stringify({
-      model: LLM_MODEL,
+      model: 'gpt-5.5',
       instructions: input.system,
       max_output_tokens: input.maxTokens ?? 8192,
+      store: false,
       ...(input.webSearch ? {
         tools: [{
           type: 'web_search',
@@ -260,6 +271,10 @@ describe('Responses file-input adapter', () => {
         vi.stubGlobal('fetch', respondingFetch(okData, bodies))
         await askLlmWithFileInputs({
           ...sample,
+          // Anthropic-only options must not change the OpenAI request bytes.
+          effort: 'high',
+          defaultEffort: 'medium',
+          webSearch: sample.webSearch ? { ...sample.webSearch, maxUses: 6 } : undefined,
           files: sample.files.map((file) => fileInput(file.filename, file.mimeType, file.bytes, chunkSize)),
         })
         expect(bodies[0] === expected, `chunk size ${chunkSize}`).toBe(true)
@@ -416,5 +431,59 @@ describe('Responses file-input adapter', () => {
       askLlmWithFileInputs({ system: 's', prompt: 'p', files: [slow], signal: caller.signal })
     ).rejects.toThrow('timed out')
     expect(readSignal?.aborted).toBe(true)
+  })
+})
+
+describe('Chat Completions adapter', () => {
+  it('keeps the request unchanged and ignores the Anthropic-only default effort', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      new Response(JSON.stringify({
+        model: 'gpt-5.5-2026',
+        choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 7, completion_tokens: 3 },
+      }), { status: 200 })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await askLlmWithUsage({
+      system: 'sys',
+      prompt: 'prompt',
+      maxTokens: 1024,
+      defaultEffort: 'high',
+      jsonMode: true,
+    })
+
+    expect(result).toEqual({
+      text: '{"ok":true}',
+      usage: { inputTokens: 7, outputTokens: 3 },
+      model: 'gpt-5.5-2026',
+      sources: [],
+      webSearchRequests: 0,
+    })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toMatch(/\/chat\/completions$/)
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: 'gpt-5.5',
+      max_completion_tokens: 1024,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: 'prompt' },
+      ],
+    })
+  })
+
+  it('stays on OpenAI when pinned even if an Anthropic key is present', async () => {
+    vi.stubEnv('LLM_PROVIDER', 'openai')
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant')
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: 'hi' } }] }), { status: 200 })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(askLlmWithUsage({ system: 's', prompt: 'p', effort: 'low' })).resolves.toMatchObject({ text: 'hi' })
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toMatch(/\/chat\/completions$/)
+    expect(JSON.parse(((fetchMock.mock.calls[0] as unknown[])[1] as RequestInit).body as string).reasoning_effort).toBe('low')
   })
 })

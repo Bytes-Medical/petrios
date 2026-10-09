@@ -87,11 +87,19 @@ export default function SubprocessorsPage() {
             </thead>
             <tbody>
               <ServiceRow service="Supabase" purpose="Postgres database, authentication, and private session-document storage" data="Account, organisation, teaching/document, attendance, feedback, certificate, portfolio, delivery, communication, and audit data" status="Core service; operator chooses project and region" />
-              <ServiceRow service={config.hostingProvider} purpose="Runs the Petrios web application" data="Requests, IP/network metadata, session cookies, and server logs; application data in transit" status="Configured application host" />
+              <ServiceRow service={config.hostingProvider} purpose="Runs the Petrios web application" data="Requests, IP/network metadata, session cookies, and server logs (which can include recipient email addresses); application data in transit" status="Configured application host" />
               <ServiceRow service={config.emailProvider} purpose="Sends authentication and operational email" data="Recipient, sender, subject/body, delivery metadata, and attachments where applicable" status={emailDeclared ? 'Configured' : 'Not declared'} tone={emailDeclared ? 'ok' : 'attention'} />
-              <ServiceRow service={config.aiProvider} purpose="Optional LLM, private learning-document processing, and provider-hosted authoritative web research" data="Purpose-limited session metadata, assistant messages, processed feedback, private PDF/DOCX/PPTX contents sent on moderator recap generation, document-derived search queries, public result URLs/titles, and generated recap scripts" status={config.aiEnabled ? 'Enabled' : 'Disabled'} tone={config.aiEnabled ? 'ok' : 'off'} />
+              <ServiceRow
+                service={config.aiProvider}
+                purpose={config.aiProviderKind === 'anthropic'
+                  ? 'Optional LLM, private learning-document processing with temporary provider file storage (one-hour expiry, deleted after each generation), and provider-hosted authoritative web research'
+                  : 'Optional LLM, private learning-document processing, and provider-hosted authoritative web research'}
+                data="Purpose-limited session metadata including invited teachers' names (or an invitee's email where no name is recorded), assistant messages and the records its tools return, processed feedback, private PDF/DOCX/PPTX documents sent on moderator recap or newsletter generation (OpenAI-compatible endpoints receive original Word/PowerPoint files, including comments and document properties; Anthropic receives only their body text and speaker notes), document-derived search queries, public result URLs/titles, and generated recap scripts and newsletter drafts"
+                status={config.aiEnabled ? 'Enabled' : 'Disabled'}
+                tone={config.aiEnabled ? 'ok' : 'off'}
+              />
               <ServiceRow service={config.speechProvider} purpose="Optional text-to-speech for moderator-reviewed Audio Recaps" data="The current draft recap script and speech-generation request metadata; the speech step does not receive uploaded document files or research queries" status={speech.status} tone={speech.tone} />
-              <ServiceRow service={config.meetingProvider} purpose="Optional live video rooms" data="Participant-provided meeting identity and audio/video exchanged directly with the Jitsi service" status="Available when a user opens a video room" />
+              <ServiceRow service={config.meetingProvider} purpose="Optional live video rooms" data="Display name pre-filled from the Petrios profile name (“Attendee” when no name is set; editable before joining), the session title as the room subject, and audio/video exchanged directly with the Jitsi service" status="Available when a user opens a video room" />
             </tbody>
           </table>
         </div>

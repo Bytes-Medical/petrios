@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
 import { getAppUrlFromHeaders } from '@/lib/app-url'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
+import { formatAppDate } from '@/lib/datetime'
 import * as departmentsDb from '@/lib/db/departments'
 import * as organizationsDb from '@/lib/db/organizations'
 import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
@@ -29,11 +30,11 @@ export async function GET(request: NextRequest) {
       orgName: orgName || 'Organization',
       departmentName: dept?.name || 'Department',
       sessionTitle: 'Sample Session',
-      sessionDate: new Date().toLocaleDateString(),
+      sessionDate: formatAppDate(new Date()),
       recipientName: 'Jane Doe',
       role: 'Attendee',
       certificateCode: 'PREVIEW',
-      issuedDate: new Date().toLocaleDateString(),
+      issuedDate: formatAppDate(new Date()),
       verifyUrl: `${baseUrl}/verify/PREVIEW`,
       coordinatorNames: resolveTeachingCoordinatorNames(
         dept?.certificate_coordinator_names,

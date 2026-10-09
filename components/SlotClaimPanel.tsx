@@ -6,7 +6,7 @@ import { Button } from './Button'
 import { Input } from './Input'
 import { claimSlotByCode } from '@/app/actions/teaching-slots'
 import { describeSlot, isLightningSlot } from '@/lib/slot-schedule'
-import { formatTimeHM } from '@/lib/date-picker'
+import { formatInAppTimeZone } from '@/lib/datetime'
 import { LOCATION_TYPE_LABELS, type TeachingSlot } from '@/lib/types'
 
 interface SlotClaimPanelProps {
@@ -14,6 +14,8 @@ interface SlotClaimPanelProps {
   slots: TeachingSlot[]
   initialFirstName: string
   initialLastName: string
+  /** Server `appTimeZone()`, so slot times match the emails and hydrate cleanly. */
+  timeZone: string
 }
 
 export function SlotClaimPanel({
@@ -21,6 +23,7 @@ export function SlotClaimPanel({
   slots,
   initialFirstName,
   initialLastName,
+  timeZone,
 }: SlotClaimPanelProps) {
   const router = useRouter()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -36,29 +39,33 @@ export function SlotClaimPanel({
     setLoading(true)
     setError(null)
     try {
-      await claimSlotByCode(code, selectedId, firstName, lastName, topic || undefined)
-      setClaimed(slots.find((s) => s.id === selectedId) ?? null)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to claim the slot'
-      setError(message)
-      if (message.includes('just claimed')) {
-        // Someone beat them to it — refresh so the lost slot disappears.
+      const result = await claimSlotByCode(code, selectedId, firstName, lastName, topic || undefined)
+      if (result.ok) {
+        setClaimed(slots.find((s) => s.id === selectedId) ?? null)
+        return
+      }
+      setError(result.message)
+      if (result.slotUnavailable) {
         router.refresh()
         setSelectedId(null)
       }
+      setLoading(false)
+    } catch {
+      // Production masks unexpected action errors, so their text is never useful here.
+      setError('Something went wrong while claiming the slot. Please try again in a moment.')
       setLoading(false)
     }
   }
 
   if (claimed) {
-    const desc = describeSlot(claimed)
+    const desc = describeSlot(claimed, timeZone)
     return (
       <div className="space-y-3 text-center py-4">
         <h2 className="text-xl font-mono font-bold">You&apos;re booked in</h2>
         <p className="font-mono text-sm">
           You&apos;re teaching on{' '}
           <strong>
-            {desc.dateStr} at {formatTimeHM(claimed.date_start)}
+            {desc.dateStr} at {formatInAppTimeZone(claimed.date_start, { hour: '2-digit', minute: '2-digit', timeZone })}
           </strong>
           .
         </p>
@@ -73,7 +80,7 @@ export function SlotClaimPanel({
   return (
     <div className="space-y-5">
       {error && (
-        <div className="p-4 border border-red-500 bg-red-50">
+        <div role="alert" className="p-4 border border-red-500 bg-red-50">
           <p className="font-mono text-sm text-red-800">{error}</p>
         </div>
       )}
@@ -88,7 +95,7 @@ export function SlotClaimPanel({
         ) : null}
         <div className="space-y-2">
           {slots.map((slot) => {
-            const desc = describeSlot(slot)
+            const desc = describeSlot(slot, timeZone)
             const selected = selectedId === slot.id
             return (
               <button

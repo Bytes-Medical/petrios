@@ -3,6 +3,7 @@
 import { markAttendance, markExternalAttendance } from '@/app/actions/attendance'
 import { useActionWithRefresh } from '@/hooks/useActionWithRefresh'
 import type { Attendance, AttendanceStatus } from '@/lib/types'
+import { LocalDateTime } from './LocalSessionDateTime'
 
 interface AttendanceListProps {
   sessionId: string
@@ -95,7 +96,7 @@ export function AttendanceList({
             </p>
             {record.first_evidence_at && (
               <p className="font-mono text-xs text-gray-500">
-                First evidence: {new Date(record.first_evidence_at).toLocaleString('en-GB')}
+                First evidence: <LocalDateTime value={record.first_evidence_at} />
               </p>
             )}
           </div>

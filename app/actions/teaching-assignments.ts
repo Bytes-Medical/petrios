@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireAuth, requireOrg } from '@/lib/auth'
 import { getAppUrl } from '@/lib/app-url'
 import { buildTeacherResponseEmailHtml } from '@/lib/email-templates'
+import { formatInAppTimeZone } from '@/lib/datetime'
 import { notifyUser } from '@/lib/notify'
 import { profileDisplayName } from '@/lib/contacts'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -57,7 +58,7 @@ export async function respondToTeachingAssignment(
   if (inviterId && inviterId !== userId) {
     const profile = await onboardingDb.findProfileByUserId(userId).catch(() => null)
     const teacherName = profileDisplayName(profile, 'A teacher')
-    const dateStr = new Date(session.date_start).toLocaleDateString('en-GB', {
+    const dateStr = formatInAppTimeZone(session.date_start, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',

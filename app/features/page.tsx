@@ -121,7 +121,7 @@ const FEATURES: Feature[] = [
     body: 'The ops layer drafts what programme admin eats your week: speaker chases and post-session thank-yous. A moderator can also generate an editable one-page departmental newsletter from every teaching session and document in a completed week. Every outbound email waits for an explicit human approval — that invariant is enforced in code, not policy.',
     points: [
       'Revision-bound newsletter review and per-member retry-safe delivery',
-      'Full audit trail of every AI run — prompt hashes, never prompt text; one kill switch',
+      'Ops agent runs are audited with prompt hashes, not prompt text; OPS_ENABLED=false switches off the agent layer',
     ],
     spec: [
       {
@@ -129,8 +129,8 @@ const FEATURES: Feature[] = [
         value: 'Human approval first',
         source: 'spec/06; lib/ops/executors.ts is the only Ops send path',
       },
-      { label: 'AI audit', value: 'Prompt hashes, not text', source: 'lib/ops/gateway.ts' },
-      { label: 'Kill switch', value: <code>OPS_ENABLED=false</code>, source: 'lib/ops/flags.ts' },
+      { label: 'Ops audit', value: 'Prompt hashes, not text', source: 'lib/ops/gateway.ts' },
+      { label: 'Ops kill switch', value: <code>OPS_ENABLED=false</code>, source: 'lib/ops/flags.ts' },
     ],
   },
   {

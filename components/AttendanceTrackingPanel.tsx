@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from './Button'
+import { LocalDateTime } from './LocalSessionDateTime'
 import { markAttendance } from '@/app/actions/attendance'
 import { lockAttendance, unlockAttendance, getSessionEvidence } from '@/app/actions/attendance-evidence'
 import type { AttendanceStatus } from '@/lib/types'
@@ -164,7 +165,7 @@ export function AttendanceTrackingPanel({ sessionId, attendance, isLocked = fals
                         <> | Source: {record.primary_source === 'RECALL' ? 'Audio recap catch-up' : record.primary_source}</>
                       )}
                       {record.first_evidence_at && (
-                        <> | First evidence: {new Date(record.first_evidence_at).toLocaleString('en-GB')}</>
+                        <> | First evidence: <LocalDateTime value={record.first_evidence_at} /></>
                       )}
                       {record.locked && <> | 🔒 Locked</>}
                     </p>

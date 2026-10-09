@@ -7,16 +7,18 @@ import { Input } from './Input'
 import { useToast } from './ToastProvider'
 import { useActionWithRefresh } from '@/hooks/useActionWithRefresh'
 import { claimSlotAsMember } from '@/app/actions/teaching-slots'
-import type { ClaimableSlotView } from '@/app/actions/teaching-slots'
+import type { ClaimableSlotView, ClaimSlotResult } from '@/app/actions/teaching-slots'
 import { describeSlot, isLightningSlot } from '@/lib/slot-schedule'
 import { LOCATION_TYPE_LABELS_SHORT } from '@/lib/types'
 
 interface OpenSlotsPanelProps {
   slots: ClaimableSlotView[]
+  /** Server `appTimeZone()`, so slot times match the emails and hydrate cleanly. */
+  timeZone: string
 }
 
 /** Open teaching slots this member was invited to claim (first come, first served). */
-export function OpenSlotsPanel({ slots }: OpenSlotsPanelProps) {
+export function OpenSlotsPanel({ slots, timeZone }: OpenSlotsPanelProps) {
   const { showToast } = useToast()
   const [claimingId, setClaimingId] = useState<string | null>(null)
   const [topic, setTopic] = useState('')
@@ -24,25 +26,27 @@ export function OpenSlotsPanel({ slots }: OpenSlotsPanelProps) {
 
   function handleClaim(slotId: string) {
     run(async () => {
+      let result: ClaimSlotResult
       try {
-        await claimSlotAsMember(slotId, topic || undefined)
-        showToast({
-          variant: 'success',
-          title: "You're booked to teach",
-          description: 'The organiser has been notified and will confirm the topic.',
-        })
-        setClaimingId(null)
-        setTopic('')
+        result = await claimSlotAsMember(slotId, topic || undefined)
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to claim the slot'
-        showToast({ variant: 'error', title: message })
-        if (message.includes('just claimed')) {
-          // Someone beat them to it — let the refresh run so the slot vanishes.
-          setClaimingId(null)
-          return
-        }
+        // Production masks unexpected action errors, so their text is never useful here.
+        showToast({ variant: 'error', title: 'Something went wrong while claiming the slot. Please try again.' })
         throw err
       }
+      if (!result.ok) {
+        showToast({ variant: 'error', title: result.message })
+        // The refresh that follows removes a lost slot from the list.
+        if (result.slotUnavailable) setClaimingId(null)
+        return
+      }
+      showToast({
+        variant: 'success',
+        title: "You're booked to teach",
+        description: 'The organiser has been notified and will confirm the topic.',
+      })
+      setClaimingId(null)
+      setTopic('')
     }, slotId)
   }
 
@@ -61,7 +65,7 @@ export function OpenSlotsPanel({ slots }: OpenSlotsPanelProps) {
       ) : null}
       <div className="space-y-3">
         {slots.map((slot) => {
-          const desc = describeSlot(slot)
+          const desc = describeSlot(slot, timeZone)
           const isClaiming = claimingId === slot.id
           return (
             <div

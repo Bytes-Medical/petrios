@@ -17,6 +17,8 @@ import type {
   FeedbackAnswerInput,
   SubmittedFeedbackAnswer,
 } from '@/lib/types'
+import { isFeedbackWindowOpen } from '@/lib/feedback-window'
+import { formatInAppTimeZone } from '@/lib/datetime'
 import { isLlmConfigured } from '@/lib/ai/llm'
 import { summarizeFeedback } from '@/lib/ai/feedback-summary'
 import * as feedbackDb from '@/lib/db/feedback'
@@ -131,34 +133,39 @@ export async function updateDepartmentFeedbackFields(
   revalidatePath(`/departments/${departmentId}/feedback`)
 }
 
-export async function submitFeedback(sessionId: string, feedback: FeedbackData) {
+// Next.js masks thrown action errors in production, so this public action
+// returns expected failures for the form to show; only unexpected ones throw.
+// `final` (window closed) tells the form to refresh into the page's closed notice.
+export type SubmitFeedbackResult =
+  | { ok: true; id: string }
+  | { ok: false; message: string; final?: true }
+
+export async function submitFeedback(
+  sessionId: string,
+  feedback: FeedbackData
+): Promise<SubmitFeedbackResult> {
   const firstName = feedback.firstName.trim()
   const lastName = feedback.lastName.trim()
   const email = feedback.email.trim().toLowerCase()
 
   if (!firstName || !lastName || !email) {
-    throw new Error('Please fill in your name and email.')
+    return { ok: false, message: 'Please fill in your name and email.' }
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error('Enter a valid email address.')
+    return { ok: false, message: 'Enter a valid email address.' }
   }
 
   const session = await feedbackDb.findSessionForFeedbackSubmission(sessionId)
   if (!session) {
-    throw new DbNotFoundError('Session not found')
+    return { ok: false, message: 'This session is no longer available for feedback.' }
   }
 
   if (session.status !== 'PUBLISHED') {
-    throw new Error('Feedback can only be submitted for published sessions')
+    return { ok: false, message: 'Feedback can only be submitted for published sessions' }
   }
 
-  const now = Date.now()
-  const opensAt = new Date(session.date_start).getTime()
-    - (session.checkin_open_mins_before ?? 15) * 60 * 1000
-  const closesAt = new Date(session.date_end).getTime()
-    + (session.feedback_valid_mins_after_end ?? 120) * 60 * 1000
-  if (now < opensAt || now > closesAt) {
-    throw new Error('The feedback window for this session is closed')
+  if (!isFeedbackWindowOpen(session)) {
+    return { ok: false, message: 'The feedback window for this session is closed', final: true }
   }
 
   const department = await feedbackDb.findDepartmentForFeedbackSubmission(
@@ -171,10 +178,18 @@ export async function submitFeedback(sessionId: string, feedback: FeedbackData) 
   const templateFields = normalizeDepartmentFeedbackFields(
     department.feedback_form_fields
   )
-  const { submittedAnswers, derivedRating, derivedComment } = buildFeedbackSubmission(
-    templateFields,
-    feedback.answers || []
-  )
+  let submission: ReturnType<typeof buildFeedbackSubmission>
+  try {
+    submission = buildFeedbackSubmission(templateFields, feedback.answers || [])
+  } catch (error) {
+    // The validator throws plain Errors with answer-level messages; a
+    // TypeError etc. means malformed input and stays a generic failure.
+    if (error instanceof Error && Object.getPrototypeOf(error) === Error.prototype) {
+      return { ok: false, message: error.message }
+    }
+    throw error
+  }
+  const { submittedAnswers, derivedRating, derivedComment } = submission
 
   // Resolve user_id from email if they have a profile
   const profile = await onboardingDb.findProfileByEmail(email)
@@ -196,14 +211,14 @@ export async function submitFeedback(sessionId: string, feedback: FeedbackData) 
     })
   } catch (error) {
     if (error instanceof DbConflictError) {
-      throw new Error('Feedback has already been submitted for this email address')
+      return { ok: false, message: 'Feedback has already been submitted for this email address' }
     }
     throw error
   }
 
   revalidatePath(`/sessions/${sessionId}`)
   revalidatePath(`/sessions/${sessionId}/manage`)
-  return inserted
+  return { ok: true, id: inserted.id }
 }
 
 export async function getSessionFeedback(sessionId: string) {
@@ -426,7 +441,7 @@ export async function releaseTeacherFeedback(
     throw new Error('No teachers found for this session')
   }
 
-  const sessionDate = new Date(session.date_start).toLocaleDateString('en-GB', {
+  const sessionDate = formatInAppTimeZone(session.date_start, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -647,7 +662,7 @@ export async function summarizeSessionFeedback(
   if (!isLlmConfigured()) {
     return {
       summary: null,
-      error: 'AI summaries are not configured — set OPENAI_API_KEY on the server.',
+      error: 'AI summaries are not configured — set ANTHROPIC_API_KEY (or OPENAI_API_KEY) on the server.',
     }
   }
 

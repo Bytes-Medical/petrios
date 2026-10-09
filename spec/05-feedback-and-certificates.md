@@ -75,8 +75,22 @@ closes = session end   + (feedback_valid_mins_after_end ?? 120 minutes)
 Both endpoints are inclusive. The session must exist and be `PUBLISHED`.
 Direct action invocation cannot submit before opening or after closing.
 
-The department-selector page must use the same nullish semantics; a configured
-zero is meaningful and must not be changed to 120 with a truthy fallback.
+The formula lives in one place, `lib/feedback-window.ts`
+(`getFeedbackWindowBounds`, `getFeedbackWindowStatus` returning
+`NOT_YET_OPEN`/`OPEN`/`CLOSED`, and `isFeedbackWindowOpen`), shared by
+`submitFeedback`, `/sessions/:id/feedback` and `/departments/:id/feedback`. It
+uses nullish defaults, so a configured zero is meaningful and is never changed
+to the default by a truthy fallback. Unparseable session timestamps count as
+closed.
+
+`/sessions/:id/feedback` is `force-dynamic`. Outside the window it shows a
+"Feedback is not open yet" notice with the opening time, or a "Feedback is
+closed" notice with the closing time, instead of the form; it also shows the
+session date and time. The department page picks the first published session
+whose window is open and otherwise shows "Feedback is not open for any session
+in this department right now…". Every date and time on both public feedback
+pages is formatted with `formatInAppTimeZone` (`APP_TIME_ZONE`, default
+`Europe/London`; spec 04).
 
 ## Submission validation and storage
 
@@ -109,6 +123,21 @@ login redesign.
 The feedback insert is the complete submission transaction. There is no
 best-effort attendance insert, certificate render, or email side effect after
 it.
+
+`submitFeedback` returns `{ ok: true, id } | { ok: false, message, final?: true }`
+(spec 07, visitor-facing action results). Expected failures are returned with their
+message: missing name or email, bad email syntax, a missing session ("This
+session is no longer available for feedback."), a session that is not
+`PUBLISHED`, a submission outside the window, a required answer missing or an
+invalid rating (the validator's own message), and the duplicate-email conflict
+above. A missing department and database errors still throw; `FeedbackForm`
+then shows a generic retry message, never the error text. On an `ok: false`
+result the form keeps what the visitor typed and shows the message in a
+persistent `role="alert"` block above the submit button. The closed-window
+failure is `final: true`: the form also refreshes the page, which then renders
+its "Feedback is closed" (or "not open yet") notice in place of the form. A
+missing or unpublished session is not final, because that page redirects away
+and the visitor would lose the explanation.
 
 ## Moderator statistics
 
@@ -158,7 +187,7 @@ claiming large-dataset scalability.
 
 ## On-demand AI feedback summary
 
-Petrios does have an optional OpenAI-compatible feedback summarization
+Petrios does have an optional LLM feedback summarization (Anthropic Claude by default, OpenAI-compatible optional)
 capability. The moderator-only `summarizeSessionFeedback` action:
 
 1. confirms session and department authority;
@@ -177,7 +206,7 @@ capability. The moderator-only `summarizeSessionFeedback` action:
 8. strips known names from returned text again.
 
 The call goes through the general `lib/ai/llm.ts` adapter and is not an Ops
-outbound action. Model completion alone cannot send anything. The result enters
+outbound action. On Anthropic it runs at effort `low`. Model completion alone cannot send anything. The result enters
 an editable teacher-report composer; editing invalidates the review checkbox.
 The moderator must compare it with source feedback, remove unsupported or
 identifying material, and explicitly approve it for release. Deterministic
@@ -502,6 +531,14 @@ tenant colours:
 - the lower credential area shows the snapshotted coordinator list and a
   distinct human issuer when present; and
 - certificate code, issue date, and a QR verification URL remain visible.
+
+Session and issue dates on every certificate path are rendered en-GB in
+`APP_TIME_ZONE` (spec 04): numeric `dd/mm/yyyy` on the canonical issue, external
+teacher, authenticated download (`/api/certificates/:id/download`), Settings
+preview and Audio Recap catch-up PDFs and on the `/certificates` list; long-form
+dates on the session-page download (`downloadMyCertificateForSession`) and
+`/verify/:certificateId`. The download, preview and issue paths previously used
+the runtime's default locale, which printed US `M/D/YYYY` on servers.
 
 The coordinator display stacks up to four names vertically in configured order,
 without slash or comma separators, and remains isolated from the issuer and QR

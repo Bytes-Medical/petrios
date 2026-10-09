@@ -68,6 +68,7 @@ export default async function RecallPage(props: { params: Promise<{ token: strin
           questions={state.questions}
           attemptsRemaining={state.attemptsRemaining}
           completion={state.completion}
+          researchSources={state.researchSources}
         />
       </div>
     </div>

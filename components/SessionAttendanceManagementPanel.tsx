@@ -8,6 +8,7 @@ import type { TeacherInvitation } from '@/lib/types'
 import type { AttendanceEvidence, SessionParticipant } from '@/lib/db/attendance'
 import { AttendanceList } from './AttendanceList'
 import { Button } from './Button'
+import { LocalDateTime } from './LocalSessionDateTime'
 
 export function SessionAttendanceManagementPanel({
   session,
@@ -196,7 +197,7 @@ export function SessionAttendanceManagementPanel({
           <ul className="space-y-2">
             {evidence.map((item) => (
               <li key={item.id} className="border border-gray-300 p-3 font-mono text-xs">
-                <span className="font-bold">{item.source}</span> · {item.user_id ?? item.external_email} · {new Date(item.observed_at).toLocaleString('en-GB')}
+                <span className="font-bold">{item.source}</span> · {item.user_id ?? item.external_email} · <LocalDateTime value={item.observed_at} />
                 {item.correction_reason ? <span className="mt-1 block text-gray-700">Reason: {item.correction_reason}</span> : null}
               </li>
             ))}

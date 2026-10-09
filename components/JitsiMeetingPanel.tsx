@@ -6,6 +6,7 @@ import { checkIn } from '@/app/actions/attendance'
 import { getJitsiDomain, jitsiMeetingUrl, jitsiRoomName } from '@/lib/jitsi'
 import { Button } from './Button'
 import { Card } from './Card'
+import { LocalDateTime } from './LocalSessionDateTime'
 
 // The SDK injects Jitsi's external_api.js into the page, so it can only
 // ever render client-side.
@@ -82,7 +83,10 @@ export function JitsiMeetingPanel({
       {now < opensAt && (
         <p className="mt-4 border border-dashed border-gray-300 px-4 py-3 font-mono text-sm text-gray-600">
           The room opens at{' '}
-          {new Date(opensAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}{' '}
+          <LocalDateTime
+            value={new Date(opensAt).toISOString()}
+            options={{ hour: '2-digit', minute: '2-digit' }}
+          />{' '}
           ({ROOM_OPEN_MINS_BEFORE} minutes before the session starts).
         </p>
       )}

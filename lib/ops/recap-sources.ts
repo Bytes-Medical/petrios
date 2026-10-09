@@ -5,7 +5,12 @@ import type { AudioRecapSourceDocument } from '@/lib/audio-recap-types'
 import * as documentsDb from '@/lib/db/session-documents'
 import type { SessionDocument } from '@/lib/db/session-documents'
 
-/** OpenAI Responses accepts up to 50 MB combined file input per request. */
+/**
+ * Product limit on one recap's combined source documents. Anthropic uploads
+ * each document separately through the Files API, but one request is still
+ * bounded by the model's 600-page PDF and context limits; the OpenAI
+ * Responses adapter accepts up to 50 MB of file input per request.
+ */
 export const AUDIO_RECAP_MAX_SOURCE_BYTES = 50 * 1024 * 1024
 
 export interface AudioRecapSourceSnapshot {

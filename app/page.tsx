@@ -251,7 +251,7 @@ export default async function Home() {
           <p className={s.ossBody}>
             Petrios is free software (AGPL-3.0). Self-host the whole platform
             inside your trust — your own database, mail relay, video server,
-            even an in-network AI model — and integrate anything through the
+            even an in-network model for the AI text features — and integrate anything through the
             org-scoped REST API and signed webhooks. Teaching records are
             portable and verifiable across instances, so a trainee’s
             history survives every rotation.

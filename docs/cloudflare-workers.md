@@ -158,9 +158,10 @@ still work at runtime but are not declared for local preview.
 
 | Kind | Names |
 |---|---|
-| `vars` in `wrangler.jsonc` | `APP_URL` (empty in config; set per deploy), `CRON_ENABLED` (`"false"` at top level, `"true"` only in `env.production`), `OUTBOUND_EMAIL_ENABLED` (`"false"` at top level, `"true"` in `env.production`; see [Outbound email on staging](#outbound-email-on-staging)), `TRUSTED_CLIENT_IP_HEADER` (`"cf-connecting-ip"` in both: Cloudflare overwrites it, while the first `x-forwarded-for` hop is client-supplied, so the login-link and group-code rate limits must not use it) |
+| `vars` in `wrangler.jsonc` | `APP_URL` (empty in config; set per deploy), `CRON_ENABLED` (`"false"` at top level, `"true"` only in `env.production`), `OUTBOUND_EMAIL_ENABLED` (`"false"` at top level, `"true"` in `env.production`; see [Outbound email on staging](#outbound-email-on-staging)), `TRUSTED_CLIENT_IP_HEADER` (`"cf-connecting-ip"` in both: Cloudflare overwrites it, while the first `x-forwarded-for` hop is client-supplied, so the login-link and group-code rate limits must not use it), `HOSTING_PROVIDER` (`"cloudflare-workers"` in both, so `/privacy` and `/subprocessors` name Cloudflare Workers as the application host) |
 | Required secrets: deploy fails without them | Staging: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`. Production adds `RESEND_API_KEY` |
-| Optional secrets (set when used) | `ATTENDANCE_RATE_LIMIT_SECRET`, `INSTANCE_SIGNING_KEY`, `RESEND_API_KEY` and `MAIL_FROM` (staging: only reach `OUTBOUND_EMAIL_ALLOWLIST` addresses), `OUTBOUND_EMAIL_ALLOWLIST` (staging only), `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `TTS_PROVIDER`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `OPS_ENABLED`, `OPS_ASSISTANT_ENABLED`, `JITSI_DOMAIN`, `GOOGLE_SITE_VERIFICATION`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL`, `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` |
+| Optional secrets (set when used) | `ATTENDANCE_RATE_LIMIT_SECRET`, `INSTANCE_SIGNING_KEY`, `RESEND_API_KEY` and `MAIL_FROM` (staging: only reach `OUTBOUND_EMAIL_ALLOWLIST` addresses), `OUTBOUND_EMAIL_ALLOWLIST` (staging only), `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_FALLBACKS`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `TTS_PROVIDER`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `OPS_ENABLED`, `OPS_ASSISTANT_ENABLED`, `JITSI_DOMAIN`, `GOOGLE_SITE_VERIFICATION`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL`, `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` |
+| Not secret, usually unset | `APP_TIME_ZONE` (IANA zone for server-rendered dates and teaching-slot wall times; default `Europe/London`, so a UK deployment sets nothing). To change it, add it to `vars` in `wrangler.jsonc` at the top level **and** in `env.production` (environments do not inherit `vars`), which also lets `cf:preview` read it from `.dev.vars`; or store it as a secret like `MAIL_FROM`. `TZ` has no effect: the Workers clock is always UTC |
 | Never set on Workers | `SUPABASE_INTERNAL_URL`, `AUTH_INTERNAL_URL`, `STORAGE_INTERNAL_URL`: Docker-network hostnames, which `global_fetch_strictly_public` blocks. Also `SELF_HOSTED_SETUP`/`SETUP_TOKEN` (self-host setup depends on unapplied migration 061), `DATABASE_URL`, and `NEXTJS_ENV` |
 | Build-time only | `NODE_ENV` is inlined as `production` by `next build` |
 
@@ -187,6 +188,23 @@ Even with email off, staging writes to the production database. Do not run real
 workflows there: generating certificates, inviting teachers, publishing slots
 or approving Ops actions for real sessions creates production rows (with failed
 deliveries for everyone not on the allowlist).
+
+### Privacy register while staging serves production data
+
+A Worker processes personal data: requests, IP addresses and auth cookies, the
+application data it reads from and writes to the database, and Workers Logs
+(`observability` is enabled), which keep console output, including error lines
+that name recipient email addresses, for Cloudflare's plan-dependent retention
+period. On the Worker itself, `/privacy` and `/subprocessors` name "Cloudflare
+Workers" as the host. The register that Render serves cannot know a staging
+Worker exists, so before deploying one that uses the production database:
+
+1. add Cloudflare (Workers and Workers Logs, its region and retention) to the
+   controller's recipient register, the DPIA (`docs/compliance/dpia-template.md`)
+   and the executed DPA's subprocessor list;
+2. cover it in `DATA_TRANSFER_SAFEGUARDS` on both Render and the Worker; and
+3. remove those entries when the staging Worker is deleted, or keep them at
+   cutover when the Worker becomes the production host.
 
 ### Parity with Render: copy, never rotate
 
@@ -360,7 +378,7 @@ missing from the dry-run upload, and `cf:preview` refuses an unpatched build.
 | Limit (Workers Paid) | Value | Notes |
 |---|---|---|
 | Memory | 128 MB per isolate, shared by its concurrent requests | Not enforced by local `wrangler dev` |
-| CPU per HTTP request | 30 s default (up to 300 s via `limits.cpu_ms`) | Left at the default. SSR, scrypt (~48 ms) and PDF renders (10–144 ms) are far below it; Audio Recap is I/O wait, which does not count |
+| CPU per HTTP request | 30 s default (up to 300 s via `limits.cpu_ms`) | Left at the default. SSR, scrypt (~48 ms) and PDF renders (10–144 ms) are far below it; Audio Recap is I/O wait, which does not count. Office text extraction for Anthropic document requests is bounded (see Known limitations). |
 | CPU per Cron Trigger | 30 s below an hourly interval, 15 min at hourly or longer | Wall time capped at 15 min |
 | Subrequests | 10,000 per invocation by default | `post-session-reports` makes about 11 per attendee |
 | After the response | Work not awaited or registered via `waitUntil`/`after()` may be cancelled | `ctx.waitUntil` allows about 30 s more |
@@ -369,11 +387,15 @@ missing from the dry-run upload, and `cf:preview` refuses an unpatched build.
 
 ## Known limitations
 
-- **Audio Recap memory is unproven on a deployed isolate.** Documents now
-  stream, so the live set stays at a few MiB, but each 50 MiB request still
-  creates about 117 MiB of short-lived garbage (storage chunks plus base64
-  output). Local workerd does not enforce the 128 MB limit, so confirm on the
-  Paid staging Worker, including two recaps at once.
+- **Audio Recap memory is unproven on a deployed isolate.** With Anthropic,
+  documents are uploaded to the Files API one at a time as a streamed body (a few
+  chunks live); DOCX/PPTX text extraction keeps at most its 1,000,000-character
+  text plus slide-order/notes relationships (crafted packages measured at a few
+  MiB). Each upload attempt releases its source when it ends. On the
+  OpenAI-compatible adapter a 50 MiB request still creates about 117 MiB of
+  short-lived garbage (storage chunks plus base64 output). Local workerd does not
+  enforce the 128 MB limit, so confirm on the Paid staging Worker, including two
+  recaps at once.
 - **Streamed downloads depend on a build-time patch** of OpenNext's response
   writer ([Streaming responses](#streaming-responses)). It is verified in Node
   and local workerd; how much Cloudflare's edge buffers between the isolate and
@@ -381,6 +403,17 @@ missing from the dry-run upload, and `cf:preview` refuses an unpatched build.
 - **Custom `OPENAI_BASE_URL` endpoints** must accept chunked request bodies and
   must not redirect: document requests now stream, so a 307/308 fails instead of
   being followed.
+- **Custom `ANTHROPIC_BASE_URL` gateways** must pass the `anthropic-beta`
+  header, accept chunked multipart `POST /v1/files` without redirecting, and
+  support web search; otherwise recaps/newsletters fail.
+- **Office text extraction CPU.** DOCX/PPTX are inflated and scanned in the
+  Worker. Inflation stops at 64 MiB per document and once 1,000,000 characters
+  are extracted (measured on Node: about 0.5 s for a markup-only document at the
+  cap), so a 50-document newsletter stays under the 30 s default; confirm on
+  staging.
+- **SDK bundling.** `@anthropic-ai/sdk` bundles under OpenNext with
+  `nodejs_compat` (`npm run cf:build` passes); its Node-only credential discovery
+  is never reached because the key is passed explicitly.
 - **Abandoned uploads.** If a tab closes between prepare and finalize, the
   `UPLOADING` row (never listed) and possibly its storage object remain. There
   is no sweeper yet.
@@ -408,7 +441,9 @@ take writes production rows. Use test sessions only, and send email only to
 - [ ] Certificate download and preview return `%PDF-` with IBM Plex Mono. Also check a portfolio pack, a teaching dossier and an audit report.
 - [ ] A 25 MiB session-document upload (PDF and DOCX/PPTX) at exactly 25 MiB, plus two concurrent uploads. Watch for Error 1102 (memory).
 - [ ] Several concurrent 25 MiB document downloads and audio playbacks over a throttled (slow) connection. Memory stays flat (backpressure patch).
-- [ ] Audio Recap generation with a realistic document set, then playback. Watch memory and wall time.
+- [ ] Audio Recap generation with a realistic PDF + DOCX + PPTX set, then playback. Watch memory and wall time, check `audio_recaps.model` shows the serving model and the research sources are allow-listed, and confirm `client.files.list()` (Anthropic Console → Files) shows no `petrios-ai-` files afterwards, also after a forced failure.
+- [ ] One newsletter with 10+ documents, and (if `OPS_ASSISTANT_ENABLED=true`) one assistant chat that calls a tool.
+- [ ] Server-rendered times are UK local time, not UTC: during BST a certificate PDF date, a teaching-slot offer and the public feedback page's opening/closing notice match the session's UK wall-clock time.
 - [ ] Webhooks: in a test organization whose only webhook endpoint is one you control, publish a test session and confirm `webhook_deliveries` rows and receipt with a valid `X-Petrios-Signature`.
 - [ ] Email to a non-allowlisted address is refused (ledger row `FAILED`, nothing sent). Email to an allowlisted address arrives, and its links use the staging `APP_URL`.
 - [ ] Cron routes return 401 without the bearer secret. No scheduled invocations appear in the staging Worker's logs.

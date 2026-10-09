@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from './Button'
 import { Input } from './Input'
 import { Select } from './Select'
@@ -30,7 +31,10 @@ function buildInitialAnswerState(feedbackFields: DepartmentFeedbackField[]) {
 
 export function FeedbackForm({ sessionId, sessionTitle, feedbackFields }: FeedbackFormProps) {
   const { showToast } = useToast()
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
+  // Failures stay on screen in an alert region: toasts auto-dismiss and are not announced.
+  const [error, setError] = useState<string | null>(null)
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
@@ -53,11 +57,7 @@ export function FeedbackForm({ sessionId, sessionTitle, feedbackFields }: Feedba
     event.preventDefault()
 
     if (hasMissingIdentity) {
-      showToast({
-        variant: 'error',
-        title: 'Missing attendee details',
-        description: 'Please fill in your first name, last name, and email address.',
-      })
+      setError('Please fill in your first name, last name, and email address.')
       return
     }
 
@@ -68,14 +68,21 @@ export function FeedbackForm({ sessionId, sessionTitle, feedbackFields }: Feedba
     }))
 
     setLoading(true)
+    setError(null)
 
     try {
-      await submitFeedback(sessionId, {
+      const result = await submitFeedback(sessionId, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
         answers: structuredAnswers,
       })
+
+      if (!result.ok) {
+        setError(result.message)
+        if (result.final) router.refresh()
+        return
+      }
 
       showToast({
         variant: 'success',
@@ -87,12 +94,9 @@ export function FeedbackForm({ sessionId, sessionTitle, feedbackFields }: Feedba
       setLastName('')
       setEmail('')
       setAnswers(buildInitialAnswerState(feedbackFields))
-    } catch (error) {
-      showToast({
-        variant: 'error',
-        title: 'Submission failed',
-        description: error instanceof Error ? error.message : 'Failed to submit feedback',
-      })
+    } catch {
+      // Production masks unexpected action errors, so their text is never useful here.
+      setError('Something went wrong while submitting your feedback. Please try again in a moment.')
     } finally {
       setLoading(false)
     }
@@ -194,6 +198,13 @@ export function FeedbackForm({ sessionId, sessionTitle, feedbackFields }: Feedba
           </div>
         ))}
       </div>
+
+      {error && (
+        <div role="alert" className="p-4 border border-red-500 bg-red-50">
+          <p className="font-mono text-sm font-bold text-red-800">Submission failed</p>
+          <p className="mt-1 font-mono text-sm text-red-800">{error}</p>
+        </div>
+      )}
 
       <Button type="submit" disabled={loading || hasMissingIdentity} className="w-full sm:w-auto">
         {loading ? 'Submitting...' : 'Submit Feedback'}

@@ -57,6 +57,16 @@ converted to instants in the browser, and the primary session lists format those
 instants in the viewing browser as well; this avoids a deployment server's UTC
 timezone shifting a British Summer Time listing by one hour.
 
+Everything the server renders — emails (invitations, reminders, notifications),
+certificate/audit/portfolio PDFs, server pages, cron output and Ops drafts — is
+formatted with `lib/datetime.ts` in `APP_TIME_ZONE` (an IANA name, default
+`Europe/London`; an invalid value falls back to the default with a logged
+error). Server clocks are UTC on both runtimes and Workers ignore `TZ`, so
+nothing relies on the process time zone. The ICS feed keeps UTC (`Z`)
+timestamps. Client components keep the viewer's zone and use
+`components/LocalSessionDateTime.tsx` for any timestamp rendered during SSR
+(spec 07).
+
 New interactive sessions offer 30–240 minutes in 30-minute steps plus **Full
 day**, defined as 570 minutes (08:00–17:30). The creation action enforces that
 vocabulary. The general update action continues to enforce valid dates and
@@ -147,6 +157,10 @@ The in-app Petrios Meet room is displayed from 30 minutes before session start
 through 30 minutes after session end. Opening the room attempts best-effort self
 check-in, whose independent attendance window may reject it. A raw Jitsi URL can
 be joined outside the Petrios UI window if the meeting provider permits it.
+The embedded room is pre-filled with the session title as its subject and a
+display name from the viewer's profile name (`meetingDisplayName`); it falls
+back to "Attendee", never to the email address, because the name reaches the
+Jitsi service and every participant. The prejoin screen lets the viewer edit it.
 
 The session-management **Overview** tab contains the meeting control. Jitsi
 sessions show the derived guest URL; Teams/hybrid sessions use the editable
@@ -191,7 +205,19 @@ created attendance evidence or certificates.
 5. Invitation email is attempted. Failure is returned as `emailSent: false` but
    does not remove the invitation.
 6. The public RSVP page resolves the code. A pending invite can be accepted or
-   declined once, with required self-reported names.
+   declined once, with self-reported names that both the RSVP form and the
+   server action require. `respondToInvitation` returns
+   `{ ok: true, status } | { ok: false, message, final?: true }` (spec 07): an
+   unknown code returns "This invitation link is invalid or has expired.",
+   blank names return "Please enter your first and last name", and an invite
+   that is no longer pending returns "This invitation has already been
+   responded to". The response update is a compare-and-set on
+   `status = 'PENDING'`, so of two concurrent responses only the first is
+   recorded and the other receives the already-responded failure. The
+   unknown-code and already-responded failures are `final: true`: the form
+   shows the message in a `role="alert"` block and refreshes, so the page
+   renders "Already Responded" (with the join link for an accepted teacher) or
+   "Invitation Not Found" instead of buttons that can no longer work.
 7. RSVP names overwrite address-book names because the contact is treated as the
    authoritative source.
 
@@ -397,26 +423,39 @@ feedback themes as substitute teaching content. Generation is an explicit
 moderator action and fails when there is no available document.
 
 The server reauthorizes session moderation, lists source metadata through the
-document DAL, and enforces the provider's 50 MiB combined file-input limit.
-Documents are not downloaded up front: the provider request body is streamed,
-and each private object is read from storage one at a time
-(`fetchDocumentObject`) while the request uploads. Its byte count and SHA-256 are
-checked incrementally against the `session_documents` values recorded at
-upload. A mismatch, an object larger than recorded, or a storage read failure
-errors the request body before that document's data URL, and therefore the
-JSON, is complete; no output is accepted and generation fails with the original
-integrity or storage message. Unlike a verify-before-send
-flow, the bytes preceding a mismatch may already have reached the provider
-inside that aborted, incomplete request. PDF, DOCX, and PPTX bytes reach the
-configured AI provider through an OpenAI Responses-compatible file-input call. PDFs contribute extracted text and
-page images; DOCX/PPTX contribute extracted text, so embedded Office-only charts
-or images may not inform the recap. Users are warned before upload/generation not
-to include patient-identifiable, confidential, or unnecessary special-category
-material.
+document DAL, and enforces the 50 MiB combined product limit. Documents are not
+downloaded up front: each private object is read from storage one at a time
+(`fetchDocumentObject`) while it is sent — on Anthropic as its own Files API
+upload, on the OpenAI-compatible adapter inside one streamed request body. Its
+byte count and SHA-256 are checked incrementally against the
+`session_documents` values recorded at upload. A mismatch, an object larger than
+recorded, or a storage read failure fails generation with the original
+integrity or storage message, and no output is accepted. On the adapter it errors
+the request body before that document's data URL, and therefore the JSON, is
+complete. On Anthropic it errors a PDF upload before its closing multipart
+boundary, so the upload never completes (any file the endpoint nonetheless
+stored is deleted); DOCX/PPTX text is used only after the whole object passed
+the check. Unlike a verify-before-send flow, PDF bytes (and, on the adapter, any
+document's bytes) preceding a mismatch may already have reached the provider
+inside that aborted, incomplete request.
+
+With Anthropic (default), PDFs are uploaded to the Files API as bytes and
+contribute text and page images; DOCX/PPTX are converted server-side to plain
+text (DOCX body in document order; PPTX slides in presentation order with
+speaker notes; headers/footers, comments, masters/layouts and document
+properties are not extracted; at most 1,000,000 characters per document,
+inflation capped at 64 MiB, at most 2,000 slides) and uploaded as text, so
+embedded charts or images do not inform the recap. Each upload has an opaque
+`petrios-ai-` name and a one-hour expiry, and is deleted when the generation
+ends; a daily sweep removes anything an interrupted request left. On the
+OpenAI-compatible adapter the bytes go in one Responses file-input call (PDFs as
+text and page images, DOCX/PPTX as provider-extracted text). Users are warned
+before upload/generation not to include patient-identifiable, confidential, or
+unnecessary special-category material.
 
 In the same provider request, generation requires hosted web search limited to
 the authoritative clinical/evidence domains specified in spec 06. Search queries
-may be derived from the private learning material. Research can add relevant
+may be derived from the private learning material. On Anthropic, the spoken script is the text the model writes after its last search result; working notes written before or between searches are discarded. Research can add relevant
 current guidance, definitions, safety context, or evidence, but the uploaded
 documents must determine the recap topic, structure, and clear majority of its
 content. Research must not silently override a document; a material conflict is
@@ -518,7 +557,49 @@ job writes that value.
 ### Creation and duration
 
 A parent slot range must be 30–240 minutes and cannot use a past calendar day.
-It may be split into 10-, 15-, or 20-minute lightning slots. Splitting happens
+The chosen day and start time are wall-clock time in `APP_TIME_ZONE` (default
+`Europe/London`): `createTeachingSlots` runs on the server and converts them to
+UTC instants with `appWallClockToIso` before insert, and the past-day check uses
+the app-zone calendar day (`appDayKey`). A spring-forward time that does not
+exist resolves an hour later. Slot descriptions (`describeSlot`: offer emails,
+the schedule list, the open-slots panel, the `/claim` page) and the schedule's
+busy-day tags are computed in `APP_TIME_ZONE`; the client panels that call
+`describeSlot` receive the server's `appTimeZone()` as a prop (spec 07), so a
+non-UK `APP_TIME_ZONE` shows the same times on every surface. Slots created before this
+rule for British Summer Time dates were stored with the wall time read as UTC,
+one hour later than the moderator chose (and draft sessions claimed from them
+inherit the offset). Before the change, offer emails rendered on a UTC server
+happened to show the intended time while browsers showed the late one; after
+it, every surface consistently shows the stored (late) time.
+
+**Release blocker — data decision pending (product owner).** No data
+correction has been applied, and the code cannot tell an affected row from a
+deliberately late slot. Before or at the release, an operator lists the
+affected live rows read-only, with `<release>` set to the deploy instant:
+
+```sql
+select id, department_id, status, date_start, date_end, session_id, created_at
+from teaching_slots
+where status in ('OPEN', 'CLAIMED')
+  and created_at < '<release>'
+  and date_start > now()
+  and (date_start at time zone 'Europe/London')
+      - (date_start at time zone 'UTC') = interval '1 hour';
+```
+
+The product owner then chooses one of:
+
+1. subtract one hour from `date_start`/`date_end` of those rows, and of each
+   linked session that is still `DRAFT` and still starts at the slot's original
+   `date_start` (a moderator-edited session is left alone). The active-slot
+   unique index on (department, start) can reject a shifted row that would
+   collide with an existing slot, which then needs a manual decision; or
+2. leave the rows and ask each affected moderator to close and re-create those
+   slots (claimed ones: correct the draft session time by hand).
+
+Record the chosen option, the date and the row count here when it is done.
+
+A parent slot range may be split into 10-, 15-, or 20-minute lightning slots. Splitting happens
 after parent validation and drops a trailing remainder shorter than the split
 size. A slot of 20 minutes or less is labelled Lightning.
 
@@ -573,9 +654,29 @@ An external claim requires:
 - an offered slot from that publication; and
 - the associated contact identity.
 
+The visitor has no org session, so the external claim reads the slot with the
+service client (`findSlotAsSystem`) and acts on it only after the claim code
+and the publication offer are verified; the org-member RLS read would hide
+every slot from it.
+
+Before the compare-and-set, both actions classify the loaded slot
+(`claimPrecheck` in `lib/slot-schedule.ts`). A slot the caller already holds
+(`claimed_by_user_id` or `claimed_by_contact_id` matches, typically a retry
+after a lost response) returns success with its linked session, or "You have
+already claimed this slot." while no session is linked. A slot that is not
+`OPEN`, or whose start has passed, returns "This slot is no longer available."
+without attempting the claim.
+
 The winning operation is one database update with predicates `status = OPEN` and
 `date_start > now`. It records claimant identity/name/topic and changes the slot
-to `CLAIMED`. Losers receive a “just claimed” error.
+to `CLAIMED`. `claimSlotByCode` and `claimSlotAsMember` return
+`ClaimSlotResult`, `{ ok: true, sessionId } | { ok: false, message,
+slotUnavailable?: true }` (spec 07). A slot that no longer exists or is
+unavailable ("This slot is no longer available."), or a compare-and-set lost to
+a concurrent claimant ("Sorry — this slot was just claimed by someone else."),
+returns `slotUnavailable: true`, and the claim UIs refresh to drop the slot. An invalid link, a blank name, or a
+slot not offered to the claimant returns a plain failure. A failure after the
+claim is won is still compensated (the slot is reopened, below) and thrown.
 
 After winning, orchestration:
 

@@ -12,6 +12,7 @@ import {
 import type { SessionDocument } from '@/lib/db/session-documents'
 import { uploadToSignedDocumentUrl } from '@/lib/session-documents-upload'
 import { Button } from './Button'
+import { LocalDateTime } from './LocalSessionDateTime'
 import { useRuntimeConfig } from './runtime/RuntimeConfigProvider'
 
 function formatBytes(bytes: number): string {
@@ -147,7 +148,7 @@ export function SessionDocumentsPanel({
                 <div className="min-w-0">
                   <p className="break-words font-mono text-sm font-bold">{document.display_name}</p>
                   <p className="font-mono text-xs text-gray-600">
-                    {formatBytes(document.byte_size)} · uploaded {new Date(document.created_at).toLocaleString('en-GB')}
+                    {formatBytes(document.byte_size)} · uploaded <LocalDateTime value={document.created_at} />
                     {archived ? ' · archived' : ''}
                   </p>
                   <p className="mt-1 font-mono text-[11px] text-gray-500">

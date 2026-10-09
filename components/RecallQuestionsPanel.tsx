@@ -7,6 +7,7 @@ import type { RecallQuestionSet } from '@/lib/db/recall'
 import type { RecallQuestion } from '@/lib/recall'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { LocalDateTime } from './LocalSessionDateTime'
 
 interface RecallQuestionsPanelProps {
   sessionId: string
@@ -113,7 +114,7 @@ export function RecallQuestionsPanel({
             Published revision {initialSet.revision}. Registered finalized absentees
             can complete this pathway until{' '}
             <strong>
-              {new Date(initialSet.catchup_closes_at).toLocaleString('en-GB')}
+              <LocalDateTime value={initialSet.catchup_closes_at} />
             </strong>.
           </div>
         )}

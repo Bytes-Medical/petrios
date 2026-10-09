@@ -11,6 +11,8 @@ import { OPS_ACTION_TYPE_LABELS, type OpsPendingAction } from '@/lib/types'
 interface PendingActionsPanelProps {
   pending: OpsPendingAction[]
   reviewed: OpsPendingAction[]
+  /** Server `appTimeZone()`, so timestamps hydrate without a mismatch. */
+  timeZone: string
 }
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
@@ -20,7 +22,7 @@ const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger
   failed: 'danger',
 }
 
-export function PendingActionsPanel({ pending, reviewed }: PendingActionsPanelProps) {
+export function PendingActionsPanel({ pending, reviewed, timeZone }: PendingActionsPanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const { busyId, error, review } = useOpsReview()
 
@@ -53,7 +55,7 @@ export function PendingActionsPanel({ pending, reviewed }: PendingActionsPanelPr
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge>{OPS_ACTION_TYPE_LABELS[action.type]}</Badge>
                       <span className="font-mono text-xs text-gray-500">
-                        {formatDateTimeShort(action.created_at)}
+                        {formatDateTimeShort(action.created_at, timeZone)}
                       </span>
                     </div>
                     <p className="mt-1 font-mono text-sm font-bold">{action.preview_title}</p>

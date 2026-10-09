@@ -19,6 +19,7 @@ import * as attendanceDb from '@/lib/db/attendance'
 import * as audioRecapsDb from '@/lib/db/audio-recaps'
 import * as certificatesDb from '@/lib/db/certificates'
 import type { RecallQuestionSet } from '@/lib/db/recall'
+import type { AudioRecapResearchSource } from '@/lib/audio-recap-types'
 import { computeRetentionAnalytics, type RetentionAnalytics } from '@/lib/recall-analytics'
 import { awardRecallCompletion } from '@/lib/recall-awards'
 
@@ -153,6 +154,8 @@ export interface RecallPageState {
   questions?: PublicRecallQuestion[]
   attemptsRemaining?: number
   completion?: { awardStatus: recallDb.RecallCompletion['award_status'] }
+  /** Hosted-search citations of the approved recap, shown beside the player. */
+  researchSources?: AudioRecapResearchSource[]
 }
 
 export async function getRecallForToken(token: string): Promise<RecallPageState> {
@@ -228,6 +231,7 @@ export async function getRecallForToken(token: string): Promise<RecallPageState>
     sessionTitle: session.title,
     sessionId: session.id,
     audioUrl: `/api/recall/${encodeURIComponent(token)}/audio`,
+    researchSources: recap.research_sources ?? [],
     playback: {
       completed: playbackCompleted,
       listenedSeconds: playback?.listened_seconds ?? 0,

@@ -58,12 +58,15 @@ export default function OpenSourcePage() {
 
       <Panel aria-labelledby="self-hosting-title">
         <PanelTitle id="self-hosting-title" label="Self-hosting">
-          Nothing has to leave your network
+          Self-host every core service
         </PanelTitle>
         <p className={clsx(s.body, 'mt-3')}>
-          Every external dependency has a self-hosted seat: your Postgres (via Supabase&apos;s self-host
-          stack), your SMTP relay, your Jitsi server for video — and the AI layer speaks to any
-          OpenAI-compatible endpoint, so it can run against an in-network model or be switched off entirely.
+          Every core dependency has a self-hosted seat: your Postgres (via Supabase&apos;s self-host
+          stack), your SMTP relay, your Jitsi server for video. The AI layer runs on Anthropic Claude by
+          default or any OpenAI-compatible endpoint, so text features can run against an in-network
+          model, or AI can be switched off entirely. Audio Recap, and so Recall catch-up, is the
+          exception: it needs a provider that accepts document file inputs and runs hosted web search
+          against public sites, and ElevenLabs speech is always an external service.
         </p>
         <TerminalBlock lines={QUICK_START} className="mt-5" />
         <HealthCheck />
@@ -116,7 +119,11 @@ export default function OpenSourcePage() {
           <li>
             CI security gates on every PR: CodeQL, Semgrep, secret scanning, dependency audit, an RLS guard
           </li>
-          <li>AI that drafts but never sends; prompt text never stored; one kill switch</li>
+          <li>
+            AI that drafts but never sends; the Ops audit keeps prompt hashes, not prompt text;{' '}
+            <code className={s.code}>OPS_ENABLED=false</code> switches off the agent layer, and unsetting the
+            AI and speech provider keys turns all AI off
+          </li>
           <li>
             DTAC self-assessment starter and DPIA template in{' '}
             <HudLink href={`${GITHUB_URL}/tree/main/docs/compliance`}>docs/compliance</HudLink>

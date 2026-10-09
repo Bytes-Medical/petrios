@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
-import { isLlmConfigured, LLM_MODEL } from '@/lib/ai/llm'
+import { isLlmConfigured } from '@/lib/ai/llm'
 import { synthesizeSpeech } from '@/lib/ai/tts'
 import {
   audioRecapScriptDigest,
@@ -68,8 +68,8 @@ export async function generateAudioRecapScriptAction(
   if (!generated) {
     throw new Error(
       isLlmConfigured()
-        ? 'The AI provider could not process and research these documents. Confirm that the configured endpoint supports OpenAI Responses file inputs and hosted web search, then try again.'
-        : 'AI is not configured on this deployment (OPENAI_API_KEY)'
+        ? 'The AI provider could not process and research these documents. Try again; if it keeps failing, check the AI configuration (Anthropic: Files API and web search enabled for the workspace; OpenAI-compatible: Responses file inputs and hosted web search).'
+        : 'AI is not configured on this deployment (set ANTHROPIC_API_KEY, or OPENAI_API_KEY for an OpenAI-compatible endpoint).'
     )
   }
 
@@ -78,7 +78,7 @@ export async function generateAudioRecapScriptAction(
     sessionId,
     script: generated.script,
     scriptDigest: audioRecapScriptDigest(generated.script),
-    model: LLM_MODEL,
+    model: generated.model,
     sourceDocuments: snapshot.documents,
     sourceDigest: snapshot.digest,
     researchSources: generated.researchSources,
@@ -152,7 +152,7 @@ export async function createAudioRecapAudio(sessionId: string): Promise<void> {
   const speech = await synthesizeSpeech({ text: recap.script })
   if (!speech) {
     throw new Error(
-      'Speech synthesis is not configured on this deployment. Configure OpenAI speech or add the ElevenLabs API key and voice ID.'
+      'Speech synthesis is not configured on this deployment. Add ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID (or configure OpenAI-compatible speech).'
     )
   }
 

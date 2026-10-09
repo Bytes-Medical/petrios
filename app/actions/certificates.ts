@@ -20,6 +20,7 @@ import {
 } from '@/lib/certificates/batch'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildCertificateEmailHtml } from '@/lib/email-templates'
+import { formatAppDate, formatInAppTimeZone } from '@/lib/datetime'
 import * as deliveriesDb from '@/lib/db/session-deliveries'
 import type {
   ExternalTeacherCertificateCandidate,
@@ -110,11 +111,11 @@ async function generateAndDeliverExternalTeacherCertificate(input: {
       orgName: session.organizations?.name || 'Organization',
       departmentName: session.departments?.name || 'Unknown',
       sessionTitle: session.title,
-      sessionDate: new Date(session.date_start).toLocaleDateString('en-GB'),
+      sessionDate: formatAppDate(session.date_start),
       recipientName: certificate.recipient_name || teacher.recipientName,
       role: 'Teacher',
       certificateCode: certificate.certificate_code,
-      issuedDate: new Date(certificate.issued_at).toLocaleDateString('en-GB'),
+      issuedDate: formatAppDate(certificate.issued_at),
       verifyUrl: `${baseUrl}/verify/${certificate.certificate_code}`,
       coordinatorNames: certificate.coordinator_names ?? input.coordinatorNames,
       issuerName: certificate.issued_by_name || issuer.issuedByName || undefined,
@@ -190,11 +191,11 @@ async function issueRegisteredCertificate(input: {
         orgName: session.organizations?.name || 'Organization',
         departmentName: session.departments?.name || 'Unknown',
         sessionTitle: session.title,
-        sessionDate: new Date(session.date_start).toLocaleDateString(),
+        sessionDate: formatAppDate(session.date_start),
         recipientName,
         role: role === 'ATTENDEE' ? 'Attendee' : 'Teacher',
         certificateCode,
-        issuedDate: new Date().toLocaleDateString(),
+        issuedDate: formatAppDate(new Date()),
         verifyUrl: `${getAppUrl()}/verify/${certificateCode}`,
         coordinatorNames,
         issuerName: issuer.issuedByName || undefined,
@@ -377,7 +378,7 @@ export async function downloadMyCertificateForSession(sessionId: string) {
     orgName: session.org_name || 'Organization',
     departmentName: session.department_name || 'Department',
     sessionTitle: session.title,
-    sessionDate: new Date(session.date_start).toLocaleDateString('en-GB', {
+    sessionDate: formatInAppTimeZone(session.date_start, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -386,7 +387,7 @@ export async function downloadMyCertificateForSession(sessionId: string) {
     recipientName,
     role: certificate.certificate_role === 'TEACHER' ? 'Teacher' : 'Attendee',
     certificateCode: certificate.certificate_code,
-    issuedDate: new Date(certificate.issued_at).toLocaleDateString('en-GB', {
+    issuedDate: formatInAppTimeZone(certificate.issued_at, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',

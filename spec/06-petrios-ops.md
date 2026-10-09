@@ -102,13 +102,23 @@ The gateway:
 1. checks kill switch and purpose;
 2. returns null without a configured model provider;
 3. hashes `system + NUL + prompt` with SHA-256;
-4. calls the shared LLM adapter;
-5. when a schema is supplied, adds a JSON-only instruction and requests JSON
-   mode;
+4. calls the shared LLM adapter, passing the purpose's effort
+   (`OPS_PURPOSE_EFFORT`: low for `email_draft`/`low_score_digest`, medium for
+   `feedback_synthesis`/`newsletter`/`recall_questions`/`assistant`, high for
+   `audio_recap`; a caller's explicit effort wins; the OpenAI adapter ignores the
+   default so its requests are unchanged);
+5. when a schema is supplied, adds a JSON-only instruction (the OpenAI adapter
+   also requests JSON mode; Anthropic relies on the instruction plus validation);
 6. extracts the first object/array from a response and validates with Zod;
 7. on invalid output, retries once with the validation error;
 8. returns null after refusal, provider failure, or a second invalid output; and
-9. logs through the optional run without storing raw prompt text.
+9. logs through the optional run without storing raw prompt text: the served
+   model (a refusal fallback can differ from the configured one), the prompt
+   hash and token counts (Anthropic input includes cache reads/writes and every
+   attempt in `usage.iterations`). A failure is logged as error class, status,
+   API error type and request id; an unreadable/unparseable response stream is
+   logged only as `unreadable_response` because the SDK's message can quote
+   model output.
 
 Callers must treat null as “skip/retry later,” not as permission to use a partial
 parse. The gateway throws only for programmer misuse such as disabled Ops or an
@@ -195,6 +205,17 @@ Partial failure marks the issue/action failed. A moderator can retry, and alread
 so one issue cannot deliver different content to different members. A wholly
 sent issue is guarded against double execution.
 
+### Dates in Ops output
+
+`lib/ops/format.ts` formats instants in `APP_TIME_ZONE` (default
+`Europe/London`; spec 07): `formatDateTimeShort` (list rows and pending-action
+labels; `PendingActionsPanel` passes the server zone as its `timeZone` argument), `formatSessionDateLabel` (session dates in drafts) and `formatDateLong`.
+Chase, thank-you, newsletter and Recall outputs therefore show UK wall-clock
+times on a UTC server. `formatDayKeyLong` formats a UTC calendar key (the
+newsletter "Week commencing" label) in UTC, because newsletter weeks are UTC
+Monday–Sunday windows. Client panels that use these helpers resolve the default
+zone in the browser.
+
 ## Weekly Ops job
 
 `GET /api/cron/ops-weekly` requires `Authorization: Bearer CRON_SECRET`, checks
@@ -233,6 +254,12 @@ invocation within the window.
 
 `GET /api/cron/ops-synthesis` requires cron auth and considers published sessions
 ended 2–45 days ago.
+
+With Anthropic as the provider, every `ops-synthesis` run — including one whose
+synthesis work or audit-run creation failed — ends with a best-effort sweep of
+Files API uploads named `petrios-ai-*` older than 2 hours (≤200 deletions, ≤2,000
+files scanned); only counts are logged. The sweep does not run when the kill
+switch stops the job before it starts.
 
 ### Synthesis/thank-you branch
 
@@ -279,15 +306,16 @@ For those sessions the job selects every `AVAILABLE` `session_documents` row,
 including PDF, DOCX, and PPTX. It rejects more than 50 files or more than 50 MiB
 combined. A missing stored digest fails before inference. Every selected object
 is then streamed one at a time from the private service DAL
-(`fetchDocumentObject`) into the provider request while it uploads; its stored
+(`fetchDocumentObject`) into the provider (Anthropic: one Files API upload per document, DOCX/PPTX as extracted text, all deleted when the generation ends; OpenAI-compatible: one streamed request body); its stored
 byte count and SHA-256 are verified incrementally, and a mismatch errors the
-request body before the JSON is complete, so no output is accepted. A missing
+upload (Anthropic) or the request body (OpenAI-compatible) before it is
+complete, so no output is accepted (spec 04 describes the per-provider detail). A missing
 object or an integrity mismatch fails the whole generation with the original
 storage or integrity message: because the gateway converts provider failures to
 null, the job rethrows the recorded source failure after inference
 (`throwIfSourceFailed`). The gateway also records that failed step with its error
 message, which names the document, as for any provider failure. The
-schema-repair retry re-reads every object from storage. A week with sessions but
+schema-repair retry re-reads (and on Anthropic re-uploads) every object from storage. A week with sessions but
 no documents is allowed: trusted session title/date/description metadata remains
 the available source. No material is silently omitted.
 
@@ -356,16 +384,20 @@ unaffected.
 turn starts a run and invokes the tool loop with `ASSISTANT_SYSTEM_RULES` plus
 `PLATFORM_KNOWLEDGE`; update that knowledge when platform behavior changes.
 
-The loop has a maximum of 8 model iterations and 4096 completion tokens per
-model response. It executes every tool call returned in an iteration, truncates
+The loop has a maximum of 8 model iterations (Anthropic: 16,384 max tokens per turn at effort medium; OpenAI adapter: 4096 completion tokens). It executes every tool call returned in an iteration, truncates
 serialized tool result content to 20,000 characters, records a success/failure
 trace, and supplies a tool response for each requested call. Refusal/content
 filter produces a generic refusal; reaching the cap asks the organizer to
 continue.
 
-The assistant's direct OpenAI-compatible call is the sole sanctioned chat
-caller outside `lib/ai/llm.ts`. It logs model/prompt hash/token metadata without
-raw history.
+The assistant's direct provider call is the sole sanctioned model caller
+outside `lib/ai/llm.ts`. On Anthropic it streams the beta Messages endpoint with
+refusal fallbacks, strict tools (when the schema allows), automatic tool choice
+and no `thinking`/prefill; assistant content (including thinking) is echoed
+unmodified and all tool results return in one user message. Refusal, truncation
+and a full context window end the turn with a fixed message before any tool
+runs; `pause_turn` continues; an unreadable response is retried at most twice and
+never quoted. It logs model/prompt hash/token metadata without raw history.
 
 ### Tool registry
 
@@ -385,7 +417,9 @@ raw history.
 
 Read results are generally capped at 20 rows. Tools expose operational names and
 invite statuses where needed for organizer work, but no per-trainee performance
-tool exists.
+tool exists. Session rows carry the UTC `date_start` plus a `date_label` in
+`APP_TIME_ZONE` with the zone abbreviation (e.g. "Friday, 9 October 2026 at
+16:15 BST"), so the assistant quotes local wall-clock times.
 
 ## Audio recaps
 
@@ -399,12 +433,12 @@ Feedback tab.
    or starts research.
 2. The action requires at least one currently available private session
    document, caps their combined decoded size at 50 MiB, and streams them one at
-   a time from the authorized service DAL into the provider request. Stored byte
+   a time from the authorized service DAL into the provider (Anthropic: one Files API upload each; OpenAI-compatible: one streamed request). Stored byte
    counts and SHA-256 are verified incrementally; a mismatch or storage failure
    aborts the incomplete request, and the action rethrows the original message
    (`throwIfSourceFailed`; see spec 04).
 3. `generateRecapScript` calls gateway purpose `audio_recap` with the session
-   title as context and PDF/DOCX/PPTX bytes as the primary learning evidence. It
+   title as context and PDF/DOCX/PPTX content as the primary learning evidence (on Anthropic, DOCX/PPTX as extracted text). It
    does not use description, tags, or feedback synthesis. The prompt treats file
    content as untrusted reference data, refuses meta-instructions, and prohibits
    invented medical content, patient-specific advice, and patient/person
@@ -414,11 +448,14 @@ Feedback tab.
    document-led teaching in depth, directly relevant researched context,
    practical takeaways, and concise reinforcement. It prohibits padding,
    headings, spoken URLs, citation markers, and a spoken bibliography.
-5. The same Responses request configures one hosted `web_search` tool with
-   `tool_choice: required`, medium search context, approximate country `GB`,
-   external web access, and an allowed-domain filter. The allow-list is:
-   `nice.org.uk`, `nhs.uk`, `england.nhs.uk`, `gov.uk`, `rcpch.ac.uk`,
-   `rcplondon.ac.uk`, `resus.org.uk`, `who.int`,
+5. Research uses the provider's hosted search restricted to an allow-list.
+   Anthropic: `web_search_20260209` with `allowed_callers: ['direct']`,
+   `max_uses: 6` and approximate location GB; forced tool choice is not
+   available, so a fixed system instruction requires a search before writing.
+   OpenAI-compatible: one hosted `web_search` tool with `tool_choice: required`,
+   medium search context, approximate country `GB` and external web access. The
+   allow-list is: `nice.org.uk`, `nhs.uk`, `england.nhs.uk`, `gov.uk`,
+   `rcpch.ac.uk`, `rcplondon.ac.uk`, `resus.org.uk`, `who.int`,
    `pubmed.ncbi.nlm.nih.gov`, `ncbi.nlm.nih.gov`, `cochranelibrary.com`,
    `bmj.com`, `thelancet.com`, `jamanetwork.com`, `ema.europa.eu`, and
    `medicines.org.uk`. Changing that list is a clinical-quality and privacy
@@ -429,7 +466,20 @@ Feedback tab.
    contradict or supersede the learning material; a material conflict is stated
    neutrally for the moderator. The moderator approval gate remains the clinical
    quality control and the output is not patient-specific medical advice.
-7. `lib/ai/llm.ts` uses `<OPENAI_BASE_URL>/responses`. PDFs use automatic
+7. Anthropic: documents are referenced by Files API `file_id` (PDF bytes;
+   DOCX/PPTX as extracted text, see spec 04), uploaded with an opaque name and a
+   one-hour expiry and deleted in `finally`. The request runs at effort `high`
+   and resumes `pause_turn` (at most 5 times). The script is the text after the
+   turn's last search result (notes written before or between searches are
+   dropped). Sources come from `web_search_result_location` citations on every
+   text block, then search results; only allow-listed HTTP(S) hosts survive,
+   de-duplicated by normalized URL, at most 20 URL/title pairs; `cited_text` and
+   encrypted fields are never stored. Generation fails unless at least one search
+   completed (usage counter or result blocks, whichever is larger — after a
+   refusal fallback the declined attempt's searches stay in the content) and at
+   least one allow-listed source was returned. Web search disabled for the
+   workspace, or a Console domain list excluding a recap domain, returns 400.
+   OpenAI-compatible: `<OPENAI_BASE_URL>/responses`; PDFs use automatic
    text/page-image processing; DOCX/PPTX yield text only. The request includes
    `web_search_call.action.sources`; the adapter also reads message
    `url_citation` annotations, accepts only HTTP(S), de-duplicates by normalized
@@ -441,7 +491,7 @@ Feedback tab.
    final URL and hosted web search; Chat Completions or file-input compatibility
    alone is insufficient.
 8. The script is capped at 7,000 characters and upserted as `draft` with the
-   exact sorted document metadata/digest, research URL/title list, and
+   serving model, the exact sorted document metadata/digest, research URL/title list, and
    `research_performed=true`, plus SHA-256 `script_digest`. A regenerated script
    clears old audio/approval and immediately attempts a five-question draft
    bound to that digest. Legacy rows have no citations/digest and
@@ -459,8 +509,9 @@ Feedback tab.
     saving again retries.
 11. `lib/ai/tts.ts` is the only speech-provider boundary. `TTS_PROVIDER` can pin
     `openai` or `elevenlabs`. When it is unset, declaring either ElevenLabs
-    credential selects ElevenLabs; otherwise OpenAI preserves the historical
-    default. OpenAI uses `OPENAI_API_KEY`, the compatible `OPENAI_BASE_URL`,
+    credential selects ElevenLabs; otherwise `OPENAI_API_KEY` selects OpenAI
+    (the historical default); with none of these speech is unconfigured — the
+    LLM provider never decides speech. OpenAI uses `OPENAI_API_KEY`, the compatible `OPENAI_BASE_URL`,
     default model `gpt-4o-mini-tts`, default voice `alloy`, and MP3 output.
     ElevenLabs requires both `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`, uses
     default model `eleven_multilingual_v2`, and requests `mp3_44100_128` from the

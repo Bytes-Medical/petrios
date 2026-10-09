@@ -3,7 +3,7 @@ import type { OpsFeedbackSynthesis, SubmittedFeedbackAnswer } from '@/lib/types'
 import * as feedbackDb from '@/lib/db/feedback'
 import * as opsDb from '@/lib/db/ops'
 import type { OpsSessionRow } from '@/lib/db/ops-reads'
-import { LLM_MODEL } from '@/lib/ai/llm'
+import { llmModel } from '@/lib/ai/llm'
 import { containsWelfareSignal, stripNameLikeTokens } from './anonymize'
 import { averageRating } from './format'
 import { opsInference } from './gateway'
@@ -158,6 +158,9 @@ export async function runSynthesisForSession(
     extractFeedbackTexts(row).some((t) => containsWelfareSignal(t))
   )
 
+  // Provenance is the model that served the accepted output (a refusal
+  // fallback can differ from the configured model).
+  let servedModel: string | null = null
   const result = await opsInference({
     purpose: 'feedback_synthesis',
     system: SYNTHESIS_SYSTEM,
@@ -166,6 +169,9 @@ export async function runSynthesisForSession(
     maxTokens: 2048,
     run,
     stepName: `synthesis:${session.id}`,
+    onResult: (response) => {
+      servedModel = response.model
+    },
   })
   if (!result) return null
 
@@ -182,6 +188,6 @@ export async function runSynthesisForSession(
     requiresHumanReview: clean.requires_human_review,
     responseCount: rows.length,
     averageRating: avgRating,
-    model: LLM_MODEL,
+    model: servedModel ?? llmModel(),
   })
 }

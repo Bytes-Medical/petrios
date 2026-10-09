@@ -32,6 +32,8 @@ interface ScheduleManagerPanelProps {
   deptMemberCount: number
   orgMemberCount: number
   busyDayKeys: string[]
+  /** Server `appTimeZone()`, so slot times match the emails and hydrate cleanly. */
+  timeZone: string
 }
 
 export function ScheduleManagerPanel({
@@ -41,6 +43,7 @@ export function ScheduleManagerPanel({
   deptMemberCount,
   orgMemberCount,
   busyDayKeys,
+  timeZone,
 }: ScheduleManagerPanelProps) {
   const router = useRouter()
   const { showToast } = useToast()
@@ -116,7 +119,7 @@ export function ScheduleManagerPanel({
           <ul className="space-y-2">
             {slots.map((slot) => {
               const badge = STATUS_BADGES[slot.display_status]
-              const desc = describeSlot(slot)
+              const desc = describeSlot(slot, timeZone)
               const selectable = slot.display_status === 'OPEN'
               return (
                 <li

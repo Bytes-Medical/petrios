@@ -8,7 +8,7 @@ import { JitsiMeetingPanel } from '@/components/JitsiMeetingPanel'
 import { Button } from '@/components/Button'
 import Link from 'next/link'
 import { isDepartmentModerator } from '@/lib/auth'
-import { profileDisplayName } from '@/lib/contacts'
+import { meetingDisplayName } from '@/lib/contacts'
 import { getApprovedAudioRecap } from '@/app/actions/audio-recaps'
 import { AudioRecapPlayer } from '@/components/AudioRecapPlayer'
 import * as onboardingDb from '@/lib/db/onboarding'
@@ -49,11 +49,7 @@ export default async function SessionPage(
     ])
 
   // Petrios Meet sessions embed their video room; name shown to the room.
-  const videoDisplayName = isVideoSession
-    ? videoProfile
-      ? profileDisplayName(videoProfile, user.email ?? 'Attendee')
-      : (user.email ?? 'Attendee')
-    : null
+  const videoDisplayName = isVideoSession ? meetingDisplayName(videoProfile) : null
 
   return (
     <div className="min-h-screen">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireOrg, getCurrentUser } from '@/lib/auth'
 import { getAppUrlFromHeaders } from '@/lib/app-url'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
+import { formatAppDate } from '@/lib/datetime'
 import * as certificatesDb from '@/lib/db/certificates'
 import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
 
@@ -38,12 +39,12 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       departmentName: certificate.departments?.name || 'Unknown',
       sessionTitle: certificate.sessions?.title || 'Unknown',
       sessionDate: certificate.sessions?.date_start
-        ? new Date(certificate.sessions.date_start).toLocaleDateString()
+        ? formatAppDate(certificate.sessions.date_start)
         : 'Unknown',
       recipientName: certificate.recipient_name || user?.email || certificate.user_id,
       role: certificate.certificate_role === 'ATTENDEE' ? 'Attendee' : 'Teacher',
       certificateCode: certificate.certificate_code,
-      issuedDate: new Date(certificate.issued_at).toLocaleDateString(),
+      issuedDate: formatAppDate(certificate.issued_at),
       verifyUrl,
       coordinatorNames: resolveTeachingCoordinatorNames(
         certificate.coordinator_names,

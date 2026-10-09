@@ -1,6 +1,7 @@
 import { Card } from '@/components/Card'
 import { SlotClaimPanel } from '@/components/SlotClaimPanel'
 import * as slotsDb from '@/lib/db/teaching-slots'
+import { appTimeZone } from '@/lib/datetime'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,6 +58,7 @@ export default async function ClaimSlotPage(
               slots={openSlots}
               initialFirstName={link.contact?.first_name ?? ''}
               initialLastName={link.contact?.last_name ?? ''}
+              timeZone={appTimeZone()}
             />
           </Card>
         )}

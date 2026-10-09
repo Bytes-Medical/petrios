@@ -75,7 +75,15 @@ export function buildRecapPrompt(input: {
   ].join('\n')
 }
 
-/** Draft the recap script and retain the public sources returned by search. */
+/** Searches per recap request (Anthropic; the OpenAI adapter ignores it). */
+export const AUDIO_RECAP_MAX_SEARCHES = 6
+
+/**
+ * Draft the recap script and retain the public sources returned by search.
+ * Research is required: the provider must report at least one hosted search
+ * and return at least one allow-listed source (Anthropic cannot force the
+ * tool call, so this is checked after the fact).
+ */
 export async function generateRecapScript(input: {
   sessionTitle: string
   documents: AudioRecapSourceDocument[]
@@ -83,6 +91,8 @@ export async function generateRecapScript(input: {
 }): Promise<{
   script: string
   researchSources: AudioRecapResearchSource[]
+  /** The model that served the draft (a refusal fallback can differ from the configured one). */
+  model: string
 } | null> {
   let result: LlmResult | null = null
   const script = await opsInference({
@@ -94,6 +104,7 @@ export async function generateRecapScript(input: {
     webSearch: {
       allowedDomains: [...AUDIO_RECAP_RESEARCH_DOMAINS],
       searchContextSize: 'medium',
+      maxUses: AUDIO_RECAP_MAX_SEARCHES,
       userLocation: { country: 'GB' },
       required: true,
     },
@@ -102,9 +113,10 @@ export async function generateRecapScript(input: {
     },
   })
 
-  if (!script) return null
-  const researchSources = (result as LlmResult | null)?.sources ?? []
-  if (researchSources.length === 0) {
+  const served = result as LlmResult | null
+  if (!script || !served) return null
+  const researchSources = served.sources
+  if (served.webSearchRequests === 0 || researchSources.length === 0) {
     throw new Error('The AI provider did not return any verifiable research sources')
   }
   const trimmed = script.trim()
@@ -114,5 +126,6 @@ export async function generateRecapScript(input: {
   return {
     script: cappedScript,
     researchSources,
+    model: served.model,
   }
 }

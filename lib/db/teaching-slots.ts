@@ -82,6 +82,28 @@ export async function findSlot(
   return (data as TeachingSlot | null) ?? null
 }
 
+/**
+ * Public claim lookup. The /claim visitor has no org session, so the
+ * org-member SELECT policy hides every slot from the RLS client. The caller
+ * must verify the claim_code capability and that this slot was offered to
+ * that link before acting on the row.
+ */
+export async function findSlotAsSystem(
+  slotId: string,
+  orgId: string
+): Promise<TeachingSlot | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('teaching_slots')
+    .select('*')
+    .eq('id', slotId)
+    .eq('org_id', orgId)
+    .maybeSingle()
+
+  if (error) throw toDbError('Failed to fetch slot', error)
+  return (data as TeachingSlot | null) ?? null
+}
+
 // -----------------------------------------------------------------------------
 // Moderator writes (service-role; action gates requireDepartmentModerator)
 // -----------------------------------------------------------------------------

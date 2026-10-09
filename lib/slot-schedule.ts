@@ -5,15 +5,15 @@ import {
   exactDurationFromDates,
   formatDuration,
 } from '@/lib/session-duration'
-import { dayKeyFromIso, formatDayKey, formatTimeHM, todayKey } from '@/lib/date-picker'
+import { appDayKey, appWallClockToIso, formatInAppTimeZone } from '@/lib/datetime'
 import { normalizeContactEmail } from '@/lib/contacts'
 import { generateCode } from '@/lib/codes'
 import type { SlotDisplayStatus, SlotStatus } from '@/lib/types'
 
 /**
- * Pure helpers for Calendly-style teaching slots. Datetimes follow the
- * app-wide convention: local combined strings `${dayKey}T${HH:mm}` flow into
- * the DB untouched (same as DateTimePicker + createSession).
+ * Pure helpers for Calendly-style teaching slots. Drafts are built on the
+ * (UTC) server, so the chosen day + time are read in the app time zone and
+ * stored as UTC instants; descriptions are formatted in that same zone.
  */
 
 const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -38,7 +38,7 @@ export function buildSlotDrafts(
   dayKeys: string[],
   time: string,
   durationMins: number,
-  today = todayKey()
+  today = appDayKey()
 ): SlotDraft[] {
   if (dayKeys.length === 0) {
     throw new Error('Select at least one date')
@@ -58,7 +58,7 @@ export function buildSlotDrafts(
   return Array.from(new Set(dayKeys))
     .sort()
     .map((dayKey) => {
-      const dateStart = combineDayAndTime(dayKey, time)
+      const dateStart = appWallClockToIso(combineDayAndTime(dayKey, time))
       return { dateStart, dateEnd: computeDateEnd(dateStart, durationMins) }
     })
 }
@@ -144,14 +144,25 @@ export interface SlotDescription {
 }
 
 /** Human strings for a slot's date, time range, and duration — shared by the
- *  claim pages, dashboards, schedule list, and offer emails. */
-export function describeSlot(slot: {
-  date_start: string
-  date_end: string
-}): SlotDescription {
+ *  claim pages, dashboards, schedule list, and offer emails. Client panels
+ *  pass the server's `appTimeZone()` (they cannot read APP_TIME_ZONE). */
+export function describeSlot(
+  slot: {
+    date_start: string
+    date_end: string
+  },
+  timeZone?: string
+): SlotDescription {
+  const time: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone }
   return {
-    dateStr: formatDayKey(dayKeyFromIso(slot.date_start)),
-    timeRangeStr: `${formatTimeHM(slot.date_start)}–${formatTimeHM(slot.date_end)}`,
+    dateStr: formatInAppTimeZone(slot.date_start, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone,
+    }),
+    timeRangeStr: `${formatInAppTimeZone(slot.date_start, time)}–${formatInAppTimeZone(slot.date_end, time)}`,
     durationStr: formatDuration(exactDurationFromDates(slot.date_start, slot.date_end)),
   }
 }
@@ -168,6 +179,34 @@ export function slotDisplayStatus(
     return 'EXPIRED'
   }
   return slot.status
+}
+
+export type ClaimPrecheck = 'CLAIMABLE' | 'ALREADY_YOURS' | 'UNAVAILABLE'
+
+/**
+ * Why a slot can or cannot be claimed, checked before the compare-and-set so
+ * an expired slot or the caller's own earlier claim (whose response was lost)
+ * is not reported as "claimed by someone else".
+ */
+export function claimPrecheck(
+  slot: {
+    status: SlotStatus
+    date_start: string
+    claimed_by_user_id: string | null
+    claimed_by_contact_id: string | null
+  },
+  claimer: { userId?: string; contactId?: string },
+  now: Date = new Date()
+): ClaimPrecheck {
+  if (
+    slot.status === 'CLAIMED' &&
+    ((claimer.userId && slot.claimed_by_user_id === claimer.userId) ||
+      (claimer.contactId && slot.claimed_by_contact_id === claimer.contactId))
+  ) {
+    return 'ALREADY_YOURS'
+  }
+  if (slot.status !== 'OPEN' || new Date(slot.date_start) <= now) return 'UNAVAILABLE'
+  return 'CLAIMABLE'
 }
 
 export interface MemberRecipient {

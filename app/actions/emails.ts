@@ -5,6 +5,8 @@ import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { sessionMeetingUrl } from '@/lib/jitsi'
 import { getAppUrl } from '@/lib/app-url'
+import { sessionEmailTimes } from '@/lib/email-templates'
+import { escapeHtml } from '@/lib/html'
 import { LOCATION_TYPE_LABELS, type EmailType, type Session } from '@/lib/types'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -96,22 +98,7 @@ function buildEmailHtml(
   departmentName: string,
   emailType: EmailType
 ): string {
-  const startDate = new Date(session.date_start)
-  const endDate = new Date(session.date_end)
-  const dateStr = startDate.toLocaleDateString('en-GB', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-  const startTime = startDate.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-  const endTime = endDate.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const { dateStr, startTime, endTime } = sessionEmailTimes(session.date_start, session.date_end)
 
   const heading =
     emailType === 'INVITATION'
@@ -133,7 +120,7 @@ function buildEmailHtml(
     ? `<tr>
          <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Join link:</td>
          <td style="padding:8px 0;">
-           <a href="${meetingUrl}" style="color:#000;text-decoration:underline;">
+           <a href="${escapeHtml(meetingUrl)}" style="color:#000;text-decoration:underline;">
              Join Meeting
            </a>
          </td>
@@ -143,7 +130,7 @@ function buildEmailHtml(
   const descriptionSection = session.description
     ? `<tr>
          <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Description:</td>
-         <td style="padding:8px 0;">${session.description}</td>
+         <td style="padding:8px 0;">${escapeHtml(session.description)}</td>
        </tr>`
     : ''
 
@@ -153,11 +140,11 @@ function buildEmailHtml(
       <table style="width:100%;border-collapse:collapse;margin:20px 0;">
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Session:</td>
-          <td style="padding:8px 0;">${session.title}</td>
+          <td style="padding:8px 0;">${escapeHtml(session.title)}</td>
         </tr>
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Department:</td>
-          <td style="padding:8px 0;">${departmentName}</td>
+          <td style="padding:8px 0;">${escapeHtml(departmentName)}</td>
         </tr>
         <tr>
           <td style="padding:8px 0;font-weight:bold;vertical-align:top;">Date:</td>

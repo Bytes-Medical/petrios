@@ -3,6 +3,8 @@ import { getTtsConfiguration, synthesizeSpeech } from './tts'
 
 const TTS_ENV = [
   'TTS_PROVIDER',
+  'LLM_PROVIDER',
+  'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
   'OPENAI_BASE_URL',
   'OPENAI_TTS_MODEL',
@@ -67,6 +69,43 @@ describe('TTS provider configuration', () => {
     vi.stubEnv('ELEVENLABS_VOICE_ID', 'voice-123')
 
     expect(getTtsConfiguration().provider).toBe('openai')
+  })
+
+  it('uses ElevenLabs on an Anthropic deployment without any OpenAI key', () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant')
+    vi.stubEnv('ELEVENLABS_API_KEY', 'eleven-secret')
+    vi.stubEnv('ELEVENLABS_VOICE_ID', 'voice-123')
+
+    expect(getTtsConfiguration()).toMatchObject({
+      provider: 'elevenlabs',
+      configured: true,
+      configurationError: null,
+    })
+  })
+
+  it('reports speech as unconfigured (not implicitly OpenAI) when only Anthropic is set', () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant')
+
+    expect(getTtsConfiguration()).toEqual({
+      provider: null,
+      configured: false,
+      model: null,
+      voice: null,
+      configurationError: null,
+    })
+  })
+
+  it('keeps an explicit OpenAI pin without a key as unconfigured OpenAI', () => {
+    vi.stubEnv('TTS_PROVIDER', 'openai')
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant')
+
+    expect(getTtsConfiguration()).toEqual({
+      provider: 'openai',
+      configured: false,
+      model: 'gpt-4o-mini-tts',
+      voice: 'alloy',
+      configurationError: null,
+    })
   })
 
   it('rejects an unsupported explicit provider without selecting a fallback', () => {

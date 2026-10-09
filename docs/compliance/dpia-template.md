@@ -44,12 +44,19 @@ free text, identify an Article 9 condition and Schedule 1/DPA 2018 requirements.
 - **Identity/account:** name, email, grade, profile, auth identifiers and status.
 - **Authority:** organisation/department memberships, roles, invitations and
   teaching assignments.
-- **Teaching:** sessions, teachers, locations/video, contacts, slots and claims.
+- **Teaching:** sessions, teachers, locations/video, slots and claims; the
+  organisation address book (external contacts auto-captured from invitations,
+  RSVPs and slot claims) and contact groups.
+- **Ops assistant (opt-in, `OPS_ASSISTANT_ENABLED=true`):** chat threads stored
+  verbatim and organisation-wide memory notes.
 - **Attendance:** append-oriented evidence, source and timestamp, derived status,
   locks, exports, and public/signed record material.
 - **Feedback:** public/accountless submission but identified storage of name,
-  email, ratings, answers and comments; moderator audit; teacher release may
-  include submitter name.
+  email, ratings, answers and comments; moderator audit. Teacher release
+  contains aggregate scores, question-level analytics and an optional
+  moderator-reviewed, name-stripped AI summary, and never respondent names,
+  email addresses or raw comments (spec 05). With a small cohort the teacher
+  may still infer who responded.
 - **Learning record:** certificates and recognition basis, Recall playback,
   attempts/answers/completion and reflections
   coverage, portfolio snapshots and teaching dossier data.
@@ -71,10 +78,10 @@ provider; cron/webhook/API flows; logs, monitoring and backups.
 | Recipient/service | Role and purpose | Data | Region/retention | Contract and transfer safeguard |
 |---|---|---|---|---|
 | Supabase project | Database/auth | *[fill in]* | *[region/backups]* | *[DPA; transfer]* |
-| Application host/CDN | Web runtime/network | *[fill in]* | *[fill in]* | *[fill in]* |
+| Application host/CDN | Web runtime/network. List every host that serves this database, including a Cloudflare Workers staging Worker (docs/cloudflare-workers.md), which the Render-served `/subprocessors` page cannot name | *[requests, IP, cookies, app data in transit; runtime logs, which can include recipient email addresses (Workers Logs on Cloudflare)]* | *[fill in]* | *[fill in]* |
 | SMTP or Resend | Email | *[fill in]* | *[fill in]* | *[fill in]* |
 | Jitsi host | Optional meetings | *[fill in]* | *[fill in]* | *[fill in]* |
-| LLM/research provider | Optional inference, private learning-document processing, and hosted research | *[session/assistant/feedback inputs; uploaded document contents; derived search queries; output/citations]* | *[provider logging/retention/region]* | *[DPA; transfer; search/tool subprocessors]* |
+| LLM/research provider | Optional inference, private learning-document processing, and hosted research. Default Anthropic (Files API: documents uploaded per generation, one-hour expiry, deleted afterwards, daily orphan sweep; web search called directly, allow-listed); optional OpenAI-compatible endpoint | *[session metadata incl. invited teachers' names (invitee email where no name); assistant messages and tool results; purpose-limited feedback; uploaded document contents (OpenAI-compatible: original DOCX/PPTX files incl. comments and author properties; Anthropic: extracted body text and PPTX speaker notes); derived search queries; output/citations]* | *[provider logging/retention/region; whether Files API/web search fall under any zero-retention arrangement; OpenAI document requests send `store: false`, abuse-monitoring retention still applies]* | *[DPA; US transfer safeguard; search/tool subprocessors]* |
 | Speech provider | Optional Audio Recap MP3 synthesis | Current moderator-reviewed recap script and speech request metadata; no uploaded document files or research queries in this step | *[provider logging/history, retention, region, deletion]* | *[DPA; transfer; ElevenLabs/OpenAI account posture]* |
 | Support/security/monitoring | *[fill in]* | *[fill in]* | *[fill in]* | *[fill in]* |
 
@@ -96,6 +103,7 @@ dependency, log, backup, email, meeting and AI flow does so.
   operator adds incompatible technology.
 - Explain which AI paths run, what content is sent, provider retention, human
   review, and how to use a non-AI route where appropriate.
+- Record which LLM provider is configured (`LLM_PROVIDER`/keys) and that an in-network OpenAI-compatible endpoint is pinned with `LLM_PROVIDER=openai`.
 - Assess LLM/document/research and speech as separate external flows. Verify the
   deployed speech provider, model/voice provenance, repeat-request credit impact,
   logging/history setting, and whether any claimed zero-retention mode is

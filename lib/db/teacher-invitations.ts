@@ -125,14 +125,18 @@ export async function deleteInvitation(input: {
   if (error) throw toDbError('Failed to delete invitation', error)
 }
 
+/**
+ * Records an RSVP only while the invitation is still PENDING, so concurrent
+ * responses cannot both win. Returns false when another response got there first.
+ */
 export async function updateInvitationResponse(input: {
   invitationId: string
   firstName: string
   lastName: string
   status: InvitationStatus
-}): Promise<void> {
+}): Promise<boolean> {
   const db = await getServiceDb()
-  const { error } = await db
+  const { data, error } = await db
     .from('teacher_invitations')
     .update({
       first_name: input.firstName,
@@ -141,8 +145,12 @@ export async function updateInvitationResponse(input: {
       responded_at: new Date().toISOString(),
     })
     .eq('id', input.invitationId)
+    .eq('status', 'PENDING')
+    .select('id')
+    .maybeSingle()
 
   if (error) throw toDbError('Failed to update invitation response', error)
+  return data !== null
 }
 
 /**

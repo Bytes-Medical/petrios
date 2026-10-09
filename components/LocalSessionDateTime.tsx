@@ -12,10 +12,16 @@ function useBrowserFormatting() {
   )
 }
 
-export function LocalDateTime({ value }: { value: string }) {
+export function LocalDateTime({
+  value,
+  options,
+}: {
+  value: string
+  options?: Intl.DateTimeFormatOptions
+}) {
   const canFormat = useBrowserFormatting()
   const formatted = canFormat
-    ? new Date(value).toLocaleString('en-GB')
+    ? new Date(value).toLocaleString('en-GB', options)
     : 'Loading time…'
 
   return <time dateTime={value}>{formatted}</time>

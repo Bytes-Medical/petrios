@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { checkIn } from '@/app/actions/attendance'
 import type { Session } from '@/lib/types'
 import { Button } from './Button'
+import { LocalDateTime } from './LocalSessionDateTime'
 
 export function SessionCheckInPanel({
   session,
@@ -56,9 +57,11 @@ export function SessionCheckInPanel({
   if (beforeWindow || afterWindow) {
     return (
       <p className="mb-4 border border-gray-300 bg-gray-50 p-3 font-mono text-xs text-gray-700">
-        {beforeWindow
-          ? `Check-in opens ${new Date(opensAt).toLocaleString('en-GB')}.`
-          : 'The check-in window is closed. A moderator can make a reasoned correction during review.'}
+        {beforeWindow ? (
+          <>Check-in opens <LocalDateTime value={new Date(opensAt).toISOString()} />.</>
+        ) : (
+          'The check-in window is closed. A moderator can make a reasoned correction during review.'
+        )}
       </p>
     )
   }

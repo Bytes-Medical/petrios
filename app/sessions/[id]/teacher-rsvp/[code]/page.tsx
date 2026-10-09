@@ -1,5 +1,6 @@
 import { LOCATION_TYPE_LABELS } from '@/lib/types'
 import { sessionMeetingUrl } from '@/lib/jitsi'
+import { formatInAppTimeZone } from '@/lib/datetime'
 import { Card } from '@/components/Card'
 import { TeacherRsvpForm } from '@/components/TeacherRsvpForm'
 import * as sessionsDb from '@/lib/db/sessions'
@@ -60,8 +61,6 @@ export default async function TeacherRsvpPage(
   }
 
   const session = await sessionsDb.findSessionById(params.id)
-  const startDate = session ? new Date(session.date_start) : null
-  const endDate = session ? new Date(session.date_end) : null
 
   return (
     <div className="min-h-screen">
@@ -79,11 +78,11 @@ export default async function TeacherRsvpPage(
           <Card>
             <h2 className="text-xl font-mono font-bold mb-4">{session.title}</h2>
             <div className="space-y-2 font-mono text-sm mb-6">
-              {startDate && endDate && (
+              {session.date_start && session.date_end && (
                 <>
                   <p>
                     <strong>Date:</strong>{' '}
-                    {startDate.toLocaleDateString('en-GB', {
+                    {formatInAppTimeZone(session.date_start, {
                       weekday: 'long',
                       year: 'numeric',
                       month: 'long',
@@ -92,12 +91,12 @@ export default async function TeacherRsvpPage(
                   </p>
                   <p>
                     <strong>Time:</strong>{' '}
-                    {startDate.toLocaleTimeString('en-GB', {
+                    {formatInAppTimeZone(session.date_start, {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}{' '}
                     -{' '}
-                    {endDate.toLocaleTimeString('en-GB', {
+                    {formatInAppTimeZone(session.date_end, {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}

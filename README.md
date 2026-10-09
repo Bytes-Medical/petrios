@@ -63,8 +63,8 @@ departments; trainees need accounts, external teachers don't.
 - Next.js 16 (App Router) + TypeScript + React 19, server actions for all mutations
 - Supabase (Postgres + Row Level Security) and Supabase Auth
 - Tailwind CSS with cva-based UI primitives (neo-brutalist design system)
-- OpenAI API calls (via `fetch`, no SDK) for AI features, with optional
-  OpenAI or ElevenLabs speech generation for Audio Recaps — degrades gracefully
+- Anthropic Claude via the official `@anthropic-ai/sdk` for AI features (an OpenAI-compatible
+  adapter is optional), with ElevenLabs or OpenAI speech generation for Audio Recaps — degrades gracefully
 - Jitsi Meet (`@jitsi/react-sdk`) for built-in video rooms
 - Resend REST API for transactional email (console log-sink in dev)
 - `@react-pdf/renderer` for certificates, Schedule-X for the calendar,
@@ -73,8 +73,9 @@ departments; trainees need accounts, external teachers don't.
 ## Self-hosting & API
 
 Petrios is built to run on **your own infrastructure**: Docker image +
-compose file, SMTP email, an OpenAI-compatible `OPENAI_BASE_URL` for
-in-network AI (or none), self-hosted Jitsi, a plain-Postgres migration
+compose file, SMTP email, an OpenAI-compatible `OPENAI_BASE_URL` (pinned with `LLM_PROVIDER=openai`) for
+in-network text AI (or none; Audio Recap and Recall still need `/responses` file inputs and
+hosted web search, which reach public sites), self-hosted Jitsi, a plain-Postgres migration
 runner, and a health endpoint — see [docs/self-hosting.md](./docs/self-hosting.md).
 A Cloudflare Workers staging build is also available — see
 [docs/cloudflare-workers.md](./docs/cloudflare-workers.md).
@@ -95,7 +96,7 @@ These are assessment inputs, not certification. What's next lives in
 
 ### Prerequisites
 
-- Node.js 20.9+ and npm
+- Node.js 20.12+ and npm
 - A Supabase project
 
 ### Installation

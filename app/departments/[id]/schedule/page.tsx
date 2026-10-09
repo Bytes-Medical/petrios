@@ -7,7 +7,7 @@ import { SessionCalendarLazy as SessionCalendar } from '@/components/SessionCale
 import { getDepartmentSlots, getPublishAudienceMeta } from '@/app/actions/teaching-slots'
 import { getSessionsForOrg, getCalendarSubscriptionUrl } from '@/app/actions/sessions'
 import { getDepartmentsForOrg } from '@/app/actions/departments'
-import { dayKeyFromIso } from '@/lib/date-picker'
+import { appDayKey, appTimeZone } from '@/lib/datetime'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,10 +42,10 @@ export default async function DepartmentSchedulePage(
 
   const busyDayKeys = Array.from(
     new Set([
-      ...departmentSessions.map((s) => dayKeyFromIso(s.date_start)),
+      ...departmentSessions.map((s) => appDayKey(s.date_start)),
       ...slots
         .filter((s) => s.status === 'OPEN' || s.status === 'CLAIMED')
-        .map((s) => dayKeyFromIso(s.date_start)),
+        .map((s) => appDayKey(s.date_start)),
     ])
   )
 
@@ -88,6 +88,7 @@ export default async function DepartmentSchedulePage(
           deptMemberCount={audienceMeta.deptMemberCount}
           orgMemberCount={audienceMeta.orgMemberCount}
           busyDayKeys={busyDayKeys}
+          timeZone={appTimeZone()}
         />
 
         <section className="mt-8">

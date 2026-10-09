@@ -77,10 +77,12 @@ export default function PrivacyPolicyPage() {
           <li><strong>Identity and account:</strong> name, email, training grade, authentication identifiers, profile, and account status.</li>
           <li><strong>Membership and authority:</strong> organisation, department, role, invitations, and teaching assignments.</li>
           <li><strong>Teaching activity:</strong> sessions created, taught, joined, or attended; private session documents; attendance evidence, roster, corrections, and finalized status; teaching slots and claims.</li>
+          <li><strong>Address book:</strong> the organisation&apos;s external contacts (names and email addresses, captured automatically from teacher invitations, RSVPs, and slot claims, or added by organisers) and contact groups.</li>
           <li><strong>Feedback:</strong> first name, last name, email, ratings, answers, and free-text comments. The public feedback form does not require an account, but its submissions are <strong>identified, not anonymous</strong>.</li>
           <li><strong>Records and learning:</strong> certificates (including recognition route, recipient, teaching-coordinator, and issuer names), Audio Recap listening progress, Recall attempts/answers/completion, personal reflections, portfolio snapshots, and teaching dossiers.</li>
           <li><strong>Communications:</strong> invitation, reminder, notification, newsletter, feedback-release, and delivery status data.</li>
-          <li><strong>Security and technical data:</strong> essential authentication cookies, IP/network data available to infrastructure providers, request and error logs, API credentials, audit events, and abuse-prevention signals.</li>
+          <li><strong>Operations assistant (only where the operator enables it):</strong> chat threads with the organisers&apos; messages and the assistant&apos;s replies stored as written, plus organisation-wide notes the assistant saves for later conversations.</li>
+          <li><strong>Security and technical data:</strong> essential authentication cookies, IP/network data available to infrastructure providers, request and error logs (which can include recipient email addresses), API credentials, audit events, and abuse-prevention signals.</li>
         </ul>
         <p>
           Petrios is not designed for patient records. Users should not enter patient data,
@@ -122,24 +124,52 @@ export default function PrivacyPolicyPage() {
         </p>
         <p>
           Optional AI features are currently <strong>{config.aiEnabled ? `enabled through ${config.aiProvider}` : 'disabled'}</strong>.
-          When enabled, a configured AI provider may receive session metadata, assistant messages,
-          purpose-limited feedback content, and private uploaded PDF/DOCX/PPTX learning documents.
+          When enabled, a configured AI provider may receive session metadata (including the names
+          of invited teachers, or an invitee&apos;s email address where no name is recorded),
+          assistant messages and the records its tools look up, purpose-limited feedback content, and
+          private uploaded PDF/DOCX/PPTX learning documents.
           A deliberate Audio Recap request sends the documents for that session; a deliberate weekly
           newsletter request sends all available documents for every teaching session in the selected
           department and completed week. Newsletter generation does not use web search. PDFs may be
-          processed as text and page images; Office files are processed as extracted text. For Audio
-          Recap only, the provider&apos;s hosted search may
+          processed as text and page images. Word and PowerPoint files are sent differently by
+          provider: an OpenAI-compatible endpoint receives the original file, including any comments,
+          tracked changes, headers and footers, embedded images, and document properties such as the
+          author; with Anthropic, Petrios sends only the extracted body text and PowerPoint speaker
+          notes. For Audio Recap only, the provider&apos;s hosted search may
           issue queries derived from that learning material to retrieve supporting information from a
           restricted list of authoritative public clinical and evidence sources. Petrios records the
           document identifiers and integrity hashes used for recaps and newsletters plus returned
           recap public-source titles and URLs; it does not copy those public pages. Opening a source link contacts that
           external website from your browser. The Ops audit log stores model-run hashes and operational
           metadata rather than raw prompt text or search queries. The provider may retain request and
-          search content under its own terms. OpenAI states that API data is not used to train its models by
-          default, while standard abuse-monitoring logs may be retained for up to 30 days; see its{' '}
-          <HudLink href="https://developers.openai.com/api/docs/guides/your-data">
-            API data controls documentation
-          </HudLink>.
+          search content under its own terms.{' '}
+          {config.aiProviderKind === 'anthropic' ? (
+            <>
+              With Anthropic, each learning document is uploaded to the provider&apos;s file storage
+              for one generation only (Word and PowerPoint files as extracted text). Petrios sets the
+              upload to expire after one hour and deletes it as soon as the draft is produced or the
+              request fails, and a daily clean-up removes anything an interrupted request left behind.
+              The stored file has a generated name; the document&apos;s title is sent only with the
+              generation request. Anthropic&apos;s commercial terms state that API content is not used
+              to train its models; see its{' '}
+              <HudLink href="https://www.anthropic.com/legal/commercial-terms">commercial terms</HudLink>{' '}
+              and{' '}
+              <HudLink href="https://privacy.anthropic.com/">privacy center</HudLink> for how long
+              requests, uploaded files, search content, and content flagged for safety review are
+              retained. If the provider named above is an operator-configured endpoint, that
+              service&apos;s own terms apply instead.
+            </>
+          ) : config.aiProviderKind === 'openai' ? (
+            <>
+              OpenAI states that API data is not used to train its models by default, while standard
+              abuse-monitoring logs may be retained for up to 30 days; see its{' '}
+              <HudLink href="https://developers.openai.com/api/docs/guides/your-data">
+                API data controls documentation
+              </HudLink>. Petrios asks OpenAI not to keep document requests as stored, retrievable
+              responses; that does not change the abuse-monitoring retention. If the provider named
+              above is an operator-configured endpoint, that service&apos;s own terms apply instead.
+            </>
+          ) : null}
         </p>
         <p>
           Audio speech synthesis is currently{' '}
@@ -154,10 +184,22 @@ export default function PrivacyPolicyPage() {
           current draft recap script and request metadata needed to produce the MP3. That separate
           speech request does not contain the uploaded document files, raw feedback, or hosted-search
           queries. Re-creating audio makes another provider request and may consume provider credits.
-          The resulting narration is AI-generated and remains unavailable to attendees until the
-          moderator listens to and approves it.
+          The resulting narration is AI-generated, is labelled as such wherever attendees can play
+          it, and remains unavailable to attendees until a moderator approves it (moderators are asked
+          to listen to it first).
         </p>
-        {config.speechEnabled && config.speechProvider === 'ElevenLabs API' ? (
+        {config.speechEnabled && config.speechProviderKind === 'openai' ? (
+          <p>
+            This deployment uses OpenAI for speech generation, whichever provider handles the text
+            features above. OpenAI states that API data is not used to train its models by default,
+            while standard abuse-monitoring logs may be retained for up to 30 days; see its{' '}
+            <HudLink href="https://developers.openai.com/api/docs/guides/your-data">
+              API data controls documentation
+            </HudLink>. If the speech provider named above is an operator-configured endpoint, that
+            service&apos;s own terms apply instead.
+          </p>
+        ) : null}
+        {config.speechEnabled && config.speechProviderKind === 'elevenlabs' ? (
           <p>
             This deployment uses ElevenLabs for speech generation. Standard API requests use the
             provider&apos;s configured logging/history posture; zero-retention availability depends on

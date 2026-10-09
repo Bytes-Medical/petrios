@@ -133,10 +133,30 @@ Mutation order should be deliberate:
 5. perform dependent durable transitions or documented compensation;
 6. perform best-effort external/internal side effects;
 7. revalidate the minimal affected paths; and
-8. return a small serializable result.
+8. return a small serializable result (for visitor-facing actions, the
+   discriminated result below).
 
 If side effects are intentionally nontransactional, state which durable result
 survives failure. Catching an error is not idempotency.
+
+### Visitor-facing action results
+
+Next.js replaces the message of an error thrown from a Server Action in
+production (staging visitors saw only a generic error, never the real reason). Actions
+reached by a public page or a capability link must therefore **return** every
+expected, user-facing failure as a discriminated result,
+`{ ok: true, ... } | { ok: false, message }`, and throw only for genuinely
+unexpected errors (database failures, missing configuration, a compensated
+failure after a won race). The client shows `message` from an `ok: false`
+result in a persistent inline block with `role="alert"` (toasts auto-dismiss
+and the toast region is not announced to screen readers); its `catch` block
+shows a generic friendly message there and never `error.message`. A failure
+that retrying cannot fix carries `final: true` (the claim actions use
+`slotUnavailable: true`), and the client calls `router.refresh()` so the
+server page replaces the form with the record's current state. Current examples: `submitFeedback` (spec 05),
+`respondToInvitation`, and `claimSlotByCode`/`claimSlotAsMember` (spec 04;
+the member claim shares the public claim path). A malformed-input `TypeError`
+stays a thrown error rather than a returned message.
 
 ### Work after the response
 
@@ -223,11 +243,37 @@ relevant contract.
 - Parse/compare on the server using `Date` only after invalid-date checks.
 - Specify which session edge a rule uses (`date_start` or `date_end`).
 - Specify inclusive versus exclusive endpoints.
-- Use `??` when zero is a valid setting; `||` changes zero into a default. Some
-  current group-code/feedback selectors use `||`, and their specs call that out.
+- Use `??` when zero is a valid setting; `||` changes zero into a default. The
+  feedback window (`lib/feedback-window.ts`) is the shared reference: one helper
+  used by the action and both public pages, with nullish defaults.
 - Use shared pure helpers for calculations that appear in both jobs and actions.
 - Formatting for email/PDF/UI may use British locale, but formatted strings are
   never comparison keys.
+- Server clocks are UTC (always on Workers, which ignore `TZ`; usually in
+  Docker). Every date or time the server renders — emails, certificate/audit/
+  portfolio PDFs, server components, crons, Ops drafts — is formatted through
+  `lib/datetime.ts` (`formatInAppTimeZone`, `formatAppDate`,
+  `formatAppDateTime`) in `APP_TIME_ZONE` (an IANA name, default
+  `Europe/London`; an invalid value falls back to the default, and the error
+  is logged once per distinct value because the resolved zone is memoized).
+  Never call `toLocale*String` without a `timeZone` on the server.
+  Calendar-day keys use `appDayKey`; a wall-clock time entered for the app zone
+  becomes an instant with `appWallClockToIso`.
+- Client components keep the viewer's own zone. A timestamp a client component
+  renders during SSR goes through `components/LocalSessionDateTime.tsx`
+  (`LocalDateTime` accepts optional `Intl.DateTimeFormatOptions`) so the server
+  render and hydration agree. `APP_TIME_ZONE` is server-only, so a client
+  component that shares the app-zone helpers takes the server's
+  `appTimeZone()` as a required `timeZone` prop and passes it on
+  (`describeSlot(slot, timeZone)`, `formatDateTimeShort(iso, timeZone)`,
+  `formatInAppTimeZone(value, { ..., timeZone })`). `SlotClaimPanel`,
+  `OpenSlotsPanel` (also via `PersonalDashboard`), `ScheduleManagerPanel` and
+  `PendingActionsPanel` do this, so their SSR text, hydration and the emails
+  agree for any configured zone.
+- The ICS feed emits UTC (`Z`) timestamps and needs no zone.
+- Period windows that are defined as UTC calendar days (newsletter weeks,
+  portfolio/dossier periods, audit date filters) stay UTC; label them from the
+  UTC key, not in the app zone.
 
 ## Input and durable JSON validation
 
@@ -294,16 +340,27 @@ body.
 
 ## AI and speech provider conventions
 
-- General chat completions use `lib/ai/llm.ts`.
+- General inference uses `lib/ai/llm.ts`; `lib/ai/provider.ts` resolves the
+  provider and builds the Anthropic client; `lib/ai/anthropic-files.ts` is the
+  only Files API caller. Nothing else calls an LLM provider.
+- Anthropic calls always stream (`.stream(...).finalMessage()`), set
+  `output_config.effort` explicitly, never send `thinking`, sampling parameters,
+  an assistant prefill or a forced `tool_choice`, and check `stop_reason`
+  (`refusal`, `max_tokens`, `model_context_window_exceeded`, `pause_turn`).
+- Branch on typed SDK errors (`Anthropic.BadRequestError`, …), never on message
+  strings. Never log a non-HTTP SDK error message: it can quote model output.
+- Read the model that served a response from the response (refusal fallbacks
+  can change it); never persist the configured model name as provenance.
 - Private document inputs are lazy `LlmFileInput`s (`lib/ai/streaming-body.ts`)
   opened per request attempt and verified against stored size/SHA-256 while
   they stream; never download whole documents before inference.
 - Ops inference uses `lib/ops/gateway.ts` and its purpose allow-list.
-- The Ops tool loop is the sole sanctioned direct chat-completion caller outside
-  the general adapter.
+- The Ops tool loop (`lib/ops/agent-loop.ts`) is the sole sanctioned direct
+  model caller outside the general adapter.
 - Speech uses only `lib/ai/tts.ts`. Provider-specific headers, endpoints,
   defaults, errors, and metadata stay behind that boundary; actions must not
-  branch directly on OpenAI or ElevenLabs.
+  branch directly on OpenAI or ElevenLabs. Speech never depends on the LLM
+  provider.
 - Model output is untrusted: validate schema, enforce length/content rules, and
   never derive tenant/authorization from it.
 - Feedback/user content must be labelled and fenced as data. The regular

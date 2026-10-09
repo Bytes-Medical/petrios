@@ -15,6 +15,7 @@ import { TeachingAssignmentsPanel } from '@/components/TeachingAssignmentsPanel'
 import { OpenSlotsPanel } from '@/components/OpenSlotsPanel'
 import { ensurePersonalWorkspace } from '@/app/actions/personal-workspace'
 import { INDIVIDUAL_SIGNUP_ENABLED } from '@/lib/flags'
+import { appTimeZone } from '@/lib/datetime'
 
 export default async function DashboardPage(
   props: {
@@ -107,7 +108,7 @@ export default async function DashboardPage(
         <Card>
           <h2 className="text-xl font-mono font-bold mb-4">Teaching Invitations</h2>
           <div className="space-y-6">
-            <OpenSlotsPanel slots={claimableSlots} />
+            <OpenSlotsPanel slots={claimableSlots} timeZone={appTimeZone()} />
             {pendingTeaching.length > 0 && (
               <TeachingAssignmentsPanel assignments={pendingTeaching} />
             )}
@@ -148,6 +149,7 @@ export default async function DashboardPage(
             calendarUrl={calendarUrl}
             passport={myPassport}
             initialTab={searchParams?.tab}
+            timeZone={appTimeZone()}
           />
         </div>
       </div>

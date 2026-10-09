@@ -4,7 +4,12 @@ import type { OpsNewsletterSourceDocument } from '@/lib/types'
 import type { OpsSessionRow } from '@/lib/db/ops-reads'
 import * as documentsDb from '@/lib/db/session-documents'
 
-/** Responses file input is bounded to keep a manual job predictable. */
+/**
+ * Product limits that keep a manual job predictable. Anthropic uploads each
+ * document separately through the Files API (one request is still bounded by
+ * the model's 600-page PDF and context limits); the OpenAI Responses adapter
+ * accepts up to 50 MB of file input per request.
+ */
 export const NEWSLETTER_MAX_SOURCE_BYTES = 50 * 1024 * 1024
 export const NEWSLETTER_MAX_SOURCE_FILES = 50
 

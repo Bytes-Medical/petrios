@@ -1,4 +1,4 @@
-import { LLM_MODEL } from '@/lib/ai/llm'
+import { llmModel } from '@/lib/ai/llm'
 import { RecallQuestionSetSchema } from '@/lib/recall'
 import type { OpsSessionRow } from '@/lib/db/ops-reads'
 import * as audioRecapsDb from '@/lib/db/audio-recaps'
@@ -37,6 +37,9 @@ export async function draftRecallQuestionsFromRecap(input: {
   scriptDigest: string
   run?: OpsRun
 }): Promise<boolean> {
+  // Provenance is the model that served the accepted draft (a refusal
+  // fallback can differ from the configured model).
+  let servedModel: string | null = null
   const result = await opsInference({
     purpose: 'recall_questions',
     system:
@@ -54,6 +57,9 @@ Return JSON: {"questions":[{"question":string,"options":[string,string,string,st
     maxTokens: 3500,
     run: input.run,
     stepName: `recall:${input.sessionId}`,
+    onResult: (response) => {
+      servedModel = response.model
+    },
   })
   if (!result) return false
 
@@ -61,7 +67,7 @@ Return JSON: {"questions":[{"question":string,"options":[string,string,string,st
     orgId: input.orgId,
     sessionId: input.sessionId,
     questions: result.questions,
-    model: LLM_MODEL,
+    model: servedModel ?? llmModel(),
     scriptDigest: input.scriptDigest,
   })
   return true

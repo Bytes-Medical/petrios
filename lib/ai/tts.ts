@@ -3,12 +3,18 @@
  * speech providers; Audio Recap actions receive an MP3 plus the exact provider,
  * model, and voice metadata that must be persisted with it.
  *
+ * Speech is chosen independently of LLM_PROVIDER: Anthropic (the default
+ * LLM) has no speech API, so Audio Recap speech uses ElevenLabs or an
+ * OpenAI(-compatible) speech endpoint.
+ *
  * Provider selection:
  *   - TTS_PROVIDER=openai|elevenlabs explicitly pins a provider.
  *   - When unset, declaring either ElevenLabs credential selects ElevenLabs;
- *     otherwise OpenAI preserves the historical default.
+ *     otherwise OPENAI_API_KEY selects OpenAI (the historical default).
+ *   - With none of those, speech is unconfigured (provider null) — it never
+ *     implicitly requires OPENAI_API_KEY on an Anthropic-only deployment.
  *
- * OpenAI config (shares the LLM key/base URL):
+ * OpenAI config (shares the OpenAI-compatible key/base URL):
  *   OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_TTS_MODEL, OPENAI_TTS_VOICE
  *
  * ElevenLabs config:
@@ -60,13 +66,19 @@ export function getTtsConfiguration(
   const hasAnyElevenLabsConfig = Boolean(
     optional(env, 'ELEVENLABS_API_KEY') || optional(env, 'ELEVENLABS_VOICE_ID')
   )
-  const provider: TtsProvider = requested === 'elevenlabs'
+  const provider: TtsProvider | null = requested === 'elevenlabs'
     ? 'elevenlabs'
     : requested === 'openai'
       ? 'openai'
       : hasAnyElevenLabsConfig
         ? 'elevenlabs'
-        : 'openai'
+        : optional(env, 'OPENAI_API_KEY')
+          ? 'openai'
+          : null
+
+  if (!provider) {
+    return { provider: null, configured: false, model: null, voice: null, configurationError: null }
+  }
 
   if (provider === 'elevenlabs') {
     const apiKey = optional(env, 'ELEVENLABS_API_KEY')

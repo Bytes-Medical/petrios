@@ -5,6 +5,7 @@ import { Badge } from './Badge'
 import { Button } from './Button'
 import { Input } from './Input'
 import { ContactPicker, type ContactSelection } from './ContactPicker'
+import { LocalDateTime } from './LocalSessionDateTime'
 import { useToast } from './ToastProvider'
 import { addSessionTeacher, removeSessionTeacher, searchOrgMembersForTeacher } from '@/app/actions/sessions'
 import { sendTeacherEmail } from '@/app/actions/emails'
@@ -233,9 +234,9 @@ export function ManageTeachersPanel({
                 )}
 
                 <p className="font-mono text-xs text-gray-500">
-                  Sent: {new Date(invitation.sent_at).toLocaleString('en-GB')}
+                  Sent: <LocalDateTime value={invitation.sent_at} />
                   {invitation.responded_at && (
-                    <> | Responded: {new Date(invitation.responded_at).toLocaleString('en-GB')}</>
+                    <> | Responded: <LocalDateTime value={invitation.responded_at} /></>
                   )}
                 </p>
 
@@ -286,10 +287,10 @@ export function ManageTeachersPanel({
 
                   <div className="font-mono text-xs text-gray-500 space-y-0.5">
                     {lastInvitation ? (
-                      <p>Invited: {new Date(lastInvitation.sent_at).toLocaleString('en-GB')}</p>
+                      <p>Invited: <LocalDateTime value={lastInvitation.sent_at} /></p>
                     ) : null}
                     {lastReminder ? (
-                      <p>Reminded: {new Date(lastReminder.sent_at).toLocaleString('en-GB')}</p>
+                      <p>Reminded: <LocalDateTime value={lastReminder.sent_at} /></p>
                     ) : null}
                     {!lastInvitation && !lastReminder && (
                       <p>No emails sent yet</p>

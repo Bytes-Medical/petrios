@@ -1,11 +1,27 @@
 import { createHash, randomUUID } from 'node:crypto'
 
 /**
- * Streaming request bodies for file-backed Responses calls. Private documents
+ * Streaming request bodies for file-backed provider calls. Private documents
  * are read one at a time while the body uploads, so the extra memory is a few
  * chunks however large the documents are (a Workers isolate has 128 MB in
  * total, shared by concurrent requests).
+ *
+ * Base64Encoder/streamJsonWithFileData serve the OpenAI-compatible Responses
+ * adapter only; verifiedFileSources and streamedBodyRedirectMode are shared
+ * with the Anthropic Files API upload (lib/ai/anthropic-files.ts).
  */
+
+/**
+ * Node's fetch keeps a tee of a streamed body so it could replay it after a
+ * redirect, which holds the whole upload in memory unless redirects are
+ * refused outright. Workers do not buffer the body but reject 'error', so
+ * they use 'manual' and a 3xx then fails the status check.
+ */
+export function streamedBodyRedirectMode(): RequestRedirect {
+  return typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers'
+    ? 'manual'
+    : 'error'
+}
 
 export interface LlmFileInput {
   filename: string

@@ -2,6 +2,7 @@ import React from 'react'
 import { Document, Page, Text, View, renderToBuffer } from '@react-pdf/renderer'
 import type { Dossier } from '@/app/actions/portfolio'
 import { docStyles as s, formatPdfDate } from './pdf-shared'
+import { formatAppDate } from '@/lib/datetime'
 
 /**
  * Teaching activity dossier: appraisal/revalidation-ready evidence of a
@@ -56,7 +57,7 @@ function DossierDocument({ data }: { data: DossierPdfData }) {
             <View key={i} style={s.row} wrap={false}>
               <Text style={{ width: '40%' }}>{row.title}</Text>
               <Text style={{ width: '18%' }}>
-                {new Date(row.date).toLocaleDateString('en-GB')}
+                {formatAppDate(row.date)}
               </Text>
               <Text style={{ width: '12%' }}>{row.durationMins} min</Text>
               <Text style={{ width: '14%' }}>{row.attendees}</Text>

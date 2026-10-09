@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { LocalDateTime } from './LocalSessionDateTime'
 import { useToast } from './ToastProvider'
 import { respondToTeachingAssignment } from '@/app/actions/teaching-assignments'
 import type { TeachingAssignment } from '@/lib/db/trainee-dashboard'
@@ -14,14 +15,13 @@ interface TeachingAssignmentsPanelProps {
   assignments: TeachingAssignment[]
 }
 
-function formatWhen(iso: string) {
-  const d = new Date(iso)
-  return `${d.toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })} · ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+const WHEN_OPTIONS: Intl.DateTimeFormatOptions = {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
 }
 
 function AssignmentHeader({ assignment }: { assignment: TeachingAssignment }) {
@@ -29,7 +29,7 @@ function AssignmentHeader({ assignment }: { assignment: TeachingAssignment }) {
     <div>
       <p className="font-mono text-sm font-bold">{assignment.title}</p>
       <p className="mt-1 font-mono text-xs text-gray-600">
-        {formatWhen(assignment.date_start)} ·{' '}
+        <LocalDateTime value={assignment.date_start} options={WHEN_OPTIONS} /> ·{' '}
         {LOCATION_TYPE_LABELS_SHORT[assignment.location_type as keyof typeof LOCATION_TYPE_LABELS_SHORT] || assignment.location_type}
         {assignment.department_name ? ` · ${assignment.department_name}` : ''}
       </p>

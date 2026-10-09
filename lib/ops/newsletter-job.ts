@@ -65,7 +65,7 @@ Keep the complete result at 700 words or fewer. Do not add sessions, omit sessio
   if (!generated) {
     throw new Error(
       bundle.files.length
-        ? 'The AI provider could not create a valid newsletter from the teaching materials. Confirm that the configured endpoint supports Responses file inputs, then try again.'
+        ? 'The AI provider could not create a valid newsletter from the teaching materials. Try again; if it keeps failing, check the AI configuration (Anthropic: Files API enabled for the workspace; OpenAI-compatible: Responses file inputs).'
         : 'The AI provider could not create a valid weekly newsletter. Check the AI configuration and try again.'
     )
   }

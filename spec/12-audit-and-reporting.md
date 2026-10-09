@@ -183,12 +183,12 @@ filename `audit-report-all-time.pdf` means “no date filter over the recent
 The PDF contains:
 
 - authorized department names and the requested date label;
-- generation date in the server/runtime locale;
+- generation date (en-GB, in `APP_TIME_ZONE`, default `Europe/London`; spec 07);
 - session count;
 - summed present (`PRESENT` plus `LATE`);
 - summed existing attendance rows, labelled **Total Expected**; and
-- a session table with start date, present count, total rows, percentage, and
-  stored-rating average.
+- a session table with start date (in `APP_TIME_ZONE`), present count, total
+  rows, percentage, and stored-rating average.
 
 The “Total Expected” label remains stronger than this mixed dataset. Finalized
 policy-v2 rows have a defined snapshot roster, but historical/open/review rows

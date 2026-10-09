@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   CLAIM_CODE_LENGTH,
   buildSlotDrafts,
+  claimPrecheck,
   combineDayAndTime,
   dedupeSlotRecipients,
+  describeSlot,
   generateClaimCode,
   isLightningSlot,
   listSlotTimeOptions,
@@ -29,11 +31,32 @@ describe('buildSlotDrafts', () => {
   it('builds sorted drafts with computed ends', () => {
     const drafts = buildSlotDrafts(['2026-08-11', '2026-08-04'], '13:00', 90, today)
     expect(drafts).toHaveLength(2)
-    expect(drafts[0].dateStart).toBe('2026-08-04T13:00')
-    expect(new Date(drafts[0].dateEnd).getTime()).toBe(
-      new Date('2026-08-04T13:00').getTime() + 90 * 60 * 1000
-    )
-    expect(drafts[1].dateStart).toBe('2026-08-11T13:00')
+    expect(drafts[0]).toEqual({
+      dateStart: '2026-08-04T12:00:00.000Z',
+      dateEnd: '2026-08-04T13:30:00.000Z',
+    })
+    expect(drafts[1].dateStart).toBe('2026-08-11T12:00:00.000Z')
+  })
+
+  it('reads the chosen time as London wall-clock time on a UTC server', () => {
+    const [summer, winter] = buildSlotDrafts(['2026-10-09', '2026-12-01'], '16:15', 60, today)
+    expect(summer.dateStart).toBe('2026-10-09T15:15:00.000Z')
+    expect(winter.dateStart).toBe('2026-12-01T16:15:00.000Z')
+    expect(describeSlot({ date_start: summer.dateStart, date_end: summer.dateEnd })).toEqual({
+      dateStr: 'Fri, 9 Oct 2026',
+      timeRangeStr: '16:15–17:15',
+      durationStr: '1 hour',
+    })
+  })
+
+  it('describes a slot in an explicit zone handed down from the server', () => {
+    expect(
+      describeSlot({ date_start: '2026-10-09T15:15:00.000Z', date_end: '2026-10-09T16:15:00.000Z' }, 'America/New_York')
+    ).toEqual({
+      dateStr: 'Fri, 9 Oct 2026',
+      timeRangeStr: '11:15–12:15',
+      durationStr: '1 hour',
+    })
   })
 
   it('dedupes repeated day selections', () => {
@@ -134,6 +157,39 @@ describe('slotDisplayStatus', () => {
   it('never expires CLAIMED or CLOSED slots', () => {
     expect(slotDisplayStatus({ status: 'CLAIMED', date_start: '2020-01-01T00:00:00Z' }, now)).toBe('CLAIMED')
     expect(slotDisplayStatus({ status: 'CLOSED', date_start: '2020-01-01T00:00:00Z' }, now)).toBe('CLOSED')
+  })
+})
+
+describe('claimPrecheck', () => {
+  const now = new Date('2026-07-09T12:00:00Z')
+  const open = {
+    status: 'OPEN' as const,
+    date_start: '2026-07-10T09:00:00Z',
+    claimed_by_user_id: null,
+    claimed_by_contact_id: null,
+  }
+
+  it('allows a future OPEN slot', () => {
+    expect(claimPrecheck(open, { userId: 'u1' }, now)).toBe('CLAIMABLE')
+  })
+
+  it('rejects an OPEN slot whose start has passed (boundary inclusive)', () => {
+    expect(claimPrecheck({ ...open, date_start: '2026-07-09T12:00:00Z' }, { userId: 'u1' }, now)).toBe('UNAVAILABLE')
+  })
+
+  it('recognises the caller\'s own earlier claim by user or contact', () => {
+    expect(claimPrecheck({ ...open, status: 'CLAIMED', claimed_by_user_id: 'u1' }, { userId: 'u1' }, now)).toBe('ALREADY_YOURS')
+    expect(claimPrecheck({ ...open, status: 'CLAIMED', claimed_by_contact_id: 'c1' }, { contactId: 'c1' }, now)).toBe('ALREADY_YOURS')
+  })
+
+  it('treats a slot held by someone else, or closed, as unavailable', () => {
+    expect(claimPrecheck({ ...open, status: 'CLAIMED', claimed_by_user_id: 'u2' }, { userId: 'u1' }, now)).toBe('UNAVAILABLE')
+    expect(claimPrecheck({ ...open, status: 'CLAIMED', claimed_by_contact_id: 'c2' }, { contactId: 'c1' }, now)).toBe('UNAVAILABLE')
+    expect(claimPrecheck({ ...open, status: 'CLOSED' }, { userId: 'u1' }, now)).toBe('UNAVAILABLE')
+  })
+
+  it('never matches an absent caller id against an empty claimer column', () => {
+    expect(claimPrecheck({ ...open, status: 'CLAIMED', claimed_by_contact_id: 'c1' }, { userId: 'u1' }, now)).toBe('UNAVAILABLE')
   })
 })
 

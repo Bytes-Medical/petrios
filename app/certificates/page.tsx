@@ -3,6 +3,7 @@ import { getCurrentUser, getCurrentOrgId } from '@/lib/auth'
 import { NavShell } from '@/components/NavShell'
 import { Card } from '@/components/Card'
 import { getMyCertificates } from '@/app/actions/certificates'
+import { formatAppDate } from '@/lib/datetime'
 import Link from 'next/link'
 
 export default async function CertificatesPage() {
@@ -47,10 +48,10 @@ export default async function CertificatesPage() {
                         <strong>Department:</strong> {cert.departments?.name || 'Unknown'}
                       </p>
                       <p>
-                        <strong>Date:</strong> {cert.sessions?.date_start ? new Date(cert.sessions.date_start).toLocaleDateString() : 'Unknown'}
+                        <strong>Date:</strong> {cert.sessions?.date_start ? formatAppDate(cert.sessions.date_start) : 'Unknown'}
                       </p>
                       <p>
-                        <strong>Issued:</strong> {new Date(cert.issued_at).toLocaleDateString('en-GB')}
+                        <strong>Issued:</strong> {formatAppDate(cert.issued_at)}
                       </p>
                       <p>
                         <strong>Certificate Code:</strong> {cert.certificate_code}

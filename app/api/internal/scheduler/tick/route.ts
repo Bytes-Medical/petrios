@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { unauthorizedCronResponse } from '@/lib/cron-auth'
+import { isLlmConfigured } from '@/lib/ai/llm'
 import { getInstallationState, listInstallationJobs, claimInstallationJob, finishInstallationJob } from '@/lib/db/installation'
 import { GET as reminders } from '@/app/api/cron/session-reminders/route'
 import { GET as reports } from '@/app/api/cron/post-session-reports/route'
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
   if ((!state.completed_at && !state.blocked) || !mail) return NextResponse.json({ skipped: 'Setup or email configuration incomplete' })
   const results: Record<string, string> = {}
   for (const job of await listInstallationJobs()) {
-    if (job.name.startsWith('ops-') && (process.env.OPS_ENABLED === 'false' || !process.env.OPENAI_API_KEY)) continue
+    if (job.name.startsWith('ops-') && (process.env.OPS_ENABLED === 'false' || !isLlmConfigured())) continue
     if (!handlers[job.name]) continue
     const lease = await claimInstallationJob(job.name)
     if (!lease) continue

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { unauthorizedCronResponse } from '@/lib/cron-auth'
 import { sessionMeetingUrl } from '@/lib/jitsi'
 import { getEmailClient, getFromAddress } from '@/lib/email'
-import { buildSessionReminderEmailHtml } from '@/lib/email-templates'
+import { buildSessionReminderEmailHtml, sessionEmailTimes } from '@/lib/email-templates'
 import { getAppUrl } from '@/lib/app-url'
 import { LOCATION_TYPE_LABELS, type LocationType } from '@/lib/types'
 import { contactDisplayName, profileDisplayName } from '@/lib/contacts'
@@ -109,22 +109,10 @@ export async function GET(request: NextRequest) {
         (t) => t.email && !registeredEmails.has(t.email.toLowerCase())
       )
 
-      const startDate = new Date(session.date_start)
-      const endDate = new Date(session.date_end)
-      const dateStr = startDate.toLocaleDateString('en-GB', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
-      const startTime = startDate.toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-      const endTime = endDate.toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
+      const { dateStr, startTime, endTime } = sessionEmailTimes(
+        session.date_start,
+        session.date_end
+      )
 
       const recipients: ReminderRecipient[] = [
         ...profiles.flatMap((profile) =>

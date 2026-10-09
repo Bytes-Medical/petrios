@@ -101,18 +101,36 @@ internal hostnames.
 
 Provider status is derived without exposing secrets:
 
-- Render/Vercel flags identify the application-host family; otherwise the page
-  says operator-managed host.
+- `detectHostingProvider` names the application-host family: the Render,
+  Vercel, or Railway platform variables (`RENDER`, `VERCEL`,
+  `RAILWAY_PROJECT_ID`), then Cloudflare Workers when `HOSTING_PROVIDER` is
+  `cloudflare-workers` (declared in both `wrangler.jsonc` `vars` blocks) or the
+  runtime's `navigator.userAgent` is `Cloudflare-Workers`; otherwise the page
+  says operator-managed host. Each deployment's pages name only their own
+  host: the register rendered by Render does not mention a Workers staging
+  Worker that serves the same database, so the operator records Cloudflare
+  (including Workers Logs) in the DPA register, DPIA, and transfer safeguards
+  for as long as that staging Worker exists (docs/cloudflare-workers.md).
 - `SMTP_HOST` selects an operator SMTP description; otherwise a configured
   `RESEND_API_KEY` selects Resend; absence is declared.
-- `OPENAI_API_KEY` determines whether LLM/document/research AI is enabled.
-  `OPENAI_BASE_URL` changes the label to operator-configured compatible endpoint
-  without printing a potentially internal URL.
+- `resolveLlmProvider` (the same rules the runtime uses: `LLM_PROVIDER` pin,
+  else `ANTHROPIC_API_KEY`, else `OPENAI_API_KEY`; both keys plus
+  `OPENAI_BASE_URL` without a pin is a configuration error) determines whether
+  LLM/document/research AI is enabled and which provider is named: "Anthropic API
+  (Claude)", "Operator-configured Anthropic-compatible endpoint"
+  (`ANTHROPIC_BASE_URL`), "OpenAI API", or "Operator-configured OpenAI-compatible
+  endpoint" (`OPENAI_BASE_URL`), without printing a potentially internal URL.
+  `aiProviderKind` (`anthropic`/`openai`/null) lets notices pick the provider's
+  own data-use text without matching labels.
 - Speech status is independently derived from `TTS_PROVIDER` and the selected
   provider's required credentials. The page names OpenAI API, an
   operator-configured compatible speech endpoint, or ElevenLabs API without
   printing a credential, internal base URL, or request content. Partial or
   invalid speech configuration is labelled incomplete rather than enabled.
+  Speech with no provider (no pin, no ElevenLabs configuration, no
+  `OPENAI_API_KEY`) is labelled "Not configured". `speechProviderKind`
+  (`openai`/`elevenlabs`/null when speech is off or incomplete) lets the notice
+  pick the speech provider's own data-use text, independent of the LLM.
 - `NEXT_PUBLIC_JITSI_DOMAIN` selects the meeting-service label, defaulting to
   `meet.jit.si`.
 
@@ -170,12 +188,13 @@ The public privacy notice summarizes these active families:
 |---|---|---|
 | Identity/account | Name, email, grade, auth id, profile/status | Supabase Auth/database; server-rendered role UI; authentication email |
 | Authority | Org/department memberships, roles, invitations, assignments | Authorisation ladder, RLS/service DAL, moderator/admin surfaces |
-| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration, private session documents, Audio Recap and newsletter document/research/speech provenance | Member pages, browser-direct signed upload to private storage and streamed download, invite email, calendar/API/webhook/export paths; explicit moderator Audio Recap generation sends current session documents to the configured LLM provider and may cause provider-hosted public-search queries derived from them; explicit newsletter generation sends every available document for the selected department/week but does not use web search; later audio creation sends only the stored draft script to the separately selected speech provider |
+| Teaching | Sessions, teachers, contacts, slots, claims, meeting configuration, private session documents, Audio Recap and newsletter document/research/speech provenance; the org address book (`external_contacts`, auto-captured from invitations, RSVPs, and slot claims) and contact groups | Member pages, browser-direct signed upload to private storage and streamed download, invite email, calendar/API/webhook/export paths; explicit moderator Audio Recap generation sends current session documents to the configured LLM provider and may cause provider-hosted public-search queries derived from them; explicit newsletter generation sends every available document for the selected department/week but does not use web search; later audio creation sends only the stored draft script to the separately selected speech provider |
 | Attendance | Evidence source/timestamp, roster, derived status, lifecycle revision, corrections, transparent Audio Recap catch-up source | Moderator/teacher views, in-app notifications, certificates, reports, portable records, portfolio |
 | Feedback | First/last name, email, rating, answers, comment, aggregate report snapshots, optional reviewed AI-assisted narrative | Public submission; moderator raw audit; privacy-safe teacher release; stats; optional AI draft and explicit review |
 | Learning evidence | Certificates and recognition basis, registered user or external invitation/email identity, recipient/coordinator/issuer names, Recall playback progress/attempts/answers/completion, reflections, snapshots | Identity-bound catch-up page; personal dashboards; certificate PDF email attachments; PDFs; capability verification pages (certificate coordinator/issuer and catch-up attribution are visible to a code bearer) |
 | Communications | Recipient, reviewed content, newsletter source-document metadata, attachment, send/status/claim/unsubscribe metadata | SMTP/Resend; delivery ledgers; in-app notifications; capability links |
-| Security/technical | Essential cookie, IP/network/provider logs, HMAC-pseudonymized group-code attempt data, API/audit/run metadata | App/database/provider logs, security monitoring and incident review |
+| Ops assistant (opt-in) | Chat threads with organiser messages and assistant replies stored verbatim (`ops_chat_messages`), tool-call summaries, organisation-wide memory notes (`ops_memory`) | `/ops/assistant` only when `OPS_ASSISTANT_ENABLED=true`; messages and tool results (which can include teacher names and invitee emails) go to the LLM provider |
+| Security/technical | Essential cookie, IP/network/provider logs (error lines can include recipient email addresses), HMAC-pseudonymized group-code attempt data, API/audit/run metadata | App/database/provider logs (Workers Logs on Cloudflare), security monitoring and incident review |
 
 Petrios is not designed for patient data. That design intention does not
 technically prevent a user entering patient or special-category information in
@@ -283,14 +302,19 @@ footer text or an after-the-fact banner is insufficient.
 The provider adapter and per-purpose data boundaries remain in specs 06 and 09.
 Public disclosure adds these rules:
 
-- An absent `OPENAI_API_KEY` is truthfully shown as LLM/document/research AI
-  disabled. Speech is reported separately because ElevenLabs can be enabled
-  without an OpenAI key and OpenAI speech can share the LLM key.
-- The default configured endpoint is labelled OpenAI API. A custom endpoint is
-  labelled generically so an internal hostname is not disclosed.
-- The privacy notice names representative inputs: session metadata, assistant
-  messages, purpose-limited feedback, private uploaded learning documents sent
-  on an explicit Audio Recap or department/week newsletter generation click,
+- AI that resolves to no configured provider (no key, a pinned provider without
+  its key, an invalid pin, or the ambiguous both-keys-plus-`OPENAI_BASE_URL`
+  case) is truthfully shown as LLM/document/research AI disabled. Speech is
+  reported separately because it never depends on the LLM provider: ElevenLabs
+  works without an OpenAI key and OpenAI speech can share the OpenAI key.
+- The default endpoints are labelled "Anthropic API (Claude)" or "OpenAI API".
+  Custom endpoints are labelled generically so an internal hostname is not
+  disclosed.
+- The privacy notice names representative inputs: session metadata (including
+  invited teachers' names, or an invitee's email where no name is recorded —
+  chase/thank-you drafts and assistant tools send them), assistant messages and
+  tool results, purpose-limited feedback, private uploaded learning documents
+  sent on an explicit Audio Recap or department/week newsletter generation click,
   Audio-Recap-only provider-hosted search queries that may be derived from those
   documents, public search results/citations, and recap script/audio text.
 - The speech-provider request is a distinct purpose-limited flow. It receives
@@ -314,18 +338,55 @@ Public disclosure adds these rules:
 - Ops prompt/run logging stores hashes and operational metadata rather than raw
   prompts. This describes Petrios storage only; it does not claim a provider
   retains nothing.
-- For the default OpenAI API, the notice states the documented default: API data
-  is not used for model training unless the customer opts in, while abuse-
-  monitoring logs may retain inputs/outputs for up to 30 days. Provider settings,
-  eligibility, exceptions, and policy changes must be reviewed at deployment.
+- When Anthropic is the provider, the notice states that each private learning
+  document is uploaded to Anthropic's Files API for one generation (DOCX/PPTX as
+  extracted text), set to expire after one hour (bytes become unavailable;
+  metadata — an opaque generated name, size and type — remains until deleted),
+  and deleted when the generation ends, with a daily clean-up for interrupted
+  requests; the document's display title travels only inside the generation
+  request. It links Anthropic's commercial terms and privacy center for training
+  and retention. Anthropic's commercial terms state that customer content sent
+  through the API is not used to train its models; retention of API
+  inputs/outputs and of content flagged for trust-and-safety review follows
+  Anthropic's published retention terms (re-verify both statements against the
+  current published terms before each release). Do not claim zero data
+  retention: whether the Files API and web search are covered by any
+  zero-retention arrangement must be confirmed with Anthropic for the
+  deployment's organization. Anthropic is a US processor; transfer safeguards
+  come from `DATA_TRANSFER_SAFEGUARDS`. Anthropic's terms ask that web-search
+  citations are shown with outputs; Petrios shows them beside the moderator
+  panel and both attendee players (the session page and the Recall catch-up
+  page share `components/AudioRecapSources.tsx`).
+- Office documents reach the providers differently, and the notice and register
+  say so: the OpenAI-compatible adapter sends the original DOCX/PPTX bytes (with
+  comments, tracked changes, headers/footers, embedded images, and document
+  properties such as the author), while the Anthropic path sends only extracted
+  body text plus PPTX speaker notes (`lib/ai/office-text.ts`).
+- When the OpenAI-compatible adapter is the provider, the notice states the
+  documented OpenAI default: API data is not used for model training unless the
+  customer opts in, while abuse-monitoring logs may retain inputs/outputs for up
+  to 30 days. Document requests set `store: false` (spec 09), so they are not
+  kept as retrievable Responses application state; the notice says this does
+  not change abuse-monitoring retention. Provider settings, eligibility,
+  exceptions, and policy changes must be reviewed at deployment.
+- Whenever OpenAI is the selected speech provider (`speechProviderKind`), the
+  notice repeats the OpenAI training/30-day statement and data-controls link
+  for speech, whichever provider handles text — for example Claude for text
+  with `OPENAI_API_KEY` still set for speech.
+- Both provider-specific statements describe the provider's own API. The notice
+  says that an operator-configured endpoint (a custom `ANTHROPIC_BASE_URL` or
+  `OPENAI_BASE_URL`, named generically above it) is governed by that service's
+  own terms instead; the operator must disclose those terms.
 - When ElevenLabs is selected, the notice names ElevenLabs and directs the
   operator to reconcile its account's logging/history setting, retention,
   region, contract, subprocessors, deletion, and transfer posture. The product
   does not claim zero retention: availability depends on provider plan/account
   configuration and must be verified by the operator.
-- Attendee playback labels the narration as AI-generated, and moderator audio
-  creation remains subject to the same explicit review/approval gate as other
-  recap content.
+- Attendee playback (session page and Recall catch-up page) labels the
+  narration as AI-generated, and moderator audio creation remains subject to the
+  same explicit review/approval gate as other recap content. Approval is not
+  gated on playback; the notice says moderators are asked to listen first
+  rather than claiming that they do.
 - Custom endpoints require their own training, retention, region, subprocessor,
   security, deletion, and transfer disclosure.
 

@@ -215,6 +215,12 @@ creation snapshots provider, model, and voice together. Script regeneration or
 editing clears the MP3, byte count, and all three speech metadata fields so a
 draft never describes audio that no longer exists.
 
+No migration accompanies the Anthropic port. Model text columns
+(`audio_recaps.model`, recall question sets, feedback syntheses, Ops audit
+steps) now hold the model that served the response — `claude-*` by default,
+possibly a server-side refusal-fallback model — or `gpt-*` on the optional
+OpenAI-compatible adapter. The `tts_provider` constraint is unchanged.
+
 Migration 060 changes newsletters from legacy organization-wide cron artifacts
 to moderator-triggered department/week issues. New rows require `department_id`;
 legacy null-department rows remain readable for migration history but cannot be

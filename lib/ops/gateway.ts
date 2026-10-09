@@ -3,8 +3,10 @@ import type { ZodType } from 'zod'
 import {
   askLlmWithFileInputs,
   askLlmWithUsage,
-  LLM_MODEL,
+  describeLlmError,
   isLlmConfigured,
+  llmModel,
+  type LlmEffort,
   type LlmFileInput,
   type LlmResult,
   type LlmWebSearchOptions,
@@ -18,8 +20,11 @@ import type { OpsRun } from './run'
  * allow-list below, and each call writes an audit step (purpose, model,
  * sha256 prompt hash, token counts — never the raw prompt text) to the run
  * it belongs to. The assistant's tool-use loop (lib/ops/agent-loop.ts) is
- * the one other sanctioned caller of the OpenAI API, because tool calling
- * needs the raw message stream.
+ * the one other sanctioned caller of the LLM provider API, because tool
+ * calling needs the raw message stream; it audits the same way.
+ *
+ * The provider (Anthropic by default, OpenAI-compatible optional) is chosen
+ * in lib/ai/llm.ts; this gateway is provider-neutral.
  */
 
 const OPS_PURPOSES = [
@@ -33,6 +38,23 @@ const OPS_PURPOSES = [
 ] as const
 
 export type OpsPurpose = (typeof OPS_PURPOSES)[number]
+
+/**
+ * Effort per purpose for providers that take an explicit effort (Anthropic:
+ * `output_config.effort`, whose API default would otherwise apply). Sent as
+ * `defaultEffort`, so a caller's explicit `effort` still wins and the
+ * OpenAI-compatible adapter, which ignores `defaultEffort`, sends exactly the
+ * request it sent before. The assistant loop reads its value from here too.
+ */
+export const OPS_PURPOSE_EFFORT: Readonly<Record<OpsPurpose, LlmEffort>> = {
+  feedback_synthesis: 'medium',
+  email_draft: 'low',
+  newsletter: 'medium',
+  low_score_digest: 'low',
+  recall_questions: 'medium',
+  audio_recap: 'high',
+  assistant: 'medium',
+}
 
 export function hashPrompt(system: string, prompt: string): string {
   return createHash('sha256').update(system).update('\0').update(prompt).digest('hex')
@@ -63,7 +85,7 @@ export async function opsInference<T = string>(input: {
   system: string
   prompt: string
   maxTokens?: number
-  effort?: 'low' | 'medium' | 'high'
+  effort?: LlmEffort
   schema?: ZodType<T>
   run?: OpsRun
   stepName?: string
@@ -101,6 +123,7 @@ export async function opsInference<T = string>(input: {
       ? `\nweb_search:${JSON.stringify(input.webSearch)}`
       : ''
     const hash = hashPrompt(system, `${prompt}${fileFingerprint}${researchFingerprint}`)
+    const defaultEffort = OPS_PURPOSE_EFFORT[input.purpose]
     try {
       const result = input.files?.length
         ? await askLlmWithFileInputs({
@@ -108,6 +131,8 @@ export async function opsInference<T = string>(input: {
             prompt,
             files: input.files,
             maxTokens: input.maxTokens,
+            effort: input.effort,
+            defaultEffort,
             webSearch: input.webSearch,
           })
         : await askLlmWithUsage({
@@ -115,12 +140,15 @@ export async function opsInference<T = string>(input: {
             prompt,
             maxTokens: input.maxTokens,
             effort: input.effort,
+            defaultEffort,
             jsonMode: !!input.schema,
           })
       await input.run?.logLlm({
         name,
         purpose: input.purpose,
-        model: result?.model ?? LLM_MODEL,
+        // The model that served the response (a refusal fallback may differ
+        // from the configured one).
+        model: result?.model ?? llmModel(),
         promptHash: hash,
         inputTokens: result?.usage.inputTokens,
         outputTokens: result?.usage.outputTokens,
@@ -129,14 +157,16 @@ export async function opsInference<T = string>(input: {
       return result?.text ?? null
     } catch (err) {
       // Refusal or API failure: audit it and let the caller skip this item
-      // rather than abort the batch.
-      console.error(`Ops inference failed (${input.purpose}):`, err)
+      // rather than abort the batch. The description carries the error
+      // class, status, request id and a capped message, never prompt text.
+      const error = describeLlmError(err)
+      console.error(`Ops inference failed (${input.purpose}): ${error}`)
       await input.run?.logLlm({
         name: `${name}:error`,
         purpose: input.purpose,
-        model: LLM_MODEL,
+        model: llmModel(),
         promptHash: hash,
-        detail: { error: err instanceof Error ? err.message : String(err) },
+        detail: { error },
       })
       return null
     }
