@@ -452,9 +452,19 @@ snapshot described below.
 `GET /api/calendar/ics` is a public, cookie-free ICS feed. The URL contains:
 
 - `orgId`;
-- a deterministic token computed from `orgId + SUPABASE_SERVICE_ROLE_KEY` using a
-  32-bit JavaScript integer hash; and
+- a token: HMAC-SHA256 keyed by the service-role key over
+  `petrios:calendar-feed:v2:<orgId>`, truncated to 128 bits (`lib/calendar-feed.ts`,
+  compared in constant time); and
 - optional `departmentId`.
+
+Only server pages build the URL (`calendarFeedPath` with the viewer's own
+current organisation: the dashboard and the department schedule page); there is
+no client-callable action that mints one. The earlier 32-bit string hash was
+linear in the secret, so one valid pair yielded every organisation's token, and
+the `getCalendarSubscriptionUrl` Server Action minted a token for any `orgId` a
+caller supplied without authentication. Both were removed in the same change;
+every URL issued before it stops working and members copy the new link from
+their dashboard.
 
 After token validation, it returns published organization sessions (optionally
 filtered by department), title, description, times, location, and meeting URL.
@@ -471,16 +481,16 @@ caching.
 
 Security limitations:
 
-- the token is a short, noncryptographic deterministic hash, not an HMAC;
-- it rotates whenever the service-role key changes;
+- it rotates whenever the service-role key changes (every subscriber must copy
+  the link again);
 - it appears in query strings and should be treated as a capability secret;
 - `departmentId` is not cryptographically bound separately—the token authorizes
   the organization feed and the server applies the requested filter; and
 - there is no revocation per subscriber or feed URL.
 
-Do not describe this as strong signed calendar authorization. A replacement must
-use random stored/revocable feed credentials or a modern MAC and preserve legacy
-rotation behavior deliberately.
+The token proves the URL was issued for that organisation; it is not a
+per-subscriber credential. Per-subscriber revocation would need stored random
+feed credentials.
 
 ## Session reminders
 

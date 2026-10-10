@@ -4,19 +4,7 @@ import { icsEventLinks } from '@/lib/ics-event-links'
 import { getMeetingConfig } from '@/lib/meeting/config'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as organizationsDb from '@/lib/db/organizations'
-
-function computeToken(orgId: string): string {
-  // Simple deterministic token: hex-encoded hash of orgId + server secret
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-  let hash = 0
-  const str = orgId + secret
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(16)
-}
+import { calendarFeedSecret, verifyCalendarFeedToken } from '@/lib/calendar-feed'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -28,8 +16,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing orgId or token' }, { status: 400 })
   }
 
-  const expectedToken = computeToken(orgId)
-  if (token !== expectedToken) {
+  if (!verifyCalendarFeedToken(orgId, token, calendarFeedSecret())) {
     return NextResponse.json({ error: 'Invalid token' }, { status: 403 })
   }
 

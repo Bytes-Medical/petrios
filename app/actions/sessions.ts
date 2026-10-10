@@ -244,26 +244,6 @@ export async function deleteSession(sessionId: string) {
   return { success: true }
 }
 
-export async function getCalendarSubscriptionUrl(orgId: string, departmentId?: string) {
-  // Compute a simple token to prevent URL enumeration
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-  let hash = 0
-  const str = orgId + secret
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash
-  }
-  const token = Math.abs(hash).toString(16)
-
-  const params = new URLSearchParams({ orgId, token })
-  if (departmentId) {
-    params.set('departmentId', departmentId)
-  }
-
-  return `/api/calendar/ics?${params.toString()}`
-}
-
 export async function getSessionTeachers(sessionId: string) {
   const orgId = await requireOrg()
   return sessionsDb.listSessionTeachers(orgId, sessionId)

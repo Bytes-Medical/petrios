@@ -5,7 +5,8 @@ import { NavShell } from '@/components/NavShell'
 import { ScheduleManagerPanel } from '@/components/ScheduleManagerPanel'
 import { SessionCalendarLazy as SessionCalendar } from '@/components/SessionCalendarLazy'
 import { getDepartmentSlots, getPublishAudienceMeta } from '@/app/actions/teaching-slots'
-import { getSessionsForOrg, getCalendarSubscriptionUrl } from '@/app/actions/sessions'
+import { getSessionsForOrg } from '@/app/actions/sessions'
+import { calendarFeedPath, calendarFeedSecret } from '@/lib/calendar-feed'
 import { getDepartmentsForOrg } from '@/app/actions/departments'
 import { appDayKey, appTimeZone } from '@/lib/datetime'
 
@@ -34,7 +35,7 @@ export default async function DepartmentSchedulePage(
     getPublishAudienceMeta(params.id),
     getSessionsForOrg(orgId),
     getDepartmentsForOrg(orgId),
-    getCalendarSubscriptionUrl(orgId, params.id),
+    calendarFeedPath(orgId, calendarFeedSecret(), params.id),
   ])
 
   const department = departments.find((d) => d.id === params.id)

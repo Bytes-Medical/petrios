@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser, getCurrentOrgId, isOrgAdmin, isSuperAdmin } from '@/lib/auth'
 import { NavShell } from '@/components/NavShell'
 import { Card } from '@/components/Card'
-import { getSessionsForOrg, getCalendarSubscriptionUrl } from '@/app/actions/sessions'
+import { getSessionsForOrg } from '@/app/actions/sessions'
+import { calendarFeedPath, calendarFeedSecret } from '@/lib/calendar-feed'
 import Link from 'next/link'
 import { getDepartmentsForOrg, getMyModeratedDepartment } from '@/app/actions/departments'
 import { SessionCalendarLazy as SessionCalendar } from '@/components/SessionCalendarLazy'
@@ -90,7 +91,7 @@ export default async function DashboardPage(
     getDepartmentsForOrg(orgId),
     getMyModeratedDepartment(orgId),
     isOrgAdmin(orgId),
-    getCalendarSubscriptionUrl(orgId),
+    calendarFeedPath(orgId, calendarFeedSecret()),
     getMyDepartmentSessions(),
     getMyFeedbackHistory(),
     getMyAttendanceSummary(),
@@ -159,7 +160,7 @@ export default async function DashboardPage(
   // If user is a moderator (not org admin), show simplified view
   if (moderatedDept && !orgAdmin) {
     const departmentSessions = sessions.filter(s => s.department_id === moderatedDept.id)
-    const deptCalendarUrl = await getCalendarSubscriptionUrl(orgId, moderatedDept.id)
+    const deptCalendarUrl = calendarFeedPath(orgId, calendarFeedSecret(), moderatedDept.id)
     return (
       <div className="min-h-screen">
         <NavShell />
