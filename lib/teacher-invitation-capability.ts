@@ -10,9 +10,10 @@
  * they are live, anyone holding the public anon key can list every invite code
  * or rewrite any invitation row, so an invite code proves nothing. Every app
  * path already uses the service role, so nothing depends on those policies;
- * spec/13 ("External teacher invite codes") has the SQL that removes them.
+ * migration 062 removes them (spec/13 "External teacher invite codes"; apply
+ * and verify it with docs/security/rls-lockdown.md).
  *
- * Only after that SQL has been applied (and checked) does the operator set
+ * Only after that migration has been applied (and checked) does the operator set
  * TEACHER_INVITATIONS_RLS_LOCKED=true. Until then (the default) the RSVP page
  * reads the session through RLS only (signed-out visitors see the RSVP form
  * without session details) and external teachers get no embedded room pass;

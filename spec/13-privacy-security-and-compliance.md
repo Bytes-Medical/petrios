@@ -168,42 +168,94 @@ Provider status is derived without exposing secrets:
 ### External teacher invite codes
 
 Migration 017 created two `teacher_invitations` policies with no `TO` clause,
-so they apply to the `anon` role holding the public anon key:
+so they applied to the `anon` role holding the public anon key:
 `Public can read invitation by code` (`FOR SELECT USING (true)`) and
 `Public can respond to invitation` (`FOR UPDATE USING (true) WITH CHECK (true)`).
-No later migration removes them. While they are live, anyone can list every
-invitation (emails, names, invite codes, session and org ids) or rewrite any
-row (for example set `status = 'ACCEPTED'` and a chosen `invite_code`). Every
-application path already uses the service role (`lib/db/teacher-invitations.ts`
-and the other DAL readers), and the triggers that read the table run inside
-service-role or `SECURITY DEFINER` paths, so nothing in the app depends on these
-policies.
+While they are live, anyone can list every invitation (emails, names, invite
+codes, session and org ids) or rewrite any row (for example set
+`status = 'ACCEPTED'` and their own email, which the `SECURITY DEFINER` sync
+trigger turns into an expected teacher). Every application path uses the service
+role (`lib/db/teacher-invitations.ts` and the other DAL readers), and the
+triggers that read the table run inside service-role or `SECURITY DEFINER`
+paths, so nothing in the app depends on these policies.
 
-Until they are removed an invite code proves nothing, so Petrios does not treat
-it as a capability: `TEACHER_INVITATIONS_RLS_LOCKED` (exactly `true`, default
-off, `lib/teacher-invitation-capability.ts`) gates the external teacher's
-moderator room pass (`getExternalTeacherMeetingJoin`) and the RSVP page's
-service-role session read. With it off, external teachers get no embedded
+Migration 062 (`062_lock_down_public_rls.sql`, see Data API lockdown below)
+drops both policies and revokes every table privilege from `anon` and
+`authenticated`; RLS stays enabled with no policy, so the table is
+service-role only. It is applied by hand from the runbook
+`docs/security/rls-lockdown.md`, which includes pre-checks for production drift
+and anon/authenticated post-checks.
+
+Until 062 is applied and verified an invite code proves nothing, so Petrios does
+not treat it as a capability: `TEACHER_INVITATIONS_RLS_LOCKED` (exactly `true`,
+default off, `lib/teacher-invitation-capability.ts`) gates the external
+teacher's moderator room pass (`getExternalTeacherMeetingJoin`) and the RSVP
+page's service-role session read. With it off, external teachers get no embedded
 room pass and signed-out RSVP visitors see the form without session details
 (meet.jit.si rooms and Teams links are unaffected), and the server logs one
 warning per process.
 
-The fix is a database change and therefore needs its own reviewed migration
-(confirm production with the schema-drift check first). The statements are:
+Set the flag only after the runbook post-checks pass (an anonymous
+`GET /rest/v1/teacher_invitations?select=id&limit=1` with the anon key returns
+401 / permission denied). Because the table was readable since 017, any code
+issued before 062 may have been copied, and the flag turns an ACCEPTED code into
+a room pass: before setting it, moderators delete and re-invite external
+teachers on sessions that have not ended (the runbook lists them; there is no
+resend action).
 
-```sql
-DROP POLICY IF EXISTS "Public can read invitation by code" ON public.teacher_invitations;
-DROP POLICY IF EXISTS "Public can respond to invitation" ON public.teacher_invitations;
-REVOKE ALL ON public.teacher_invitations FROM anon;
-```
+### Data API lockdown (migration 062)
 
-RLS stays enabled with no remaining policy, so `authenticated` callers see no
-rows either; the service role is unaffected. After applying it, verify that an
-anonymous `GET /rest/v1/teacher_invitations?select=id&limit=1` with the anon key
-returns no rows (or a permission error), then set
-`TEACHER_INVITATIONS_RLS_LOCKED=true` and redeploy. Invite codes issued before
-the CSPRNG change remain valid; rotate them only if the table may already have
-been read.
+The Supabase Data API (`/rest/v1`) is reachable with the anon key from any
+browser, so RLS and table/function grants are the only boundary for direct
+calls. Migration 062 closes the exposures found in the 2026-10 review:
+
+- `session_feedback` had RLS disabled since 013 (full anonymous read/write of
+  identified feedback). RLS is on; reads are own rows, own-tenant moderators,
+  org admins and super admins; all writes are service-role.
+- `teacher_invitations` is service-role only (above).
+- `SECURITY DEFINER` RPCs that trust caller-supplied ids (attendance v2
+  record/finalize/reopen, group-code rotation, Recall, newsletter claim, legacy
+  `generate_group_code`) were revoked only `FROM PUBLIC`; Supabase grants
+  `EXECUTE` to `anon` and `authenticated` directly, so they stayed callable.
+  They are now `service_role` only.
+- Cross-tenant RLS: `is_org_admin()` and the old `is_department_admin()` check
+  the caller's first organisation, not the row's. Membership, organisation,
+  join-request, session-teacher, attendance-read and evidence policies now use
+  row-scoped helpers (`is_org_member_of`, `is_org_admin_of`,
+  `is_department_moderator_in`, `is_session_moderator_in`);
+  `is_department_admin` and `is_session_faculty` are scoped to the
+  department's/session's own organisation; a session's and a department
+  membership's department must belong to the row's organisation (`NOT VALID`
+  composite foreign keys).
+- Planted rows: org admins (every self-signup user administers a personal
+  workspace) can no longer add a `department_members` row for another
+  tenant's department, a user who is not a member of the organisation, or any
+  new `organization_members` row (no org-admin INSERT policy; org admins may
+  update only `role` and delete rows in organisations they administer). The
+  org-admin policies are split per command so no user's own membership rows
+  become more or less visible, because `getCurrentOrgId()` picks the newest
+  visible own membership.
+- Department codes are assigned only by the server (`departments_assign_code`,
+  drawn from `gen_random_uuid()`); a `SECURITY INVOKER` guard trigger discards
+  codes supplied by browser roles and refuses changes, so codes in use cannot
+  be learned by collision.
+- `certificates` lost its `USING (true)` SELECT policy (public verification is a
+  service-role lookup by code); `departments` (join code, lead signature) and
+  `organizations` are readable only by members and super admins; direct
+  organisation creation is super-admin only.
+- `profiles` identity columns (`email`, `email_verified_at`) are not
+  self-editable; teachers and admins cannot rewrite computed `attendance`
+  directly; anonymous `FEEDBACK` attendance evidence is gone; the legacy
+  `department_join_requests` self-insert policy is removed.
+
+Application gaps that SQL cannot close remain open and are tracked separately:
+`isDepartmentModerator()` (`lib/auth.ts`) treats an org admin of the caller's
+current organisation as moderator of any department (so, for example,
+`getDepartmentMemberUsers` can return another tenant's member emails to any org
+admin), and `approveDepartmentJoinRequest` trusts the request's `org_id` and a
+client-chosen role. Service-role actions gated by those checks must verify the
+department's organisation. Rows planted before 062 and join codes read before
+062 stay until removed or rotated (runbook E3/E4).
 
 ### Room-pass lifetime
 
@@ -807,6 +859,9 @@ Changes to this surface require, at minimum:
 - the Display cookie and GPC disclosures (`e2e/public-pages.spec.ts`) when
   `/privacy`, `/privacy/choices`, or `lib/public-display.ts` changes;
 - production fetch of public pages and headers after deployment;
+- for RLS, grant, or `SECURITY DEFINER` changes, the pre-checks and
+  anon/authenticated post-checks in `docs/security/rls-lockdown.md` (or their
+  equivalent for the new objects) run against the target database by its owner;
 - Petrios Meet join/camera/microphone/rejoin regression in the deployed mode
   (JaaS or self-hosted) where header source, permissions policy, or meeting
   configuration changes, and the meet.jit.si link-out in public mode; and

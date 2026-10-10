@@ -47,11 +47,11 @@ guardrail, not a semantic review of every policy.
 
 | Table | Purpose | Principal ownership/access |
 |---|---|---|
-| `profiles` | Application profile synchronized from `auth.users`; email and display-name source | Authenticated self-read/update plus authorized directory use; synchronization trigger |
-| `organizations` | Root tenant and personal/non-personal organization metadata; `name` is renameable by super admins | Organization members; managers mutate |
-| `organization_members` | User-to-organization role assignment | Member visibility constrained by org; admins mutate |
-| `departments` | Programme partition, join code, configurable attendance/feedback settings, and ordered certificate coordinator defaults; `name` is unique per organization and renameable by moderators/super admins | Organization members according to role and publication rules |
-| `department_members` | User membership, role, and grade in a department | Department/org scoped; administrators mutate |
+| `profiles` | Application profile synchronized from `auth.users`; email and display-name source | Authenticated self-read; self-update limited to display-name columns and `grade` (column grants, 062) so `email`/`email_verified_at` cannot be claimed; synchronization trigger and service DAL write identity |
+| `organizations` | Root tenant and personal/non-personal organization metadata; `name` is renameable by super admins | Readable by members (`is_org_member_of`) and super admins; org admins update only their own (`is_org_admin_of`); creation is super-admin or service-role only |
+| `organization_members` | User-to-organization role assignment | Member visibility constrained by org (unchanged by 062, because `getCurrentOrgId()` uses the newest visible own row); org admins update only `role` (column grant) and delete only in organizations they administer (`is_org_admin_of`, 062); inserts are super-admin or service-role only |
+| `departments` | Programme partition, join code, configurable attendance/feedback settings, and ordered certificate coordinator defaults; `name` is unique per organization and renameable by moderators/super admins | Readable only by members of the department's organization and super admins (the join code and lead signature are not public); the code is assigned by the `departments_assign_code` `SECURITY DEFINER` trigger (from `gen_random_uuid()`) so uniqueness sees every tenant, and the `departments_aa_guard_code` trigger stops browser roles supplying or changing it |
+| `department_members` | User membership, role, and grade in a department | Department/org scoped; the department must belong to the row's organization (`department_members_department_org_fkey`, `NOT VALID` for pre-062 rows); org admins write only in organizations they administer, for departments of that organization and users already in it (062); live writes use the service DAL |
 | `super_admins` | Global platform administrator allow-list | Authorization seam/service use; never inferred from org role |
 
 The profile synchronization trigger makes a profile row for auth users and keeps
@@ -65,7 +65,7 @@ deduplication.
 | Table | Purpose | Important behavior |
 |---|---|---|
 | `department_invite_links` | Reusable 12-character department invite capability | Rotating the link invalidates the previous code |
-| `department_join_requests` | Older authenticated-user request for a department and role; status is pending/approved/rejected | Self-insert RLS plus administrator decision paths; actions/components remain but are not mounted by a current page |
+| `department_join_requests` | Older authenticated-user request for a department and role; status is pending/approved/rejected | No client insert policy since 062 (the legacy flow is unmounted and its approval trusts request scope); own-row and own-tenant moderator reads; decisions through the service DAL |
 | `member_onboarding_requests` | Current invite/code onboarding request with submitted identity, grade, auth-link type, and movement state | Public begin flow writes through controlled service DAL; authenticated email-owner finalization is privileged |
 | `login_link_requests` | Passwordless-link rate-limit counters | Per-email and per-IP windows; old rows pruned opportunistically |
 | `organization_join_requests` | Legacy organization-join schema | No active runtime path in the current application |
@@ -77,9 +77,9 @@ Capability resolution and state transitions remain in actions/DAL functions.
 
 | Table | Purpose | Key relationships and constraints |
 |---|---|---|
-| `sessions` | Scheduled teaching event | Belongs to organization and department; has creator, status, type, time, location, reminder/report watermarks, attendance policy/phase/revision, and secure group-code verifier |
-| `session_teachers` | Registered-account teacher assignment/RSVP | Session + user identity; status is `PENDING`, `ACCEPTED`, or `DECLINED` |
-| `teacher_invitations` | External-email teacher invitation and public RSVP | Session, normalized email, invite code, RSVP state, identity/contact fields |
+| `sessions` | Scheduled teaching event | Belongs to organization and department (the department must belong to the same organization: `sessions_department_org_fkey`, `NOT VALID` for pre-062 rows); has creator, status, type, time, location, reminder/report watermarks, attendance policy/phase/revision, and secure group-code verifier |
+| `session_teachers` | Registered-account teacher assignment/RSVP | Session + user identity; status is `PENDING`, `ACCEPTED`, or `DECLINED`; client writes require moderating the session in the row's own organization (`is_session_moderator_in`) |
+| `teacher_invitations` | External-email teacher invitation and public RSVP | Session, normalized email, invite code, RSVP state, identity/contact fields; service-role only since 062 (no browser policies or grants) |
 | `teacher_emails` | Historical/manual teacher email metadata | Session-linked communication record |
 | `external_contacts` | Organization address-book identity outside auth | Case-insensitive organization email uniqueness; archive/reactivate state |
 | `contact_groups` | Named organization contact group | Case-insensitive group-name uniqueness within an organization |
@@ -99,7 +99,7 @@ claim compare-and-set and audience snapshot.
 | Table | Purpose | Mutability |
 |---|---|---|
 | `attendance_evidence` | Source observation for exactly one user or external email at a session | Append-only application/RLS posture; policy-v2 writes use a transactional service RPC |
-| `attendance` | Materialized deterministic result (`PRESENT`, `LATE`, `ABSENT`, `EXCUSED`) | Provisional derivation until locked/stamped with a final revision |
+| `attendance` | Materialized deterministic result (`PRESENT`, `LATE`, `ABSENT`, `EXCUSED`) | Provisional derivation until locked/stamped with a final revision; written only by `SECURITY DEFINER` RPCs and the service role (no client write grants since 062) |
 | `session_participants` | Expected/optional/excused session roster snapshot | Deny-all; evidence adds optional subjects and finalization snapshots expected members/teachers |
 | `session_activity_events` | Governed session operation projection | Deny-all, append-only application convention; not a complete security audit |
 | `attendance_code_attempts` | Per-user and HMAC-pseudonymized-IP group-code throttle events | Deny-all technical/security log |
@@ -130,11 +130,11 @@ Generic evidence writers cannot invoke this source.
 
 | Table | Purpose | Important behavior |
 |---|---|---|
-| `session_feedback` | Submitted identity snapshot, configurable answer snapshot, derived rating/comment | Public/accountless submission path; moderator raw access |
+| `session_feedback` | Submitted identity snapshot, configurable answer snapshot, derived rating/comment | Public/accountless submission through the service DAL; RLS (enabled by 062, never by 013) allows reads by own-tenant moderators, org admins, super admins, and the respondent's own rows; no client writes |
 | `feedback_actions` | Legacy “You said, we did” records | Inactive historical storage; no current read, write, management, or public surface |
 | `teacher_feedback_reports` | Moderator-approved, versioned aggregate release snapshot | Deny-all; deterministic analytics plus optional exact reviewed AI-assisted narrative; content changes create a new version |
 | `session_deliveries` | Per-recipient report, invitation, certificate, or session-reminder delivery ledger and recoverable send claim | Deny-all; unique natural delivery identity `(session_id, recipient_email, delivery_type, related_id)`, 15-minute stale-claim recovery; `SENT` is reclaimable only for an explicit moderator feedback resend |
-| `certificates` | Issued metadata, public code, finalized revision, recognition basis, coordinator snapshot, and validity/revocation state | Database eligibility trigger; attendee recognition requires current finalized attendance and correct live/catch-up basis, while teacher recognition requires an accepted assignment/invitation; partial uniqueness permits one current `VALID` subject/session/role row |
+| `certificates` | Issued metadata, public code, finalized revision, recognition basis, coordinator snapshot, and validity/revocation state | No public SELECT (verification by code is a service DAL lookup); recipients read their own rows and own-tenant moderators their department's; database eligibility trigger; attendee recognition requires current finalized attendance and correct live/catch-up basis, while teacher recognition requires an accepted assignment/invitation; partial uniqueness permits one current `VALID` subject/session/role row |
 
 Feedback stores the submitter's first name, last name, and email; “public form”
 does not mean anonymous storage. A per-session submission key limits one response
@@ -257,12 +257,37 @@ Profiles, reflections, and notifications contain rows with a clear user owner.
 The user may read or mutate only the supported self operation. Service-created
 rows, such as notification inserts, need no public insert policy.
 
+### Tenant helper functions
+
+Policies scope to the row's organization with the `SECURITY DEFINER` helpers
+from migration 062: `is_org_member_of(org)`, `is_org_admin_of(org)`,
+`is_department_moderator_in(org, department)` (org admin of that organization,
+or a department moderator there, and the department must belong to it), and
+`is_session_moderator_in(org, session)`. They answer only about `auth.uid()`
+and are granted to `authenticated`, not `anon`. Do not write a new policy that
+relies on `is_org_admin()` alone or on `get_user_org_id()` for anything but
+the caller's primary organization: both resolve the caller's first membership
+(`LIMIT 1`, unordered), not the row's tenant, which is how the pre-062
+cross-tenant holes arose. `is_department_admin(dept)` and
+`is_session_faculty(sess)` are kept for existing policies and are scoped to the
+department's/session's own organization since 062.
+
+Do not change which of a user's own `organization_members` or
+`department_members` rows are visible: `getCurrentOrgId()` picks the newest
+visible own membership and the `lib/auth.ts` role checks read visible rows, so
+extra visibility silently switches tenants. A scoped `FOR ALL` policy grants
+SELECT too, so write per-command INSERT/UPDATE/DELETE policies on these tables
+(062 does). Org admins have no INSERT policy on `organization_members`.
+
 ### Capability-mediated public policies
 
 Invite/claim/feedback flows are entered without a normal membership. Access is
-still narrowed by code, expiry/state, and a record-specific capability. Broad SQL
-policies in older migrations must not be treated as sufficient authorization;
-the server action/DAL predicate is part of the boundary.
+still narrowed by code, expiry/state, and a record-specific capability, and is
+resolved by the service DAL: since migration 062 no table carries a
+`USING (true)` policy for these flows (the old `teacher_invitations`,
+`certificates`, and anonymous feedback-insert policies are gone). The server
+action/DAL predicate is the boundary; a new public flow must not add a broad SQL
+policy instead.
 
 ### Deny-all service tables
 
@@ -293,6 +318,15 @@ Supabase browser session or the operation is intentionally system-wide, such as:
 It is not a convenience for avoiding a failing policy. A new service function
 must take the narrowest trusted identifier set. Request-body `org_id` is never
 sufficient by itself.
+
+A `SECURITY DEFINER` function that trusts caller-supplied ids must be
+`REVOKE ALL ... FROM PUBLIC, anon, authenticated` and granted to
+`service_role` only. `FROM PUBLIC` alone is not enough on Supabase: default
+privileges grant `EXECUTE` to `anon` and `authenticated` directly, which is how
+the attendance, Recall, and newsletter RPCs stayed callable from browsers until
+migration 062. Helpers that policies call as the querying role are granted to
+`authenticated` explicitly. `docs/security/rls-lockdown.md` has read-only
+queries for checking grants and policies against a live database.
 
 ## Constraints, concurrency, and idempotency
 

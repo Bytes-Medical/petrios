@@ -92,10 +92,11 @@ docs/cloudflare-workers.md.
 External teachers (no Petrios account) join token-protected rooms from their
 invitation (RSVP) link. Their invite code only unlocks a room pass when
 `TEACHER_INVITATIONS_RLS_LOCKED=true`. Set it **only after** the database fix
-in spec/13 "External teacher invite codes" has been reviewed, applied as a
-migration and verified: migration 017 left the `teacher_invitations` table
-readable and writable with the public anon key, so until then anyone could
-obtain or forge an invite code. Until the flag is on, external teachers see a
+(migration 062; spec/13 "External teacher invite codes") has been applied and
+verified with the runbook `docs/security/rls-lockdown.md`: migration 017 left
+the `teacher_invitations` table readable and writable with the public anon key,
+so until then anyone could obtain or forge an invite code. Re-invite external
+teachers on upcoming sessions first (runbook section E). Until the flag is on, external teachers see a
 notice to contact the organiser instead of the room; members are unaffected.
 
 ## 5. Verify after deploy

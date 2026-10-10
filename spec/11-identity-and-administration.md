@@ -210,7 +210,16 @@ Two exported read actions deserve particular care if this UI is restored:
   any actor/tenant check.
 
 The latter is not imported by a mounted client today, but it must be authorization-
-gated before reuse. The audit dashboard counts pending rows from this older table,
+gated before reuse.
+
+Since migration 062 the table has no client INSERT policy, so
+`createDepartmentJoinRequest` fails through RLS. Before restoring the flow,
+`approveDepartmentJoinRequest` must check that the department belongs to
+`request.org_id` and that the approver moderates that organization (the
+current `isDepartmentModerator()` accepts an org admin of the approver's own
+organization for any department), and must not accept a role above the
+requested one; only then add a self-insert policy that also requires the
+department to belong to the request's organization. The audit dashboard counts pending rows from this older table,
 not current `member_onboarding_requests`.
 
 ## Department onboarding state machine
