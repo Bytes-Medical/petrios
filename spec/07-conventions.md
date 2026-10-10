@@ -100,6 +100,42 @@ tenant, then check the role derived from that target. A client-supplied
 `departmentId` must not authorize a session from another department. API routes
 must self-authenticate because `/api/*` bypasses the proxy.
 
+### Department and session moderation
+
+`isDepartmentModerator` / `requireDepartmentModerator(departmentId)` resolve
+the department's owning organisation on the server (service-role
+`findDepartmentOrgId`) and decide in the pure `lib/department-authz.ts`:
+
+- a super admin may moderate any department;
+- anyone else must be working in the department's organisation (their current
+  org from `requireOrg()`), and be org_admin of it or hold a
+  `department_members` moderator row whose `department_id` **and** `org_id`
+  match it (a row stamped with another org never counts).
+
+`requireDepartmentModerator` returns `{ orgId }` — the department's
+organisation. Department-id actions scope every follow-up read and write with
+that `orgId` (slot inserts, session inserts, audience resolution, member
+removal) instead of trusting the client's pairing of org and department.
+`requireSessionModerator(sessionId)` is the session-level form: it looks the
+session up in the current org and then applies the department rule.
+Org-scoped reads that receive an `orgId` argument from a server component call
+`requireOrgScope(orgId)` (current org, or any org for a super admin).
+`updateSession` edits only the allow-listed descriptive fields in
+`lib/session-updates.ts`; ownership and attendance/group-code fields are
+rejected. Service-role DAL listings of department members take a required
+`orgId` so a session or slot bound to another tenant's department reaches
+nobody.
+
+`removeDepartmentMember` (which also deletes the target's organisation
+membership) refuses a target who is not a member of that department in that
+organisation, and never removes an administrator: department role
+`department_admin`/`org_admin`, organisation role `department_admin`/`org_admin`,
+or a `department_admin` row for any department of the organisation (so one
+department's moderator cannot evict a peer moderator). Approving a department
+join request grants the stored `trainee`/`faculty` role but never demotes a
+higher role the requester already holds in that department (read scoped to the
+request's organisation) or organisation.
+
 ### Error vocabulary
 
 DAL modules use:

@@ -162,7 +162,7 @@ export async function getNewsletterWorkspace(): Promise<NewsletterWorkspace> {
   const departments = await newsletterDepartments(userId, orgId)
   const [issues, memberCounts] = await Promise.all([
     opsDb.listNewsletterIssues(orgId, departments.map((department) => department.id)),
-    Promise.all(departments.map((department) => departmentsDb.countDepartmentMembers(department.id))),
+    Promise.all(departments.map((department) => departmentsDb.countDepartmentMembers(department.id, orgId))),
   ])
   // Only an apparently untouched issue needs the ledger lock check: any SENT
   // or SENDING row (a cut-off run) keeps it locked although sent_count is 0.

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
-import { requireAuth, requireDepartmentModerator, requireOrg } from '@/lib/auth'
+import { requireAuth, requireDepartmentModerator, requireOrg, requireOrgScope } from '@/lib/auth'
 import {
   assertSessionCanBePublished,
   assertValidSessionDates,
@@ -13,6 +13,7 @@ import {
   isAllowedNewSessionDuration,
 } from '@/lib/session-duration'
 import { MAX_SESSION_OCCURRENCES } from '@/lib/session-recurrence'
+import { pickEditableSessionUpdates } from '@/lib/session-updates'
 import type { LocationType, Session, SessionStatus } from '@/lib/types'
 import * as sessionsDb from '@/lib/db/sessions'
 import * as slotsDb from '@/lib/db/teaching-slots'
@@ -31,8 +32,9 @@ export async function createSession(sessionData: {
   session_type?: string
 }) {
   const userId = await requireAuth()
-  const orgId = await requireOrg()
-  await requireDepartmentModerator(sessionData.department_id)
+  // Sessions are created under the organisation that owns the department
+  // (resolved on the server), never a department of another tenant.
+  const { orgId } = await requireDepartmentModerator(sessionData.department_id)
   if (!isAllowedNewSessionDuration(sessionData.duration_mins)) {
     throw new Error('Choose a duration between 30 minutes and 4 hours, or Full day')
   }
@@ -82,6 +84,7 @@ export async function createSession(sessionData: {
 }
 
 export async function getSessionsForOrg(orgId: string, departmentId?: string) {
+  await requireOrgScope(orgId)
   return sessionsDb.listSessionsByOrg(orgId, { departmentId })
 }
 
@@ -100,13 +103,16 @@ export async function getSession(id: string) {
 
 export async function updateSession(id: string, updates: Partial<Session>) {
   const orgId = await requireOrg()
+  // Only descriptive fields are editable here; ownership (department, org,
+  // creator) and attendance/group-code state are rejected (spec/07).
+  const editable = pickEditableSessionUpdates(updates)
   const normalizedUpdates =
-    updates.teams_meeting_url === undefined
-      ? updates
+    editable.teams_meeting_url === undefined
+      ? editable
       : {
-          ...updates,
+          ...editable,
           teams_meeting_url: normalizeSessionMeetingUrl(
-            updates.teams_meeting_url
+            editable.teams_meeting_url
           ),
         }
 

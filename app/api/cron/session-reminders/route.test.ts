@@ -27,6 +27,9 @@ const db = vi.hoisted(() => ({
     teams_meeting_url: string | null
   },
   memberIds: [] as string[],
+  /** Organisation whose department_members rows hold memberIds. */
+  memberOrgId: 'org-1',
+  memberLookups: [] as [string, string][],
   externals: [] as { email: string; first_name: string | null; last_name: string | null; invite_code: string }[],
   sent: [] as SentEmail[],
   reminderMarked: [] as string[],
@@ -54,7 +57,10 @@ vi.mock('@/lib/db/sessions', () => ({
   },
 }))
 vi.mock('@/lib/db/departments', () => ({
-  listDepartmentMemberUserIds: async () => db.memberIds,
+  listDepartmentMemberUserIds: async (departmentId: string, orgId: string) => {
+    db.memberLookups.push([departmentId, orgId])
+    return orgId === db.memberOrgId ? db.memberIds : []
+  },
   findDepartmentPublic: async () => ({ name: 'Renal Medicine' }),
 }))
 vi.mock('@/lib/db/onboarding', () => ({
@@ -113,6 +119,8 @@ beforeEach(() => {
     teams_meeting_url: null,
   }
   db.memberIds = ['trainee-1']
+  db.memberOrgId = 'org-1'
+  db.memberLookups = []
   db.externals = [{ email: 'grace@external.example', first_name: 'Grace', last_name: 'Hopper', invite_code: 'Xy7Kp2Qa' }]
   db.sent = []
   db.reminderMarked = []
@@ -162,5 +170,26 @@ describe('session reminder links', () => {
     await run()
     expect(db.sent.map((sent) => sent.to)).toEqual(['trainee-1@nhs.example'])
     expect(db.sent[0].html).not.toContain('teacher-rsvp')
+  })
+})
+
+describe('session reminder tenant scope', () => {
+  it('looks department members up inside the session organisation only', async () => {
+    const response = await run()
+    expect(response.status).toBe(200)
+    expect(db.memberLookups).toEqual([['dept-1', 'org-1']])
+    expect(db.sent.map((sent) => sent.to)).toContain('trainee-1@nhs.example')
+  })
+
+  it('never reminds members of a department owned by another organisation', async () => {
+    // A session row bound to a foreign department (possible before the
+    // composite key in migration 062) must not email that department.
+    db.memberOrgId = 'victim-org'
+    db.externals = []
+
+    const response = await run()
+    expect(response.status).toBe(200)
+    expect(db.sent).toEqual([])
+    expect(db.reminderMarked).toEqual([SESSION_ID])
   })
 })

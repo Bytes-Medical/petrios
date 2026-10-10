@@ -678,10 +678,12 @@ export async function hasDepartmentAdminRole(input: {
     .eq('org_id', input.orgId)
     .eq('user_id', input.userId)
     .eq('role', 'department_admin')
-    .maybeSingle()
+    // Existence check: a moderator of several departments has several rows,
+    // which .maybeSingle() would turn into an error.
+    .limit(1)
 
   if (error) throw toDbError('Failed to load department roles', error)
-  return !!data
+  return ((data as unknown[] | null) ?? []).length > 0
 }
 
 export async function deleteDepartmentMembershipsForOrgUser(input: {

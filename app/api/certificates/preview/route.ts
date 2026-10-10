@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
+import { requireAuth, requireDepartmentModerator } from '@/lib/auth'
 import { getAppUrlFromHeaders } from '@/lib/app-url'
 import { generateCertificatePDF } from '@/lib/certificates/pdf'
 import { formatAppDate } from '@/lib/datetime'
@@ -10,17 +10,18 @@ import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators
 export async function GET(request: NextRequest) {
   try {
     await requireAuth()
-    const orgId = await requireOrg()
 
     const departmentId = request.nextUrl.searchParams.get('departmentId')
     if (!departmentId) {
       return NextResponse.json({ error: 'departmentId required' }, { status: 400 })
     }
 
-    await requireDepartmentModerator(departmentId)
+    // The department's own organisation (resolved on the server) scopes both
+    // the settings read and the organisation name on the preview.
+    const { orgId } = await requireDepartmentModerator(departmentId)
 
     const [dept, orgName] = await Promise.all([
-      departmentsDb.findDepartmentCertificateSettings(departmentId),
+      departmentsDb.findDepartmentCertificateSettings(departmentId, orgId),
       organizationsDb.findOrganizationName(orgId),
     ])
 

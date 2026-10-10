@@ -115,7 +115,8 @@ export interface DepartmentSettingsRow {
 }
 
 export async function findDepartmentCertificateSettings(
-  departmentId: string
+  departmentId: string,
+  orgId: string
 ): Promise<{
   name: string
   lead_name: string | null
@@ -126,6 +127,7 @@ export async function findDepartmentCertificateSettings(
     .from('departments')
     .select('name, lead_name, certificate_coordinator_names')
     .eq('id', departmentId)
+    .eq('org_id', orgId)
     .maybeSingle()
 
   if (error) throw toDbError('Failed to fetch department certificate settings', error)
@@ -233,26 +235,28 @@ export async function updateDepartmentFeedbackFormFields(
 // Department members
 // -----------------------------------------------------------------------------
 
-export async function insertDepartmentMember(input: {
-  orgId: string
+/**
+ * org_id values of the caller's own moderator rows (department_admin or the
+ * legacy department-level org_admin) for one department. RLS client: a user
+ * reads their own membership rows. lib/auth.ts compares the org ids with the
+ * department's owning organisation, so a row whose org_id disagrees with the
+ * department (planted before migration 062's composite key) never grants
+ * moderation.
+ */
+export async function listDepartmentModeratorOrgIds(
+  userId: string,
   departmentId: string
-  userId: string
-  role: UserRole
-}): Promise<DepartmentMember> {
+): Promise<string[]> {
   const db = await getDb()
   const { data, error } = await db
     .from('department_members')
-    .insert({
-      org_id: input.orgId,
-      department_id: input.departmentId,
-      user_id: input.userId,
-      role: input.role,
-    })
-    .select()
-    .single()
+    .select('org_id')
+    .eq('department_id', departmentId)
+    .eq('user_id', userId)
+    .in('role', ['department_admin', 'org_admin'])
 
-  if (error) throw toDbError('Failed to add department member', error)
-  return data as DepartmentMember
+  if (error) throw toDbError('Failed to load department moderator roles', error)
+  return ((data as { org_id: string }[] | null) ?? []).map((row) => row.org_id)
 }
 
 export async function listDepartmentMembers(
@@ -287,13 +291,23 @@ export async function listDepartmentNames(
   )
 }
 
-/** Service-role count for audience previews; caller gates authorization. */
-export async function countDepartmentMembers(departmentId: string): Promise<number> {
+/**
+ * Service-role count for audience previews; caller gates authorization.
+ * Pass the department's organisation so a row whose org_id disagrees with the
+ * department is never counted. `orgId` is optional only for the Ops dashboard
+ * caller, which counts departments it has already listed by organisation.
+ */
+export async function countDepartmentMembers(
+  departmentId: string,
+  orgId?: string
+): Promise<number> {
   const db = await getServiceDb()
-  const { count, error } = await db
+  let query = db
     .from('department_members')
     .select('id', { count: 'exact', head: true })
     .eq('department_id', departmentId)
+  if (orgId) query = query.eq('org_id', orgId)
+  const { count, error } = await query
 
   if (error) throw toDbError('Failed to count department members', error)
   return count ?? 0
@@ -302,17 +316,22 @@ export async function countDepartmentMembers(departmentId: string): Promise<numb
 /**
  * Returns the user ids of every member of a department, regardless of role.
  * Uses a service-role client so it can run in flows where the current user
- * context may not cover the target department. Authorization is the
- * caller's responsibility.
+ * context may not cover the target department (the reminder cron). The
+ * required `orgId` is the organisation the caller is acting for (the
+ * authorized department's org, or the session's org): rows from any other
+ * organisation are never returned, so a session or slot bound to a foreign
+ * department reaches nobody. Authorization is the caller's responsibility.
  */
 export async function listDepartmentMemberUserIds(
-  departmentId: string
+  departmentId: string,
+  orgId: string
 ): Promise<string[]> {
   const db = await getServiceDb()
   const { data, error } = await db
     .from('department_members')
     .select('user_id')
     .eq('department_id', departmentId)
+    .eq('org_id', orgId)
 
   if (error) throw toDbError('Failed to list department member user ids', error)
   return ((data as { user_id: string }[] | null) ?? []).map((row) => row.user_id)
@@ -330,29 +349,51 @@ export async function listModeratedDepartments(
   const db = await getDb()
   const { data, error } = await db
     .from('department_members')
-    .select('departments:department_id (id, name, department_code)')
+    .select('departments:department_id (id, name, department_code, org_id)')
     .eq('user_id', userId)
     .eq('org_id', orgId)
     .eq('role', 'department_admin')
 
   if (error) throw toDbError('Failed to list moderated departments', error)
 
-  type Row = {
-    departments:
-      | { id: string; name: string; department_code: string }
-      | { id: string; name: string; department_code: string }[]
-      | null
-  }
+  type Embedded = { id: string; name: string; department_code: string; org_id: string }
+  type Row = { departments: Embedded | Embedded[] | null }
 
   const rows = (data as Row[] | null) ?? []
+  // A membership row whose org_id disagrees with its department (planted
+  // before migration 062's composite key) must not surface another tenant's
+  // department or its join code.
   return rows.flatMap((row) => {
     if (!row.departments) return []
-    return Array.isArray(row.departments) ? row.departments : [row.departments]
+    const departments = Array.isArray(row.departments) ? row.departments : [row.departments]
+    return departments
+      .filter((department) => department.org_id === orgId)
+      .map(({ id, name, department_code }) => ({ id, name, department_code }))
   })
+}
+
+/** Service-role: a member's role in one department of one organisation. */
+export async function findDepartmentMemberRole(input: {
+  departmentId: string
+  orgId: string
+  userId: string
+}): Promise<UserRole | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('department_members')
+    .select('role')
+    .eq('department_id', input.departmentId)
+    .eq('org_id', input.orgId)
+    .eq('user_id', input.userId)
+    .limit(1)
+
+  if (error) throw toDbError('Failed to load department membership', error)
+  return ((data as { role: UserRole }[] | null) ?? [])[0]?.role ?? null
 }
 
 export async function deleteDepartmentMember(
   departmentId: string,
+  orgId: string,
   userId: string
 ): Promise<void> {
   const db = await getServiceDb()
@@ -360,6 +401,7 @@ export async function deleteDepartmentMember(
     .from('department_members')
     .delete()
     .eq('department_id', departmentId)
+    .eq('org_id', orgId)
     .eq('user_id', userId)
 
   if (error) throw toDbError('Failed to remove department member', error)

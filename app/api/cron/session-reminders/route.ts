@@ -79,7 +79,9 @@ export async function GET(request: NextRequest) {
       // accepted — registered teachers from other departments and external
       // (invitation-only) teachers alike.
       const [memberIds, acceptedTeacherIds, externalTeachers] = await Promise.all([
-        departmentsDb.listDepartmentMemberUserIds(session.department_id),
+        // Scoped to the session's organisation: a session bound to another
+        // tenant's department never reaches that department's members.
+        departmentsDb.listDepartmentMemberUserIds(session.department_id, session.org_id),
         sessionsDb.listAcceptedSessionTeacherUserIdsAsSystem(session.id),
         teacherInvitationsDb.listAcceptedInvitationRecipientsAsSystem(session.id),
       ])

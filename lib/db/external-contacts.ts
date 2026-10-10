@@ -1,7 +1,7 @@
 import type { ContactGroupWithCount, ExternalContact } from '@/lib/types'
 import { mergeContactNames, normalizeContactEmail } from '@/lib/contacts'
 import { getServiceDb } from './client'
-import { toDbError } from './errors'
+import { DbNotFoundError, toDbError } from './errors'
 import { unwrapEmbed } from './unwrap'
 
 /**
@@ -286,17 +286,44 @@ export async function listGroupMemberContacts(
 
   if (error) throw toDbError('Failed to list group members', error)
 
+  // A membership row planted before addContactToGroup checked ownership could
+  // point at another tenant's contact: only this organisation's contacts count.
   return ((data as { external_contacts: ExternalContact | ExternalContact[] | null }[] | null) ?? [])
     .map((row) => unwrapEmbed(row.external_contacts))
-    .filter((c): c is ExternalContact => !!c)
+    .filter((c): c is ExternalContact => !!c && c.org_id === orgId)
 }
 
+/**
+ * Adds a contact to a group after checking that BOTH belong to `orgId`: the
+ * membership table has no composite foreign keys, so without this check a
+ * manager could attach another tenant's contact (and read it back through
+ * the group) by id. Throws DbNotFoundError when either is foreign or missing.
+ */
 export async function addContactToGroup(input: {
   orgId: string
   groupId: string
   contactId: string
 }): Promise<void> {
   const db = await getServiceDb()
+  const [groupRes, contactRes] = await Promise.all([
+    db
+      .from('contact_groups')
+      .select('id')
+      .eq('id', input.groupId)
+      .eq('org_id', input.orgId)
+      .maybeSingle(),
+    db
+      .from('external_contacts')
+      .select('id')
+      .eq('id', input.contactId)
+      .eq('org_id', input.orgId)
+      .maybeSingle(),
+  ])
+  if (groupRes.error) throw toDbError('Failed to look up contact group', groupRes.error)
+  if (contactRes.error) throw toDbError('Failed to look up contact', contactRes.error)
+  if (!groupRes.data) throw new DbNotFoundError('Contact group not found')
+  if (!contactRes.data) throw new DbNotFoundError('Contact not found')
+
   const { error } = await db.from('contact_group_members').insert({
     org_id: input.orgId,
     group_id: input.groupId,
@@ -363,7 +390,10 @@ export async function listContactsInGroups(
   const byId = new Map<string, ExternalContact>()
   for (const row of (data as { external_contacts: ExternalContact | ExternalContact[] | null }[] | null) ?? []) {
     const contact = unwrapEmbed(row.external_contacts)
-    if (contact && !contact.archived_at) byId.set(contact.id, contact)
+    // Never fan out to another tenant's contact (see listGroupMemberContacts).
+    if (contact && contact.org_id === orgId && !contact.archived_at) {
+      byId.set(contact.id, contact)
+    }
   }
   return Array.from(byId.values())
 }

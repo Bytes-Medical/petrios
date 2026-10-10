@@ -320,8 +320,18 @@ export async function generateMemberAttendanceReportPDF(
     departmentNames = allDepts.map((d) => d.name)
   } else {
     const moderatedDepts = await getMyModeratedDepartments()
+    if (moderatedDepts.length === 0) {
+      throw new Error('No audit access')
+    }
     departmentIds = moderatedDepts.map((d) => d.id)
     departmentNames = moderatedDepts.map((d) => d.name)
+  }
+
+  // The report names the member (service-role profile read), so it is only
+  // produced for a member of the caller's own organisation.
+  const memberRole = await onboardingDb.findOrganizationMembershipRole({ orgId, userId })
+  if (!memberRole) {
+    throw new Error('Member not found in this organization')
   }
 
   // Get member profile

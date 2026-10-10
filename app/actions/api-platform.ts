@@ -4,7 +4,12 @@ import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { isOrgAdmin, requireAuth, requireOrg } from '@/lib/auth'
 import { API_SCOPES, generateApiToken, type ApiScope } from '@/lib/api/auth'
-import { WEBHOOK_EVENTS, isBlockedWebhookUrl, type WebhookEvent } from '@/lib/webhooks'
+import {
+  WEBHOOK_EVENTS,
+  isBlockedWebhookUrl,
+  webhookPrivateTargetsAllowed,
+  type WebhookEvent,
+} from '@/lib/webhooks'
 import * as apiPlatformDb from '@/lib/db/api-platform'
 import type { ApiToken, WebhookDelivery, WebhookEndpoint } from '@/lib/db/api-platform'
 
@@ -92,7 +97,9 @@ export async function createWebhookEndpoint(
 ): Promise<{ secret: string; endpoint: WebhookView }> {
   const { userId, orgId } = await requireOrgAdminContext()
 
-  if (isBlockedWebhookUrl(url, process.env.NODE_ENV === 'production')) {
+  // Same guard as delivery, in every environment; local listeners need the
+  // explicit WEBHOOK_ALLOW_PRIVATE=true opt-in (spec/09).
+  if (isBlockedWebhookUrl(url, { allowPrivate: webhookPrivateTargetsAllowed() })) {
     throw new Error('Webhook URL must be a public http(s) address')
   }
   const validEvents = events.filter((e): e is WebhookEvent =>

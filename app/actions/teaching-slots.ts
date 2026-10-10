@@ -58,8 +58,9 @@ export async function createTeachingSlots(
   }
 ) {
   const userId = await requireAuth()
-  const orgId = await requireOrg()
-  await requireDepartmentModerator(departmentId)
+  // The department's organisation, resolved on the server: slots are always
+  // written under the organisation that owns the department.
+  const { orgId } = await requireDepartmentModerator(departmentId)
 
   // buildSlotDrafts validates the parent range (30 min – 4 h); lightning
   // micro-slots come from splitting that validated range afterwards.
@@ -150,8 +151,9 @@ export async function publishSlots(
   }
 ) {
   const userId = await requireAuth()
-  const orgId = await requireOrg()
-  await requireDepartmentModerator(departmentId)
+  // Audiences (department members, org members, contact groups) and the
+  // slots are all resolved inside the department's own organisation.
+  const { orgId } = await requireDepartmentModerator(departmentId)
 
   if (input.slotIds.length === 0) {
     throw new Error('Select at least one slot to publish')
@@ -176,7 +178,7 @@ export async function publishSlots(
   // Resolve audiences.
   const memberIds = new Set<string>()
   if (input.allDepartmentMembers) {
-    for (const id of await departmentsDb.listDepartmentMemberUserIds(departmentId)) {
+    for (const id of await departmentsDb.listDepartmentMemberUserIds(departmentId, orgId)) {
       memberIds.add(id)
     }
   }
@@ -548,12 +550,11 @@ export async function claimSlotByCode(
 
 /** Groups + audience counts for the publish dialog (lean: no member lists). */
 export async function getPublishAudienceMeta(departmentId: string) {
-  const orgId = await requireOrg()
-  await requireDepartmentModerator(departmentId)
+  const { orgId } = await requireDepartmentModerator(departmentId)
 
   const [groups, deptMemberCount, orgMemberCount] = await Promise.all([
     contactsDb.listGroupsWithCounts(orgId),
-    departmentsDb.countDepartmentMembers(departmentId),
+    departmentsDb.countDepartmentMembers(departmentId, orgId),
     onboardingDb.countOrganizationMembers(orgId),
   ])
   return { groups, deptMemberCount, orgMemberCount }

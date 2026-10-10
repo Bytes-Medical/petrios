@@ -5,8 +5,10 @@ import {
   getCurrentOrgId,
   requireAuth,
   requireOrg,
+  requireOrgScope,
   requireDepartmentModerator,
 } from '@/lib/auth'
+import { departmentMemberRemovalBlock } from '@/lib/department-authz'
 import { normalizeDepartmentFeedbackFields } from '@/lib/feedback-form'
 import * as departmentsDb from '@/lib/db/departments'
 import * as onboardingDb from '@/lib/db/onboarding'
@@ -31,6 +33,9 @@ export async function createDepartment(name: string) {
 }
 
 export async function getDepartmentsForOrg(orgId: string) {
+  // Server components pass the current org; never serve another tenant's
+  // departments (which carry their department_code join capability).
+  await requireOrgScope(orgId)
   return departmentsDb.listDepartmentsByOrg(orgId)
 }
 
@@ -44,34 +49,15 @@ export async function getDepartment(id: string) {
   return departmentsDb.getDepartmentOrThrow(id, orgId)
 }
 
-export async function addDepartmentMember(
-  departmentId: string,
-  userId: string,
-  role: string
-) {
-  const orgId = await requireOrg()
-
-  const member = await departmentsDb.insertDepartmentMember({
-    orgId,
-    departmentId,
-    userId,
-    role: role as UserRole,
-  })
-
-  revalidatePath(`/departments/${departmentId}`)
-  revalidatePath('/admin')
-  return member
-}
-
 export async function getDepartmentMembers(departmentId: string) {
   const orgId = await requireOrg()
   return departmentsDb.listDepartmentMembers(orgId, departmentId)
 }
 
 export async function getDepartmentMemberUsers(departmentId: string) {
-  await requireDepartmentModerator(departmentId)
+  const { orgId } = await requireDepartmentModerator(departmentId)
 
-  const userIds = await departmentsDb.listDepartmentMemberUserIds(departmentId)
+  const userIds = await departmentsDb.listDepartmentMemberUserIds(departmentId, orgId)
   if (userIds.length === 0) return []
 
   // Emails come from the profiles mirror (synced from auth users) in ONE
@@ -160,7 +146,7 @@ export async function leaveDepartment(departmentId: string) {
     throw new DbNotFoundError('Department not found')
   }
 
-  await departmentsDb.deleteDepartmentMember(departmentId, userId)
+  await departmentsDb.deleteDepartmentMember(departmentId, orgId, userId)
   await departmentsDb.deleteOrgMember(orgId, userId)
 
   revalidatePath('/dashboard')
@@ -203,14 +189,29 @@ export async function removeDepartmentMember(
   departmentId: string,
   memberUserId: string
 ) {
-  await requireDepartmentModerator(departmentId)
+  // The helper resolves the department's organisation on the server and
+  // only passes when the caller moderates it from that organisation; every
+  // write below is scoped to that org.
+  const { orgId } = await requireDepartmentModerator(departmentId)
 
-  const orgId = await departmentsDb.findDepartmentOrgId(departmentId)
-  if (!orgId) {
-    throw new DbNotFoundError('Department not found')
+  const [departmentRole, orgRole, moderatesAnyDepartmentInOrg] = await Promise.all([
+    departmentsDb.findDepartmentMemberRole({ departmentId, orgId, userId: memberUserId }),
+    onboardingDb.findOrganizationMembershipRole({ orgId, userId: memberUserId }),
+    onboardingDb.hasDepartmentAdminRole({ orgId, userId: memberUserId }),
+  ])
+  const blocked = departmentMemberRemovalBlock({
+    departmentRole,
+    orgRole,
+    moderatesAnyDepartmentInOrg,
+  })
+  if (blocked === 'not-a-member') {
+    throw new DbNotFoundError('Member not found in this department')
+  }
+  if (blocked === 'protected-role') {
+    throw new Error('Administrators cannot be removed from the members panel')
   }
 
-  await departmentsDb.deleteDepartmentMember(departmentId, memberUserId)
+  await departmentsDb.deleteDepartmentMember(departmentId, orgId, memberUserId)
   await departmentsDb.deleteOrgMember(orgId, memberUserId)
 
   revalidatePath(`/departments/${departmentId}`)

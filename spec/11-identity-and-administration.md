@@ -128,6 +128,31 @@ can act as an organization manager for Ops/member settings even though session
 management remains department-scoped. Super-admin elevation is global and
 separate from membership.
 
+### Department moderation and join requests
+
+Department moderation is decided by `requireDepartmentModerator`
+(`lib/auth.ts`, decision in `lib/department-authz.ts`), which resolves the
+department's organisation on the server. A super admin passes for any
+department. Anyone else must be working in that organisation (the current
+organisation) and be its org admin, or hold a `department_members` moderator row
+whose `org_id` equals the department's organisation; rows stamped with another
+organisation never count. It returns `{ orgId }`, and callers scope every
+follow-up query and write with it.
+
+Department join requests: the requester may ask only for `trainee` or `faculty`,
+and the department must belong to the named organisation. Only a moderator of
+that department, acting in that organisation, or a super admin may approve or
+reject. Approval grants the stored role, never one supplied by the approver and
+never `department_admin` or `org_admin`; it never demotes a higher role the
+requester already holds in that organisation. It writes the department
+membership before the organisation membership, and a request can be decided only
+once (compare-and-set on `PENDING`). The cross-tenant pending list is
+super-admin only.
+
+Removing a department member requires the target to be a member of that
+department in that organisation, and never removes an org admin or any
+department admin of that organisation.
+
 ### Single moderator organization invariant
 
 A user may hold `department_admin` membership in multiple departments only when

@@ -2,7 +2,12 @@
 
 import { getAppUrl } from '@/lib/app-url'
 import { revalidatePath } from 'next/cache'
-import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
+import {
+  requireAuth,
+  requireOrg,
+  requireDepartmentModerator,
+  requireSessionModerator,
+} from '@/lib/auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { buildInvitationEmailHtml } from '@/lib/email-templates'
 import type { Session } from '@/lib/types'
@@ -108,7 +113,9 @@ export async function inviteExternalTeacher(
 
 export async function getSessionInvitations(sessionId: string) {
   await requireAuth()
-  const orgId = await requireOrg()
+  // Invitation rows carry invite codes (teacher RSVP capabilities): only the
+  // session's moderators read them.
+  const { orgId } = await requireSessionModerator(sessionId)
   return teacherInvitationsDb.listInvitationsForSession(orgId, sessionId)
 }
 

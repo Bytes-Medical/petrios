@@ -129,6 +129,7 @@ JITSI_JWT_SUBJECT             # Optional self-hosted JWT sub (default JITSI_DOMA
 TEACHER_INVITATIONS_RLS_LOCKED # Exactly "true" once migration 062 (drops 017's public teacher_invitations policies) is applied and verified (docs/security/rls-lockdown.md): unlocks external-teacher room passes + the RSVP page's service-role session read. Unset = off
 OPS_ENABLED                   # Petrios Ops kill switch: unset/anything = on, "false" = every ops surface halts
 OPS_ASSISTANT_ENABLED         # Ops chat assistant opt-in: unset = OFF (default), "true" = enabled (still subject to OPS_ENABLED)
+WEBHOOK_ALLOW_PRIVATE         # "true" lets webhooks reach private/internal addresses (local dev, in-network self-hosting); unset = SSRF guard blocks them (lib/webhook-guard.ts)
 GOOGLE_SITE_VERIFICATION      # Optional Search Console HTML-tag token (renders the site-wide meta tag)
 PRIVACY_CONTROLLER_NAME      # Public legal controller name (required production disclosure)
 PRIVACY_CONTROLLER_ADDRESS   # Public controller address (required production disclosure)

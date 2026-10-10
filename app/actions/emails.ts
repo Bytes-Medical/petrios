@@ -1,7 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireAuth, requireOrg, requireDepartmentModerator } from '@/lib/auth'
+import {
+  requireAuth,
+  requireOrg,
+  requireDepartmentModerator,
+  requireSessionModerator,
+} from '@/lib/auth'
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { sessionMeetingUrl } from '@/lib/jitsi'
 import { getAppUrl } from '@/lib/app-url'
@@ -89,7 +94,7 @@ export async function sendTeacherEmail(
 
 export async function getTeacherEmailHistory(sessionId: string) {
   await requireAuth()
-  const orgId = await requireOrg()
+  const { orgId } = await requireSessionModerator(sessionId)
   return teacherEmailsDb.listTeacherEmailsForSession(orgId, sessionId)
 }
 
