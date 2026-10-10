@@ -215,6 +215,15 @@ at most 300 characters). An email the provider accepted is never downgraded to
 its lease. Each send carries a provider idempotency key
 (`ops-newsletter/<delivery id>/<revision>`; Resend deduplicates for 24 hours),
 so a later resend of that row is not delivered twice (SMTP has no equivalent).
+Each send carries the stored HTML and a text/plain part rendered once per
+execution, before any delivery row is seeded, purely from the stored issue —
+the reviewed content and its render snapshot, including the snapshotted
+organisation and department names (`buildNewsletterText`; nothing is re-read,
+so a rename after approval cannot split the two parts and a retry of a
+revision sends identical bytes under its idempotency key); the placeholder is swapped for the recipient's
+unsubscribe page URL in **both** parts. A legacy issue without a snapshot is
+sent HTML-only. The approval row's preview body is the same plain text (with
+the placeholder shown as “[personal unsubscribe link]”).
 Sends are paced at least 500 ms apart; an HTTP 429 is retried up to twice after
 `Retry-After` (at most 5 s) before the row is recorded `FAILED`. One request
 stops starting sends after four minutes or about 3,000 estimated subrequests
@@ -236,9 +245,11 @@ issue is guarded against double execution.
 `Europe/London`; spec 07): `formatDateTimeShort` (list rows and pending-action
 labels; `PendingActionsPanel` passes the server zone as its `timeZone` argument), `formatSessionDateLabel` (session dates in drafts) and `formatDateLong`.
 Chase, thank-you, newsletter and Recall outputs therefore show UK wall-clock
-times on a UTC server. `formatDayKeyLong` formats a UTC calendar key (the
-newsletter "Week commencing" label) in UTC, because newsletter weeks are UTC
-Monday–Sunday windows. Client panels that use these helpers resolve the default
+times on a UTC server. The newsletter renderer takes the zone as an explicit
+argument and formats session times with `formatInAppTimeZone`; its “Week
+commencing” and “W/C” labels format the UTC calendar key in UTC, because
+newsletter weeks are UTC Monday–Sunday windows (`formatDayKeyLong` does the same
+for other callers). Client panels that use these helpers resolve the default
 zone in the browser.
 
 ## Weekly Ops job
@@ -359,17 +370,123 @@ gateway path alongside `audio_recap`.
 ### One-page draft contract
 
 Generation asks for structured JSON containing subject, introduction, exactly
-one section per selected session, one to three learning points per section, and
-a closing. The dynamic Zod validator requires every trusted session id exactly
-once, rejects unknown/duplicate/omitted ids, and limits the complete artifact to
-700 words. Trusted session title/date replace model-returned labels after parsing.
-The saved source snapshot contains session ids and document id/session id/name/
-MIME/byte-count/SHA-256 metadata, never document bytes.
+one section per selected session, at most three learning points per section,
+and a closing. The dynamic Zod validator (`newsletterSchemaForSessions(ids,
+sessionsWithDocuments)`) requires every trusted session id exactly once, rejects
+unknown/duplicate/omitted ids, and limits the complete artifact to 700 words.
+**Honesty rule:** a session with at least one uploaded teaching file needs one
+to three learning points; a session with no file may have none, because its
+points could only restate the description. The prompt says: “For a session with
+no uploaded file, return an empty learning_points array unless the description
+itself states the points; never infer clinical guidance from a title.” The base
+`NewsletterSchema` allows zero to three points; the per-session minimum is the
+`superRefine`. Trusted session title/date replace model-returned labels after
+parsing. The saved source snapshot contains session ids and document id/session
+id/name/MIME/byte-count/SHA-256 metadata, never document bytes.
 
-The email renderer uses the Petrios clay/black visual language, compact session
-cards, and an unsubscribe placeholder. Every dynamic field is HTML-escaped before
-storage. “One page” means this constrained, scannable email format and word cap;
-email clients and print settings can still paginate differently.
+### Render snapshot (`content.render`)
+
+The moderator approves the exact stored HTML, so everything the template shows
+beyond the AI/moderator narrative is captured **once, at generation**, by
+`loadNewsletterRenderContext` (`lib/ops/newsletter-context.ts`) and stored with
+the issue as the server-owned `content.render` key
+(`NewsletterRenderContextSchema`, version 1; no migration — `content` is JSONB):
+the organisation name (`findOrganizationName`, “Petrios” when unset) and
+department name (both at most 200 characters), each covered session's start/end (UTC ISO), location type, accepted teacher
+names (registered profile full name, else first + last; then accepted external
+invitations' first + last; deduplicated case-insensitively; never an email
+address; at most eight, 120 characters each), an approved Audio Recap's
+duration (`audio_recaps.status = 'approved'` with audio, 1–3,600 s) or null —
+only while the recap is **source-current**, the same rule the session page uses
+before it shows the player (`recapSourcesAreCurrent`: its stored
+`source_digest` equals `buildRecapSourceSnapshot` of the session's current
+documents, taken from the generation's own `listSessionDocumentsAsSystem`
+source snapshot, and the session has at least one document), so the email never
+advertises a recap the page hides — the
+department's teaching coordinators (configured order, at most four), and the
+“Coming up” board: up to six PUBLISHED sessions of **this department** starting
+in `newsletterUpcomingWindow`: from `APP_TIME_ZONE` local midnight on the Monday
+after the newsletter week (or `now`, if later) to local midnight seven calendar
+days after that start's local day (`appWallClockToIso`/`appDayKey`), so the
+rendered range is exactly seven days in BST, GMT and across a clock change
+(“12–18 OCT”, never “12–19 OCT”), with their accepted teacher names, plus
+`more`, the exact count of further matches (PostgREST `count=exact`). All reads
+are service-role SELECTs in `lib/db/ops-reads.ts`
+(`listAcceptedTeacherNamesForSessions`, `listDepartmentSessionsStartingInWindow`),
+`lib/db/audio-recaps.ts` (`listApprovedRecapDurations`: session id, duration
+and source digest, never the audio), `findDepartmentSettings` and
+`findOrganizationName`, run in one staged `Promise.all` after the
+moderator checks. Snapshot session keys must equal the covered session ids
+(asserted in the loader and again by the renderer). The newsletter never reads
+attendance, feedback, reflections, certificates or assessment data; a test
+scans the renderer and loader imports and the loader's DAL calls.
+
+The model never sees or produces `render`, and `NewsletterSchema` strips it from
+client submissions: `normalizeNewsletterEdit` always restores the stored
+snapshot, so a crafted client cannot change dates, teachers, recap state or the
+upcoming list. Saving re-renders from the stored snapshot without re-querying,
+and sending never re-reads it. A recap approved after drafting appears only
+after **Regenerate**. A legacy draft without a snapshot cannot be saved in the
+new design (an expected error asks the moderator to regenerate it); a legacy
+issue already approved keeps its stored HTML and is sent HTML-only.
+
+### Email renderer (“Monitor strip”)
+
+`lib/ops/newsletter-render.ts` (`renderNewsletterEmail`) is pure — no `lib/db`,
+no `process.env`, no clock — and runs unchanged on Node and Workers. It takes
+`appUrl` (`getAppUrl()`), `timeZone` (`appTimeZone()`), organisation and
+department names (copied from the snapshot by `newsletterRenderInput`; a
+snapshot without them asks for **Regenerate**), the department id, the issue's `week_start`, the narrative,
+`source_documents` (session id + MIME type) and the render snapshot, and returns
+`{ html, text, layout }`. `buildNewsletterHtml`/`buildNewsletterText` in
+`lib/ops/newsletter.ts` wrap it. The HTML is a complete email document: a dark
+monitor masthead with the HUD ECG trace rasterised into table cells (Outlook
+desktop gets a flat wide-cell masthead in an MSO conditional instead, with no
+cell narrower than 8 px), the readouts **Sessions**, **Hours** (Σ session length,
+one decimal), **Files** and **Teachers** (distinct names, case-insensitive), then per session a date
+tab, linked title, “With …” teachers, format and file-count chips (a dashed
+**Description only** chip without files), the overview, key points (headed
+**Key points**, or **From the session description** for a no-file session), a
+“Listen to the Audio Recap” bar linking `/sessions/{id}#recap` only when the
+snapshot has an approved recap, and a provenance line (“Drawn from N teaching
+files (…)” or “Drawn from the session description only. No teaching files were
+uploaded.”). Then the “Coming up” board (Lightning tag for ≤ 20-minute sessions,
+“+N more in Petrios”, “Times can change. Petrios always has the latest.”), the
+closing with “Next on the board”, the coordinator sign-off, an “Open this week
+in Petrios” button, and a footer stating the digest contains no attendance,
+feedback or assessment data, with the unsubscribe link. No images, SVG,
+`data:` URIs or web fonts; dark mode, mobile and Outlook.com rules live in
+`<head>` styles. Times are formatted with `formatInAppTimeZone` in the passed
+zone; the week labels are UTC (newsletter weeks are UTC calendar keys). Month
+abbreviations come from a fixed three-letter table (`SEP`, never en-GB ICU's
+“Sept”).
+
+Layout tiers step down toward `NEWSLETTER_HTML_BUDGET_BYTES` (60 KiB, UTF-8
+via `TextEncoder`): `full` cards for ≤ 6 sessions, `compact` rows (overview, no
+key points) for 7–20, `index` rows above 20; a tier over budget steps down, and
+`index` is final and may exceed the budget. Index rows show the when, the
+linked title shortened to 90 characters and at most two teachers plus “+N”.
+Only if the index HTML would pass `NEWSLETTER_HTML_HARD_LIMIT_BYTES` (96 KiB,
+below Gmail's ~102 KB clip with headroom for the per-recipient unsubscribe
+URLs) does it list the most sessions that fit (at least one) followed by “+N
+more sessions this week in Petrios” (linking the department's past sessions),
+so the footer and unsubscribe link are never clipped; schema-maximum input in
+3-byte characters is tested. The text/plain part always lists every session
+with full titles and teacher names. The workspace recovers the
+tier from the stored HTML (`newsletterLayoutOf`) and shows it as “Full cards”,
+“Compact rows (key points in Petrios)” or “Index (overviews in Petrios)”.
+
+Escaping: every dynamic string (AI, moderator, session record, profile name)
+goes through `escapeHtml` in text and attributes, including `<title>` and
+`aria-label`; no dynamic value is placed in a style attribute, CSS, an HTML
+comment or an MSO conditional. `escapeHtml` also encodes `%` (`&#37;`), so no
+dynamic text can spell the executor's per-recipient `%%UNSUBSCRIBE_URL%%`
+placeholder. Links are built only from the app origin and UUID ids (a non-UUID
+id throws). The text/plain part (72 columns) gets no HTML escaping; control
+characters are stripped and `%%` in dynamic text becomes `% %` before the
+`Unsubscribe: %%UNSUBSCRIBE_URL%%` line is appended. “One page” means this
+constrained, scannable email format and word cap; email clients and print
+settings can still paginate differently.
 
 One active issue is keyed by `(org_id, department_id, week_start)`; two
 concurrent first generations for the same week return “Another moderator
@@ -380,7 +497,21 @@ the revision it read; the revision **increases** (it never resets), so a browser
 tab holding an older revision fails the save CAS instead of overwriting the
 regenerated draft. Obsolete `PENDING`/`FAILED` delivery rows are removed.
 The editor exposes all narrative fields, live word count, saved HTML preview, and
-the exact source-document list. Session identity/title/date labels remain bound
+the exact source-document list. A session with teaching files always keeps at
+least one key point (its last point cannot be removed); a no-file session's
+points are optional and headed “From the session description”. The preview
+renders the exact stored `issue.html` (the bytes the executor sends, with only
+the placeholder swapped) in an iframe with `srcDoc` and
+`sandbox="allow-popups allow-popups-to-escape-sandbox"` (no `allow-scripts`, no
+`allow-same-origin`; `newsletterPreviewDocument` adds only a `<base
+target="_blank">` so links open outside the frame and a rule hiding the frame's
+scrollbar so a classic scrollbar cannot narrow the viewport below the email's
+600 px breakpoint), so the email's `<head>` styles neither leak into the app nor
+get lost. The frame is sized by its content box (`newsletterPreviewFrameStyle`:
+`box-sizing: content-box`), because Tailwind's preflight makes every element
+border-box and the frame's 1 px border would otherwise give a 598 px viewport
+and the phone layout under “Desktop 600”.
+A 600 / 375 px toggle shows the desktop and phone layouts. Session identity/title/date labels remain bound
 to the generated trusted snapshot even if a crafted client submits alternatives.
 Save uses compare-and-swap on
 `content_revision`; stale browser tabs are rejected. Every save revalidates exact

@@ -183,7 +183,7 @@ session.
 | `ops_feedback_syntheses` | Safety-processed synthesis, themes, strengths, actions, quotes |
 | `ops_curriculum_domains` | Retired historical organization curriculum taxonomy; no active reader/writer |
 | `ops_curriculum_map` | Retired historical session mapping; no active reader/writer |
-| `ops_newsletter_issues` | Department/week draft, exact content + source snapshot, revision, execution state, and counts |
+| `ops_newsletter_issues` | Department/week draft, exact content + source snapshot, revision, execution state, and counts. `content.render` (JSONB key, no migration; absent on legacy rows) is the server-owned render snapshot taken at generation — organisation and department names, per-session start/end, location type, accepted teacher names and approved, source-current Audio Recap duration, coordinator names, and the published department sessions in the next seven `APP_TIME_ZONE` days (+ exact `more` count) — validated by `NewsletterRenderContextSchema` (version 1); never AI- or client-authored, restored from the stored row on every save, never re-read at send (spec 06) |
 | `ops_newsletter_optouts` | Recipient unsubscribe state |
 | `ops_newsletter_deliveries` | Per-issue/member revision-bound send claim, retry, provider id, and error state |
 | `ops_memory` | Organization-scoped agent state/deduplication memory |

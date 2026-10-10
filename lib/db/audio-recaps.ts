@@ -268,3 +268,34 @@ export async function openRecapAudioStream(input: {
     throw toDbError('Failed to read recap audio', error)
   }
 }
+
+export interface ApprovedRecapDuration {
+  session_id: string
+  audio_duration_seconds: number
+  /** Compared with the session's current documents (recapSourcesAreCurrent),
+   *  exactly as the session page does before it shows the player. */
+  source_digest: string | null
+}
+
+/**
+ * Durations of the APPROVED recaps with audio among `sessionIds`, for the
+ * newsletter's Audio Recap bar. Selects only the columns it needs (never the
+ * audio). Service role: called after requireOpsManager +
+ * requireDepartmentModerator in the newsletter generation action.
+ */
+export async function listApprovedRecapDurations(
+  sessionIds: string[]
+): Promise<ApprovedRecapDuration[]> {
+  if (sessionIds.length === 0) return []
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('audio_recaps')
+    .select('session_id, audio_duration_seconds, source_digest')
+    .in('session_id', sessionIds)
+    .eq('status', 'approved')
+    .gt('audio_bytes', 0)
+    .not('audio_duration_seconds', 'is', null)
+
+  if (error) throw toDbError('Failed to list approved recap durations', error)
+  return (data as ApprovedRecapDuration[] | null) ?? []
+}

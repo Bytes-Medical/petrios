@@ -91,7 +91,9 @@ export default async function SessionPage(
         {meetingView && <JitsiMeetingPanel view={meetingView} audience={{ kind: 'member' }} />}
 
         {approvedRecap ? (
-          <div className="mb-6">
+          // #recap: the newsletter's "Listen to the Audio Recap" link target.
+          // Rendered only for an approved recap, after this page's own checks.
+          <div id="recap" className="mb-6 scroll-mt-24">
             <AudioRecapPlayer
               sessionId={params.id}
               researchSources={approvedRecap.researchSources}

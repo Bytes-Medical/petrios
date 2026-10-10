@@ -7,6 +7,7 @@ import { opsInference } from './gateway'
 import { loadNewsletterSourceFiles } from './newsletter-sources'
 import {
   newsletterSchemaForSessions,
+  newsletterSessionsWithDocuments,
   NewsletterUserError,
   type WeekWindow,
 } from './newsletter'
@@ -61,6 +62,10 @@ export async function generateDepartmentNewsletter(input: {
   sourceDocuments: Awaited<ReturnType<typeof loadNewsletterSourceFiles>>['documents']
 }> {
   const bundle = await loadNewsletterSourceFiles(input.sessions)
+  const sessionIds = input.sessions.map((session) => session.id)
+  // Sessions with no uploaded file may have no learning points: anything the
+  // model wrote for them could only come from the description.
+  const schema = newsletterSchemaForSessions(sessionIds, newsletterSessionsWithDocuments(bundle.documents))
   const materialManifest = bundle.documents.length
     ? bundle.documents.map((document, index) =>
         `- Attached file "${bundle.files[index].filename}" belongs to session id ${document.sessionId} ("${document.sessionTitle}"); original filename "${document.filename}".`
@@ -91,11 +96,13 @@ ${materialManifest}
 Return JSON with:
 - subject: an inviting weekly subject line;
 - intro: 1-2 brief sentences;
-- sessions: one item for every supplied session, with session_id, title, date_label, a concise overview, and 1-3 practical learning points supported by that session's available material;
+- sessions: one item for every supplied session, with session_id, title, date_label, a concise overview, and 1-3 practical learning points supported by that session's available material (a session with document_count 0 follows the rule below);
 - closing: one concise reflective or encouraging sentence.
 
+For a session with no uploaded file, return an empty learning_points array unless the description itself states the points; never infer clinical guidance from a title.
+
 Keep the complete result at 700 words or fewer. Do not add sessions, omit sessions, merge sessions, or refer to documents/files in the reader-facing copy.`,
-    schema: newsletterSchemaForSessions(input.sessions.map((session) => session.id)),
+    schema,
     maxTokens: 5000,
     effort: 'medium',
     files: bundle.files.length ? bundle.files : undefined,
@@ -125,7 +132,7 @@ Keep the complete result at 700 words or fewer. Do not add sessions, omit sessio
       }
     }),
   }
-  const parsed = newsletterSchemaForSessions(input.sessions.map((session) => session.id)).safeParse(content)
+  const parsed = schema.safeParse(content)
   if (!parsed.success) throw new NewsletterUserError('The generated newsletter did not fit the one-page review format')
   return { content: parsed.data, sourceDocuments: bundle.documents }
 }

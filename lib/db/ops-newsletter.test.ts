@@ -6,6 +6,11 @@ import {
   listNewsletterDeliveries,
   replaceNewsletterDraft,
 } from './ops'
+import {
+  listAcceptedTeacherNamesForSessions,
+  listDepartmentSessionsStartingInWindow,
+} from './ops-reads'
+import { listApprovedRecapDurations } from './audio-recaps'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -35,6 +40,7 @@ function call(index = 0) {
     params: [...parsed.searchParams.entries()],
     method: init?.method ?? 'GET',
     body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    headers: new Headers(init?.headers as HeadersInit | undefined),
   }
 }
 
@@ -185,5 +191,86 @@ describe('listNewsletterDeliveries', () => {
     const rows = await listNewsletterDeliveries('issue-1')
     expect(rows).toHaveLength(1003)
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('newsletter render-snapshot reads', () => {
+  it('lists upcoming teaching for one department, PUBLISHED only, with an exact total', async () => {
+    fetchMock.mockResolvedValue(json(
+      [{ id: 's-1', date_start: '2026-10-13T11:30:00+00:00' }],
+      200,
+      { 'Content-Range': '0-0/9' }
+    ))
+    const result = await listDepartmentSessionsStartingInWindow(
+      'org-1', 'dept-1', '2026-10-12T00:00:00.000Z', '2026-10-19T00:00:00.000Z', 7
+    )
+    expect(result).toMatchObject({ total: 9, sessions: [{ id: 's-1' }] })
+    const request = call()
+    expect(request.path).toBe('/rest/v1/sessions')
+    expect(request.params).toEqual(expect.arrayContaining([
+      ['org_id', 'eq.org-1'],
+      ['department_id', 'eq.dept-1'],
+      ['status', 'eq.PUBLISHED'],
+      ['date_start', 'gte.2026-10-12T00:00:00.000Z'],
+      ['date_start', 'lt.2026-10-19T00:00:00.000Z'],
+      ['limit', '7'],
+    ]))
+    expect(request.headers.get('Prefer')).toContain('count=exact')
+  })
+
+  it('lists approved recap durations only, never the audio', async () => {
+    fetchMock.mockResolvedValue(json([{ session_id: 's-1', audio_duration_seconds: 312, source_digest: 'd1' }]))
+    await expect(listApprovedRecapDurations(['s-1', 's-2'])).resolves.toEqual([
+      { session_id: 's-1', audio_duration_seconds: 312, source_digest: 'd1' },
+    ])
+    const request = call()
+    expect(request.path).toBe('/rest/v1/audio_recaps')
+    expect(request.params).toEqual(expect.arrayContaining([
+      ['select', 'session_id,audio_duration_seconds,source_digest'],
+      ['session_id', 'in.(s-1,s-2)'],
+      ['status', 'eq.approved'],
+      ['audio_bytes', 'gt.0'],
+      ['audio_duration_seconds', 'not.is.null'],
+    ]))
+    await expect(listApprovedRecapDurations([])).resolves.toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('names accepted teachers only (registered first, then external), deduplicated, never by email', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const path = new URL(String(url)).pathname
+      if (path === '/rest/v1/session_teachers') {
+        return json([
+          { session_id: 's-1', user_id: 'u-1', status: 'ACCEPTED' },
+          { session_id: 's-1', user_id: 'u-2', status: 'PENDING' },
+          { session_id: 's-1', user_id: 'u-3', status: 'ACCEPTED' },
+          { session_id: 's-2', user_id: 'u-4', status: 'ACCEPTED' },
+        ])
+      }
+      if (path === '/rest/v1/teacher_invitations') {
+        return json([
+          { id: 'i-1', session_id: 's-1', email: 'ext@nhs.net', first_name: 'Joanne', last_name: 'Pryce', invite_code: 'x', status: 'ACCEPTED' },
+          { id: 'i-2', session_id: 's-1', email: 'dup@nhs.net', first_name: 'hannah', last_name: 'WHITFIELD', invite_code: 'y', status: 'ACCEPTED' },
+          { id: 'i-3', session_id: 's-1', email: 'declined@nhs.net', first_name: 'Dee', last_name: 'Clined', invite_code: 'z', status: 'DECLINED' },
+          { id: 'i-4', session_id: 's-2', email: 'noname@nhs.net', first_name: null, last_name: null, invite_code: 'w', status: 'ACCEPTED' },
+        ])
+      }
+      if (path === '/rest/v1/profiles') {
+        return json([
+          { user_id: 'u-1', full_name: ' Hannah Whitfield ', first_name: null, last_name: null },
+          { user_id: 'u-3', full_name: null, first_name: 'Priya', last_name: 'Raman' },
+          { user_id: 'u-4', full_name: '', first_name: null, last_name: null },
+        ])
+      }
+      throw new Error(`unexpected ${path}`)
+    })
+    const names = await listAcceptedTeacherNamesForSessions(['s-1', 's-2'])
+    expect(names.get('s-1')).toEqual(['Hannah Whitfield', 'Priya Raman', 'Joanne Pryce'])
+    expect(names.has('s-2')).toBe(false)
+    const profileCall = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find((url) => url.pathname === '/rest/v1/profiles')!
+    expect(profileCall.searchParams.get('select')).toBe('user_id,full_name,first_name,last_name')
+    expect(profileCall.searchParams.get('user_id')).toBe('in.(u-1,u-3,u-4)')
   })
 })

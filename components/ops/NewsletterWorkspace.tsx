@@ -17,6 +17,13 @@ import {
   NEWSLETTER_MAX_WORDS,
   newsletterWordCount,
 } from '@/lib/ops/newsletter'
+import {
+  NEWSLETTER_LAYOUT_LABELS,
+  NEWSLETTER_PREVIEW_SANDBOX,
+  newsletterLayoutOf,
+  newsletterPreviewDocument,
+  newsletterPreviewFrameStyle,
+} from '@/lib/ops/newsletter-render'
 import type {
   OpsNewsletterContent,
   OpsNewsletterStatus,
@@ -203,6 +210,12 @@ function NewsletterIssueEditor({
   const [busy, setBusy] = useState<'save' | 'send' | 'retry' | null>(null)
   const words = useMemo(() => newsletterWordCount(content), [content])
   const { editable, canRetry, inProgress } = issue.controls
+  // A session with teaching files keeps at least one key point; a session
+  // without files may have none (its points could only restate the description).
+  const sessionsWithDocuments = useMemo(
+    () => new Set(issue.source_documents.map((document) => document.sessionId)),
+    [issue.source_documents]
+  )
 
   function updateSession(index: number, patch: Partial<OpsNewsletterContent['sessions'][number]>) {
     setContent((current) => ({
@@ -310,58 +323,70 @@ function NewsletterIssueEditor({
             />
           </label>
 
-          {content.sessions.map((session, sessionIndex) => (
-            <div key={session.session_id} className="border border-black bg-clay-50 p-4">
-              <p className="font-mono text-xs uppercase tracking-wider text-clay-800">
-                {session.date_label}
-              </p>
-              <h3 className="font-mono text-sm font-bold">{session.title}</h3>
-              <textarea
-                aria-label={`Overview for ${session.title}`}
-                value={session.overview}
-                disabled={!editable}
-                rows={3}
-                onChange={(event) => updateSession(sessionIndex, { overview: event.target.value })}
-                className="mt-3 w-full border border-black bg-white px-3 py-2 font-mono text-sm"
-              />
-              <div className="mt-3 space-y-2">
-                {session.learning_points.map((point, pointIndex) => (
-                  <div key={pointIndex} className="flex gap-2">
-                    <span className="pt-2 font-mono text-sm">•</span>
-                    <input
-                      aria-label={`Learning point ${pointIndex + 1} for ${session.title}`}
-                      value={point}
-                      disabled={!editable}
-                      onChange={(event) => updatePoint(sessionIndex, pointIndex, event.target.value)}
-                      className="min-w-0 flex-1 border border-black bg-white px-3 py-2 font-mono text-sm"
-                    />
-                    {editable && session.learning_points.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => updateSession(sessionIndex, {
-                          learning_points: session.learning_points.filter((_, index) => index !== pointIndex),
-                        })}
-                        className="px-2 font-mono text-xs underline"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                ))}
+          {content.sessions.map((session, sessionIndex) => {
+            const hasDocuments = sessionsWithDocuments.has(session.session_id)
+            return (
+              <div key={session.session_id} className="border border-black bg-clay-50 p-4">
+                <p className="font-mono text-xs uppercase tracking-wider text-clay-800">
+                  {session.date_label}
+                </p>
+                <h3 className="font-mono text-sm font-bold">{session.title}</h3>
+                <textarea
+                  aria-label={`Overview for ${session.title}`}
+                  value={session.overview}
+                  disabled={!editable}
+                  rows={3}
+                  onChange={(event) => updateSession(sessionIndex, { overview: event.target.value })}
+                  className="mt-3 w-full border border-black bg-white px-3 py-2 font-mono text-sm"
+                />
+                <p className="mt-3 font-mono text-xs font-bold uppercase tracking-wider text-gray-600">
+                  {hasDocuments ? 'Key points' : 'From the session description'}
+                </p>
+                {!hasDocuments && (
+                  <p className="mt-1 font-mono text-xs text-gray-600">
+                    No teaching files were uploaded for this session. Key points are optional: keep only
+                    what the session description itself states.
+                  </p>
+                )}
+                <div className="mt-2 space-y-2">
+                  {session.learning_points.map((point, pointIndex) => (
+                    <div key={pointIndex} className="flex gap-2">
+                      <span className="pt-2 font-mono text-sm">•</span>
+                      <input
+                        aria-label={`Learning point ${pointIndex + 1} for ${session.title}`}
+                        value={point}
+                        disabled={!editable}
+                        onChange={(event) => updatePoint(sessionIndex, pointIndex, event.target.value)}
+                        className="min-w-0 flex-1 border border-black bg-white px-3 py-2 font-mono text-sm"
+                      />
+                      {editable && (!hasDocuments || session.learning_points.length > 1) && (
+                        <button
+                          type="button"
+                          onClick={() => updateSession(sessionIndex, {
+                            learning_points: session.learning_points.filter((_, index) => index !== pointIndex),
+                          })}
+                          className="px-2 font-mono text-xs underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {editable && session.learning_points.length < 3 && (
+                  <button
+                    type="button"
+                    onClick={() => updateSession(sessionIndex, {
+                      learning_points: [...session.learning_points, ''],
+                    })}
+                    className="mt-2 font-mono text-xs underline underline-offset-2"
+                  >
+                    Add learning point
+                  </button>
+                )}
               </div>
-              {editable && session.learning_points.length < 3 && (
-                <button
-                  type="button"
-                  onClick={() => updateSession(sessionIndex, {
-                    learning_points: [...session.learning_points, ''],
-                  })}
-                  className="mt-2 font-mono text-xs underline underline-offset-2"
-                >
-                  Add learning point
-                </button>
-              )}
-            </div>
-          ))}
+            )
+          })}
 
           <label className="block font-mono text-xs font-bold uppercase tracking-wider">
             Closing
@@ -428,13 +453,57 @@ function NewsletterIssueEditor({
         <summary className="cursor-pointer font-mono text-xs font-bold">
           Preview saved email design
         </summary>
-        {/* buildNewsletterHtml escapes every dynamic field before storage. */}
-        <div
-          className="mt-3 overflow-hidden border border-gray-300 bg-white"
-          dangerouslySetInnerHTML={{ __html: issue.html }}
-        />
+        <NewsletterPreview html={issue.html} />
       </details>
     </Card>
+  )
+}
+
+const PREVIEW_WIDTHS = [600, 375] as const
+
+/**
+ * The exact stored bytes the executor sends (only the per-recipient
+ * unsubscribe placeholder is swapped), shown in a sandboxed iframe: the email
+ * is a full document whose <head> styles (dark mode, mobile, Outlook.com)
+ * must neither leak into the app nor be lost. The sandbox has no
+ * allow-scripts and no allow-same-origin, so stored HTML cannot run script or
+ * read the app's cookies; renderNewsletterEmail also escapes every dynamic
+ * field before storage.
+ */
+function NewsletterPreview({ html }: { html: string }) {
+  const [width, setWidth] = useState<(typeof PREVIEW_WIDTHS)[number]>(600)
+  const layout = useMemo(() => newsletterLayoutOf(html), [html])
+  const srcDoc = useMemo(() => newsletterPreviewDocument(html), [html])
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div role="group" aria-label="Preview width" className="flex border border-black">
+          {PREVIEW_WIDTHS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={width === option}
+              onClick={() => setWidth(option)}
+              className={`px-3 py-1 font-mono text-xs ${width === option ? 'bg-black text-white' : 'bg-white text-black'}`}
+            >
+              {option === 600 ? 'Desktop 600' : 'Phone 375'}
+            </button>
+          ))}
+        </div>
+        <p className="font-mono text-xs text-gray-600">
+          Layout: {layout ? NEWSLETTER_LAYOUT_LABELS[layout] : 'Earlier design'}
+        </p>
+      </div>
+      <div className="mt-3 overflow-x-auto">
+        <iframe
+          title="Saved email design"
+          sandbox={NEWSLETTER_PREVIEW_SANDBOX}
+          srcDoc={srcDoc}
+          style={newsletterPreviewFrameStyle(width)}
+          className="mx-auto block h-[900px] border border-gray-300 bg-white"
+        />
+      </div>
+    </div>
   )
 }
 

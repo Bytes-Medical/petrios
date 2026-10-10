@@ -16,18 +16,21 @@ import {
 } from '@/lib/ops/newsletter-job'
 import {
   buildNewsletterHtml,
+  buildNewsletterText,
   newsletterIssueControls,
-  newsletterPreviewText,
+  newsletterRenderInput,
   NewsletterUserError,
   newsletterWindowFromWeekStart,
   normalizeNewsletterEdit,
+  UNSUBSCRIBE_PLACEHOLDER,
   type NewsletterIssueControls,
 } from '@/lib/ops/newsletter'
+import { loadNewsletterRenderContext } from '@/lib/ops/newsletter-context'
 import { DbConflictError } from '@/lib/db/errors'
-import { formatDayKeyLong } from '@/lib/ops/format'
+import { getAppUrl } from '@/lib/app-url'
+import { appTimeZone } from '@/lib/datetime'
 import * as opsDb from '@/lib/db/ops'
 import * as departmentsDb from '@/lib/db/departments'
-import * as organizationsDb from '@/lib/db/organizations'
 import type {
   OpsAgentRun,
   OpsAgentRunStep,
@@ -245,14 +248,26 @@ export async function generateWeeklyNewsletter(
         sessions,
         run,
       })
-      const organizationName = (await organizationsDb.findOrganizationName(orgId)) ?? 'Petrios'
-      const weekLabel = `Week commencing ${formatDayKeyLong(window.weekStartKey)}`
-      const html = buildNewsletterHtml({
-        organizationName,
+      // Snapshot everything the template shows beyond the narrative once, now;
+      // saves re-render from it and sending never re-reads it (spec 06).
+      const render = await loadNewsletterRenderContext({
+        orgId,
+        departmentId,
         departmentName: department.name,
-        weekLabel,
-        content: generated.content,
+        sessions,
+        sourceDocuments: generated.sourceDocuments,
+        window,
       })
+      const content: OpsNewsletterContent = { ...generated.content, render }
+      const html = buildNewsletterHtml(newsletterRenderInput(
+        {
+          department_id: departmentId,
+          week_start: window.weekStartKey,
+          source_documents: generated.sourceDocuments,
+          content,
+        },
+        { appUrl: getAppUrl(), timeZone: appTimeZone() }
+      ))
       const draft = {
         orgId,
         departmentId,
@@ -260,7 +275,7 @@ export async function generateWeeklyNewsletter(
         subject: generated.content.subject,
         html,
         summaryPoints: newsletterSummaryPoints(generated.content),
-        content: generated.content,
+        content,
         sourceSessionIds: sessions.map((session) => session.id),
         sourceDocuments: generated.sourceDocuments,
       }
@@ -310,6 +325,25 @@ async function requireNewsletterIssue(issueId: string) {
   return { userId, orgId, issue, department }
 }
 
+/** Deployment values only: names come from the issue's render snapshot, so
+ *  a later rename never splits the stored HTML from the sent text part. */
+function newsletterRenderEnvironment() {
+  return { appUrl: getAppUrl(), timeZone: appTimeZone() }
+}
+
+/** The approval row's preview body: the plain-text part readers receive.
+ *  A legacy issue without a render snapshot falls back to its narrative. */
+async function newsletterApprovalPreview(scope: Awaited<ReturnType<typeof requireNewsletterIssue>>) {
+  const content = scope.issue.content!
+  if (!content.render) {
+    return [content.intro, ...content.sessions.map((session) => `${session.title}\n${session.overview}`), content.closing].join('\n\n')
+  }
+  return buildNewsletterText(newsletterRenderInput(
+    { ...scope.issue, content },
+    newsletterRenderEnvironment()
+  )).split(UNSUBSCRIBE_PLACEHOLDER).join('[personal unsubscribe link]')
+}
+
 async function saveNewsletterContent(input: {
   issueId: string
   content: OpsNewsletterContent
@@ -322,20 +356,19 @@ async function saveNewsletterContent(input: {
   if (scope.issue.sent_count > 0 || await opsDb.newsletterDeliveryLocked(scope.issue.id)) {
     throw new NewsletterUserError('A newsletter that has been emailed to any member can no longer be edited')
   }
+  // The render snapshot comes from the stored issue (never the client) and is
+  // not re-queried: the saved HTML differs from the draft only in narrative.
   const content = normalizeNewsletterEdit({ ...scope.issue, content: snapshot }, input.content)
-  const organizationName = (await organizationsDb.findOrganizationName(scope.orgId)) ?? 'Petrios'
-  const weekLabel = `Week commencing ${formatDayKeyLong(scope.issue.week_start)}`
+  const html = buildNewsletterHtml(newsletterRenderInput(
+    { ...scope.issue, content },
+    newsletterRenderEnvironment()
+  ))
   const issue = await opsDb.saveNewsletterDraft({
     id: scope.issue.id,
     orgId: scope.orgId,
     departmentId: scope.issue.department_id!,
     subject: content.subject,
-    html: buildNewsletterHtml({
-      organizationName,
-      departmentName: scope.department.name,
-      weekLabel,
-      content,
-    }),
+    html,
     summaryPoints: newsletterSummaryPoints(content),
     content,
     expectedRevision: input.expectedRevision,
@@ -366,7 +399,7 @@ async function executeReviewedNewsletter(scope: Awaited<ReturnType<typeof requir
     type: 'NEWSLETTER_ISSUE',
     payload: { issueId: scope.issue.id, contentRevision: scope.issue.content_revision },
     previewTitle: `Department newsletter: ${scope.issue.subject}`,
-    previewBody: newsletterPreviewText(scope.issue.content!),
+    previewBody: await newsletterApprovalPreview(scope),
     createdBy: scope.userId,
   })
   // The executor links the issue to this action inside its start CAS; a

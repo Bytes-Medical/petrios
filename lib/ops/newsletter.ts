@@ -4,11 +4,21 @@ import type {
   OpsNewsletterContent,
   OpsNewsletterDelivery,
   OpsNewsletterIssue,
+  OpsNewsletterRenderContext,
+  OpsNewsletterSourceDocument,
 } from '@/lib/types'
+import {
+  escapeHtml,
+  NEWSLETTER_UPCOMING_LIMIT,
+  renderNewsletterEmail,
+  UNSUBSCRIBE_PLACEHOLDER,
+  type NewsletterRenderInput,
+} from './newsletter-render'
 
 /**
  * Department weekly teaching newsletter: pure helpers (week windowing,
- * one-page content validation, HTML rendering, unsubscribe tokens, and the
+ * one-page content validation, the render snapshot contract and the
+ * renderer wrappers (lib/ops/newsletter-render.ts), unsubscribe tokens, and the
  * delivery-ledger decisions the executor makes). A moderator explicitly
  * starts generation and reviews the exact draft before the NEWSLETTER_ISSUE
  * executor may send it.
@@ -93,7 +103,9 @@ const NewsletterSessionSchema = z.object({
   title: z.string().trim().min(1).max(180),
   date_label: z.string().trim().min(1).max(100),
   overview: z.string().trim().min(1).max(650),
-  learning_points: z.array(z.string().trim().min(1).max(300)).min(1).max(3),
+  // The per-session minimum (one point for a session with teaching files,
+  // none required without) is enforced in newsletterSchemaForSessions.
+  learning_points: z.array(z.string().trim().min(1).max(300)).max(3),
 })
 
 export const NewsletterSchema = z.object({
@@ -127,8 +139,16 @@ export function newsletterWordCount(content: OpsNewsletterContent): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0
 }
 
-/** Dynamic coverage gate: every delivered session appears exactly once. */
-export function newsletterSchemaForSessions(sessionIds: string[]) {
+/**
+ * Dynamic coverage gate: every delivered session appears exactly once. A
+ * session with uploaded teaching files needs one to three learning points; a
+ * session without files may have none (they could only come from its
+ * description, so the model is told not to infer them).
+ */
+export function newsletterSchemaForSessions(
+  sessionIds: string[],
+  sessionsWithDocuments: ReadonlySet<string>
+) {
   const expected = [...new Set(sessionIds)].sort()
   return NewsletterSchema.superRefine((content, context) => {
     const actual = content.sessions.map((session) => session.session_id).sort()
@@ -142,71 +162,126 @@ export function newsletterSchemaForSessions(sessionIds: string[]) {
         message: 'Every delivered teaching session must appear exactly once',
       })
     }
+    content.sessions.forEach((session, index) => {
+      if (sessionsWithDocuments.has(session.session_id) && session.learning_points.length === 0) {
+        context.addIssue({
+          code: 'custom',
+          path: ['sessions', index, 'learning_points'],
+          message: `Add at least one key point for "${session.title}" (it has teaching files)`,
+        })
+      }
+    })
   })
 }
 
-export function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+/** Session ids that have at least one stored teaching document. */
+export function newsletterSessionsWithDocuments(
+  documents: Pick<OpsNewsletterSourceDocument, 'sessionId'>[]
+): Set<string> {
+  return new Set(documents.map((document) => document.sessionId))
 }
 
-/** Replaced per-recipient by the executor with a signed unsubscribe URL. */
-export const UNSUBSCRIBE_PLACEHOLDER = '%%UNSUBSCRIBE_URL%%'
+// ---------------------------------------------------------------------------
+// Render snapshot and email rendering (lib/ops/newsletter-render.ts)
+// ---------------------------------------------------------------------------
 
-export function buildNewsletterHtml(input: {
-  organizationName: string
-  departmentName: string
-  weekLabel: string
-  content: NewsletterContent
-}): string {
-  const sessions = input.content.sessions
-    .map(
-      (session) => `
-        <section style="margin:0 0 12px;padding:14px 16px;background:#fff;border:1px solid #1f1f1f;box-shadow:3px 3px 0 #c96f4a;">
-          <p style="margin:0 0 3px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#765343;">${escapeHtml(session.date_label)}</p>
-          <h3 style="margin:0 0 6px;font-size:16px;line-height:1.25;">${escapeHtml(session.title)}</h3>
-          <p style="margin:0 0 7px;color:#34302e;line-height:1.45;">${escapeHtml(session.overview)}</p>
-          <ul style="margin:0;padding-left:19px;color:#34302e;line-height:1.4;">
-            ${session.learning_points.map((point) => `<li style="margin:2px 0;">${escapeHtml(point)}</li>`).join('')}
-          </ul>
-        </section>`
+export { escapeHtml, UNSUBSCRIBE_PLACEHOLDER }
+
+const LOCATION_TYPES = ['MS_TEAMS', 'IN_PERSON', 'HYBRID', 'JITSI'] as const
+const TeacherNamesSchema = z.array(z.string().trim().min(1).max(120)).max(8)
+/** Snapshotted organisation/department name length (clipped by the loader). */
+export const NEWSLETTER_RENDER_NAME_MAX = 200
+
+/**
+ * The server-owned snapshot stored at `content.render` (see
+ * loadNewsletterRenderContext). The model never sees or produces it, and
+ * NewsletterSchema strips it from client submissions.
+ */
+export const NewsletterRenderContextSchema = z.object({
+  version: z.literal(1),
+  snapshotAt: z.string().datetime(),
+  organizationName: z.string().trim().min(1).max(NEWSLETTER_RENDER_NAME_MAX),
+  departmentName: z.string().trim().min(1).max(NEWSLETTER_RENDER_NAME_MAX),
+  coordinators: z.array(z.string().trim().min(1).max(120)).max(4),
+  sessions: z.record(z.string().uuid(), z.object({
+    dateStart: z.string().datetime(),
+    dateEnd: z.string().datetime(),
+    locationType: z.enum(LOCATION_TYPES),
+    teachers: TeacherNamesSchema,
+    recap: z.object({ durationSeconds: z.number().int().positive().max(3600) }).nullable(),
+  })),
+  upcoming: z.object({
+    startIso: z.string().datetime(),
+    endIso: z.string().datetime(),
+    more: z.number().int().min(0), // published sessions beyond the fetched rows
+    sessions: z.array(z.object({
+      id: z.string().uuid(),
+      title: z.string().trim().min(1).max(180),
+      dateStart: z.string().datetime(),
+      dateEnd: z.string().datetime(),
+      locationType: z.enum(LOCATION_TYPES),
+      teachers: TeacherNamesSchema,
+    })).max(NEWSLETTER_UPCOMING_LIMIT),
+  }),
+}) satisfies z.ZodType<OpsNewsletterRenderContext>
+
+export type NewsletterRenderContext = OpsNewsletterRenderContext
+
+/** Deployment values the renderer needs; the issue (including the snapshotted
+ *  organisation and department names) supplies everything else. */
+export interface NewsletterRenderEnvironment {
+  appUrl: string
+  timeZone: string
+}
+
+/**
+ * Renderer input for a stored (or about-to-be-stored) department issue. A
+ * legacy draft without a render snapshot (or one taken before the names were
+ * snapshotted) cannot be re-rendered in the current design; the moderator
+ * regenerates it instead. Names come only from the snapshot, so the HTML
+ * stored at save and the text part rendered at send always agree.
+ */
+export function newsletterRenderInput(
+  issue: Pick<OpsNewsletterIssue, 'department_id' | 'week_start' | 'source_documents'> & {
+    content: OpsNewsletterContent
+  },
+  environment: NewsletterRenderEnvironment
+): NewsletterRenderInput {
+  const render = issue.content.render
+  if (!render || !issue.department_id || !render.organizationName || !render.departmentName) {
+    throw new NewsletterUserError(
+      'This draft was made before the current email design. Choose Regenerate to refresh it, then edit and send.'
     )
-    .join('')
-
-  return `
-    <div style="margin:0;background:#f6f1e8;padding:22px 12px;color:#1f1f1f;">
-      <main style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;max-width:680px;margin:0 auto;">
-        <header style="padding:18px 20px;background:#1f1f1f;color:#fff;border-bottom:6px solid #c96f4a;">
-          <p style="margin:0 0 5px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#e6c7b8;">${escapeHtml(input.departmentName)} · weekly teaching</p>
-          <h2 style="margin:0;font-size:25px;line-height:1.15;">${escapeHtml(input.content.subject)}</h2>
-          <p style="margin:8px 0 0;font-size:12px;color:#ddd;">${escapeHtml(input.weekLabel)} · ${escapeHtml(input.organizationName)}</p>
-        </header>
-        <div style="padding:18px 16px 8px;">
-          <p style="margin:0 0 15px;font-size:14px;line-height:1.5;">${escapeHtml(input.content.intro)}</p>
-          ${sessions}
-          <p style="margin:16px 2px 0;padding:12px 14px;border-left:5px solid #c96f4a;background:#efe2d8;line-height:1.45;">${escapeHtml(input.content.closing)}</p>
-        </div>
-        <footer style="font-size:11px;color:#68605b;margin-top:8px;border-top:1px solid #c8bdb4;padding:12px 16px;line-height:1.5;">
-          This one-page teaching summary was generated from the week&apos;s session information and available uploaded teaching materials, then reviewed by a department moderator before sending.<br />
-          <a href="${UNSUBSCRIBE_PLACEHOLDER}" style="color:#68605b;">Unsubscribe from this digest</a>
-        </footer>
-      </main>
-    </div>
-  `
+  }
+  return {
+    ...environment,
+    organizationName: render.organizationName,
+    departmentName: render.departmentName,
+    departmentId: issue.department_id,
+    weekStartKey: issue.week_start,
+    content: {
+      subject: issue.content.subject,
+      intro: issue.content.intro,
+      sessions: issue.content.sessions,
+      closing: issue.content.closing,
+    },
+    sourceDocuments: issue.source_documents.map((document) => ({
+      sessionId: document.sessionId,
+      mimeType: document.mimeType,
+    })),
+    render,
+  }
 }
 
-export function newsletterPreviewText(content: OpsNewsletterContent): string {
-  return [
-    content.intro,
-    ...content.sessions.map((session) =>
-      `${session.date_label} — ${session.title}\n${session.overview}\n${session.learning_points.map((point) => `• ${point}`).join('\n')}`
-    ),
-    content.closing,
-  ].join('\n\n')
+/** The stored HTML part. Kept as a thin wrapper so call sites keep their shape. */
+export function buildNewsletterHtml(input: NewsletterRenderInput): string {
+  return renderNewsletterEmail(input).html
+}
+
+/** The text/plain part, also the approval row's preview body: the approver
+ *  reads exactly what plain-text clients receive. */
+export function buildNewsletterText(input: NewsletterRenderInput): string {
+  return renderNewsletterEmail(input).text
 }
 
 // ---------------------------------------------------------------------------
@@ -261,12 +336,14 @@ export function newsletterUnsubscribeUrls(appUrl: string, token: string): {
 /**
  * Bind a moderator's edit to the generated snapshot: session identity, title
  * and date label always come from the stored issue, even if a crafted client
- * submits other values, and coverage/word limits are revalidated.
+ * submits other values, and coverage/word limits are revalidated. The
+ * server-owned render snapshot (`content.render`) is always restored from the
+ * stored issue; a submitted one is ignored (NewsletterSchema strips it).
  */
 export function normalizeNewsletterEdit(
-  snapshot: Pick<OpsNewsletterIssue, 'source_session_ids'> & { content: OpsNewsletterContent },
+  snapshot: Pick<OpsNewsletterIssue, 'source_session_ids' | 'source_documents'> & { content: OpsNewsletterContent },
   submitted: OpsNewsletterContent
-): NewsletterContent {
+): OpsNewsletterContent {
   const trustedSections = new Map(
     snapshot.content.sessions.map((section) => [section.session_id, section])
   )
@@ -279,11 +356,16 @@ export function normalizeNewsletterEdit(
         : section
     }),
   }
-  const parsed = newsletterSchemaForSessions(snapshot.source_session_ids).safeParse(normalized)
+  const parsed = newsletterSchemaForSessions(
+    snapshot.source_session_ids,
+    newsletterSessionsWithDocuments(snapshot.source_documents ?? [])
+  ).safeParse(normalized)
   if (!parsed.success) {
     throw new NewsletterUserError(parsed.error.issues[0]?.message ?? 'Newsletter content is invalid')
   }
-  return parsed.data
+  return snapshot.content.render
+    ? { ...parsed.data, render: snapshot.content.render }
+    : parsed.data
 }
 
 // ---------------------------------------------------------------------------

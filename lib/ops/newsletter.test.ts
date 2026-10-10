@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  NewsletterRenderContextSchema,
   NewsletterSchema,
   buildNewsletterHtml,
+  buildNewsletterText,
   escapeHtml,
+  newsletterRenderInput,
   makeUnsubToken,
   newsletterSchemaForSessions,
   newsletterWeekWindow,
@@ -143,6 +146,8 @@ describe('unsubscribe tokens', () => {
 })
 
 describe('buildNewsletterHtml', () => {
+  // The renderer's own tests (newsletter-render.test.ts) cover the design;
+  // these check the wrapper and the stored-issue input builder.
   const content = {
     subject: 'Week in teaching',
     intro: 'Three sessions ran this week.',
@@ -155,40 +160,74 @@ describe('buildNewsletterHtml', () => {
     }],
     closing: 'Keep learning & sharing.',
   }
+  const render = {
+    version: 1 as const,
+    snapshotAt: '2026-07-06T09:00:00.000Z',
+    organizationName: 'Org',
+    departmentName: 'Department',
+    coordinators: [],
+    sessions: {
+      '11111111-1111-4111-8111-111111111111': {
+        dateStart: '2026-06-29T09:00:00.000Z',
+        dateEnd: '2026-06-29T10:00:00.000Z',
+        locationType: 'IN_PERSON' as const,
+        teachers: ['Dr <Ann>'],
+        recap: null,
+      },
+    },
+    upcoming: { startIso: '2026-07-06T09:00:00.000Z', endIso: '2026-07-13T09:00:00.000Z', more: 0, sessions: [] },
+  }
+  const issue = {
+    department_id: '22222222-2222-4222-8222-222222222222',
+    week_start: '2026-06-29',
+    source_documents: [],
+    content: { ...content, render },
+  }
+  const environment = () => ({ appUrl: 'https://app.test', timeZone: 'Europe/London' })
+  const named = (organizationName: string, departmentName: string) => ({
+    ...issue,
+    content: { ...issue.content, render: { ...render, organizationName, departmentName } },
+  })
 
   it('escapes HTML in model-authored and session-derived text', () => {
-    const html = buildNewsletterHtml({
-      organizationName: 'St <Elsewhere>',
-      departmentName: 'Paediatrics & Neonates',
-      weekLabel: 'w/c 29 Jun',
-      content,
-    })
+    const html = buildNewsletterHtml(newsletterRenderInput(named('St <Elsewhere>', 'Paediatrics & Neonates'), environment()))
     expect(html).toContain('St &lt;Elsewhere&gt;')
     expect(html).toContain('Paediatrics &amp; Neonates')
     expect(html).toContain('Sepsis &lt;6&gt;')
     expect(html).toContain('Early recognition &amp; escalation')
+    expect(html).toContain('Dr &lt;Ann&gt;')
     expect(html).not.toContain('<6>')
   })
 
   it('contains the per-recipient unsubscribe placeholder', () => {
-    const html = buildNewsletterHtml({
-      organizationName: 'Org',
-      departmentName: 'Department',
-      weekLabel: 'w/c',
-      content,
-    })
+    const html = buildNewsletterHtml(newsletterRenderInput(issue, environment()))
     expect(html).toContain(UNSUBSCRIBE_PLACEHOLDER)
+    expect(buildNewsletterText(newsletterRenderInput(issue, environment()))).toContain(`Unsubscribe: ${UNSUBSCRIBE_PLACEHOLDER}`)
   })
 
-  it('uses the compact Petrios one-page visual treatment', () => {
-    const html = buildNewsletterHtml({
-      organizationName: 'Org',
-      departmentName: 'Department',
-      weekLabel: 'w/c',
-      content,
-    })
-    expect(html).toContain('max-width:680px')
-    expect(html).toContain('box-shadow:3px 3px 0 #c96f4a')
+  it('uses the Monitor strip design with the issue week and a description-only session', () => {
+    const html = buildNewsletterHtml(newsletterRenderInput(issue, environment()))
+    expect(html).toContain('W/C 29 JUN 2026')
+    expect(html).toContain('Week commencing 29 June 2026')
+    expect(html).toContain('Drawn from the session description only. No teaching files were uploaded.')
+  })
+
+  it('refuses to re-render a legacy draft without a render snapshot', () => {
+    expect(() => newsletterRenderInput({ ...issue, content }, environment())).toThrow(NewsletterUserError)
+  })
+
+  it('takes organisation and department names only from the stored snapshot', () => {
+    const input = newsletterRenderInput(named('Snapshot Trust', 'Snapshot Dept'), environment())
+    expect(input).toMatchObject({ organizationName: 'Snapshot Trust', departmentName: 'Snapshot Dept' })
+    const text = buildNewsletterText(input)
+    expect(text).toContain('PETRIOS · SNAPSHOT DEPT')
+    expect(text).toContain('· Snapshot Trust')
+    // A snapshot taken before the names were captured asks for Regenerate.
+    const { organizationName: _org, departmentName: _dept, ...unnamed } = render
+    expect(() => newsletterRenderInput(
+      { ...issue, content: { ...issue.content, render: unnamed as typeof render } },
+      environment()
+    )).toThrow(NewsletterUserError)
   })
 })
 
@@ -201,14 +240,17 @@ describe('NewsletterSchema', () => {
     learning_points: ['One point'],
   }
 
-  it('requires one to three learning points per delivered session', () => {
+  it('allows at most three learning points; the base schema allows none', () => {
+    // Behaviour change (honesty fix): the per-session minimum moved to
+    // newsletterSchemaForSessions, which requires a point only for sessions
+    // with teaching files.
     const base = {
       subject: 's',
       intro: 'i',
       closing: 'c',
       sessions: [{ ...session, learning_points: [] as string[] }],
     }
-    expect(NewsletterSchema.safeParse(base).success).toBe(false)
+    expect(NewsletterSchema.safeParse(base).success).toBe(true)
     expect(
       NewsletterSchema.safeParse({
         ...base,
@@ -225,7 +267,7 @@ describe('NewsletterSchema', () => {
 
   it('requires every expected session exactly once', () => {
     const secondId = '22222222-2222-4222-8222-222222222222'
-    const schema = newsletterSchemaForSessions([session.session_id, secondId])
+    const schema = newsletterSchemaForSessions([session.session_id, secondId], new Set())
     const content = { subject: 's', intro: 'i', closing: 'c', sessions: [session] }
     expect(schema.safeParse(content).success).toBe(false)
     expect(schema.safeParse({
@@ -237,7 +279,7 @@ describe('NewsletterSchema', () => {
   it('rejects duplicate and unknown session ids even when the count matches', () => {
     const secondId = '22222222-2222-4222-8222-222222222222'
     const unknownId = '33333333-3333-4333-8333-333333333333'
-    const schema = newsletterSchemaForSessions([session.session_id, secondId])
+    const schema = newsletterSchemaForSessions([session.session_id, secondId], new Set())
     const base = { subject: 's', intro: 'i', closing: 'c' }
     expect(schema.safeParse({ ...base, sessions: [session, session] }).success).toBe(false)
     expect(schema.safeParse({
@@ -256,10 +298,66 @@ describe('NewsletterSchema', () => {
     expect(newsletterWordCount(content)).toBeGreaterThan(700)
     expect(NewsletterSchema.safeParse(content).success).toBe(false)
   })
+
+  it('requires a learning point only for sessions with teaching documents', () => {
+    const secondId = '22222222-2222-4222-8222-222222222222'
+    const noPoints = (id: string) => ({ ...session, session_id: id, learning_points: [] as string[] })
+    const content = (sessions: typeof session[]) => ({ subject: 's', intro: 'i', closing: 'c', sessions })
+    const withFiles = newsletterSchemaForSessions([session.session_id, secondId], new Set([session.session_id]))
+
+    // The session with files keeps its point; the no-file session may have none.
+    expect(withFiles.safeParse(content([session, noPoints(secondId)])).success).toBe(true)
+    // The session with files may not drop to zero points.
+    const result = withFiles.safeParse(content([noPoints(session.session_id), noPoints(secondId)]))
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0].path).toEqual(['sessions', 0, 'learning_points'])
+    // A no-file session may still keep points the description states.
+    expect(withFiles.safeParse(content([session, { ...session, session_id: secondId }])).success).toBe(true)
+  })
+})
+
+describe('NewsletterRenderContextSchema', () => {
+  const valid = {
+    version: 1,
+    snapshotAt: '2026-10-11T19:02:00.000Z',
+    organizationName: 'Example Trust',
+    departmentName: 'Paediatrics',
+    coordinators: ['Dr A'],
+    sessions: {
+      '11111111-1111-4111-8111-111111111111': {
+        dateStart: '2026-10-06T11:30:00.000Z',
+        dateEnd: '2026-10-06T13:00:00.000Z',
+        locationType: 'JITSI',
+        teachers: ['Dr B'],
+        recap: { durationSeconds: 312 },
+      },
+    },
+    upcoming: { startIso: '2026-10-12T00:00:00.000Z', endIso: '2026-10-19T00:00:00.000Z', more: 0, sessions: [] },
+  }
+
+  it('accepts a valid snapshot and rejects non-UUID keys, offsets, long lists and bad recaps', () => {
+    expect(NewsletterRenderContextSchema.safeParse(valid).success).toBe(true)
+    const meta = valid.sessions['11111111-1111-4111-8111-111111111111']
+    expect(NewsletterRenderContextSchema.safeParse({ ...valid, sessions: { 'not-a-uuid': meta } }).success).toBe(false)
+    expect(NewsletterRenderContextSchema.safeParse({ ...valid, snapshotAt: '2026-10-11T19:02:00+01:00' }).success).toBe(false)
+    expect(NewsletterRenderContextSchema.safeParse({ ...valid, coordinators: ['a', 'b', 'c', 'd', 'e'] }).success).toBe(false)
+    expect(NewsletterRenderContextSchema.safeParse({ ...valid, departmentName: '' }).success).toBe(false)
+    const { organizationName: _org, ...noOrganization } = valid
+    expect(NewsletterRenderContextSchema.safeParse(noOrganization).success).toBe(false)
+    expect(NewsletterRenderContextSchema.safeParse({
+      ...valid,
+      sessions: { '11111111-1111-4111-8111-111111111111': { ...meta, recap: { durationSeconds: 0 } } },
+    }).success).toBe(false)
+    expect(NewsletterRenderContextSchema.safeParse({
+      ...valid,
+      sessions: { '11111111-1111-4111-8111-111111111111': { ...meta, locationType: 'ZOOM' } },
+    }).success).toBe(false)
+  })
 })
 
 describe('escapeHtml', () => {
-  it('escapes the five specials', () => {
+  it('escapes the five specials and %', () => {
     expect(escapeHtml(`<a href="x">&'</a>`)).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;')
+    expect(escapeHtml(UNSUBSCRIBE_PLACEHOLDER)).toBe('&#37;&#37;UNSUBSCRIBE_URL&#37;&#37;')
   })
 })

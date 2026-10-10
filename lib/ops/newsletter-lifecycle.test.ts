@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { OpsNewsletterContent, OpsNewsletterDelivery } from '@/lib/types'
+import type {
+  OpsNewsletterContent,
+  OpsNewsletterDelivery,
+  OpsNewsletterRenderContext,
+} from '@/lib/types'
 import {
   createSendPacer,
   NEWSLETTER_EXECUTION_LEASE_MS,
@@ -40,7 +44,33 @@ const snapshotContent: OpsNewsletterContent = {
   closing: 'Thanks all.',
 }
 
-const snapshot = { content: snapshotContent, source_session_ids: [SESSION_A, SESSION_B] }
+// SESSION_A has a teaching file; SESSION_B has none.
+const snapshot = {
+  content: snapshotContent,
+  source_session_ids: [SESSION_A, SESSION_B],
+  source_documents: [{
+    sessionId: SESSION_A,
+    sessionTitle: 'Sepsis recognition',
+    id: '44444444-4444-4444-8444-444444444444',
+    filename: 'sepsis.pdf',
+    mimeType: 'application/pdf',
+    byteSize: 1024,
+    sha256: 'a'.repeat(64),
+  }],
+}
+
+const render: OpsNewsletterRenderContext = {
+  version: 1,
+  snapshotAt: '2026-07-13T09:00:00.000Z',
+  organizationName: 'Example Trust',
+  departmentName: 'Paediatrics',
+  coordinators: ['Dr Coordinator'],
+  sessions: {
+    [SESSION_A]: { dateStart: '2026-07-06T09:00:00.000Z', dateEnd: '2026-07-06T10:00:00.000Z', locationType: 'IN_PERSON', teachers: ['Dr A'], recap: null },
+    [SESSION_B]: { dateStart: '2026-07-07T14:00:00.000Z', dateEnd: '2026-07-07T15:00:00.000Z', locationType: 'JITSI', teachers: [], recap: { durationSeconds: 300 } },
+  },
+  upcoming: { startIso: '2026-07-13T09:00:00.000Z', endIso: '2026-07-20T09:00:00.000Z', more: 0, sessions: [] },
+}
 
 describe('normalizeNewsletterEdit', () => {
   it('keeps edited narrative but binds title and date to the stored snapshot', () => {
@@ -83,11 +113,37 @@ describe('normalizeNewsletterEdit', () => {
     })).toThrow(NewsletterUserError)
   })
 
-  it('rejects an empty learning-point list', () => {
+  it('rejects an empty learning-point list for a session with teaching files', () => {
     expect(() => normalizeNewsletterEdit(snapshot, {
       ...snapshotContent,
       sessions: [{ ...snapshotContent.sessions[0], learning_points: [] }, snapshotContent.sessions[1]],
     })).toThrow(NewsletterUserError)
+  })
+
+  it('accepts an empty learning-point list for a session without teaching files', () => {
+    const result = normalizeNewsletterEdit(snapshot, {
+      ...snapshotContent,
+      sessions: [snapshotContent.sessions[0], { ...snapshotContent.sessions[1], learning_points: [] }],
+    })
+    expect(result.sessions[1].learning_points).toEqual([])
+  })
+
+  it('ignores a submitted render snapshot and restores the stored one', () => {
+    const forged: OpsNewsletterRenderContext = {
+      ...render,
+      coordinators: ['Forged coordinator'],
+      sessions: {
+        ...render.sessions,
+        [SESSION_A]: { ...render.sessions[SESSION_A], teachers: ['Forged teacher'], recap: { durationSeconds: 60 } },
+      },
+    }
+    const stored = { ...snapshot, content: { ...snapshotContent, render } }
+    const result = normalizeNewsletterEdit(stored, { ...snapshotContent, intro: 'Edited.', render: forged })
+    expect(result.intro).toBe('Edited.')
+    expect(result.render).toEqual(render)
+
+    // A legacy snapshot has no render; a submitted one is still dropped.
+    expect(normalizeNewsletterEdit(snapshot, { ...snapshotContent, render: forged }).render).toBeUndefined()
   })
 })
 

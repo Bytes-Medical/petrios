@@ -3,8 +3,10 @@ import { getAppUrl } from '@/lib/app-url'
 import type { OpsNewsletterIssue, OpsPendingAction } from '@/lib/types'
 import * as opsDb from '@/lib/db/ops'
 import * as departmentsDb from '@/lib/db/departments'
+import { appTimeZone } from '@/lib/datetime'
 import { createRunBudget } from '@/lib/run-budget'
 import {
+  buildNewsletterText,
   createSendPacer,
   makeUnsubToken,
   newsletterIdempotencyKey,
@@ -15,6 +17,7 @@ import {
   NEWSLETTER_SEND_SUBREQUEST_BUDGET,
   NEWSLETTER_SEND_TIME_BUDGET_MS,
   NEWSLETTER_SUBREQUESTS_PER_RECIPIENT,
+  newsletterRenderInput,
   planNewsletterRecipients,
   sanitizeNewsletterDeliveryError,
   staleNewsletterDeliveryIds,
@@ -160,12 +163,31 @@ async function finaliseFailedIssue(issueId: string): Promise<void> {
   await opsDb.updateNewsletterIssue(issueId, { status: 'failed', sentCount: sent })
 }
 
+/**
+ * The text/plain part, rendered once per execution purely from the stored
+ * issue: the exact reviewed content and its render snapshot, including the
+ * organisation and department names taken at generation (never re-read, so
+ * it always matches the stored HTML and a retry sends identical bytes). A
+ * legacy issue without a snapshot keeps its original HTML-only delivery.
+ */
+function newsletterTextPart(issue: OpsNewsletterIssue, appUrl: string): string | null {
+  if (!issue.content?.render || !issue.department_id) return null
+  return buildNewsletterText(newsletterRenderInput(
+    { ...issue, content: issue.content },
+    { appUrl, timeZone: appTimeZone() }
+  ))
+}
+
 async function deliverNewsletterIssue(
   action: OpsPendingAction,
   issue: OpsNewsletterIssue,
   deps: Required<NewsletterExecutionOptions>
 ): Promise<void> {
   const departmentId = issue.department_id!
+  // Rendered before any ledger write, so a snapshot problem fails the issue
+  // without seeding deliveries.
+  const appUrl = getAppUrl()
+  const textPart = newsletterTextPart(issue, appUrl)
   const members = await departmentsDb.listDepartmentMembersWithProfiles(action.org_id, departmentId)
   const optouts = await opsDb.listNewsletterOptoutUserIds(
     action.org_id,
@@ -193,7 +215,6 @@ async function deliverNewsletterIssue(
   const eligible = new Map(recipients.map((recipient) => [recipient.userId, recipient.email]))
   const mailer = getEmailClient()
   const fromAddress = getFromAddress()
-  const appUrl = getAppUrl()
   const budget = createRunBudget({
     maxUnits: NEWSLETTER_SEND_SUBREQUEST_BUDGET,
     maxDurationMs: NEWSLETTER_SEND_TIME_BUDGET_MS,
@@ -211,6 +232,7 @@ async function deliverNewsletterIssue(
     if (!budget.take(NEWSLETTER_SUBREQUESTS_PER_RECIPIENT)) break
     const urls = newsletterUnsubscribeUrls(appUrl, makeUnsubToken(action.org_id, delivery.recipient_user_id))
     const html = issue.html.split(UNSUBSCRIBE_PLACEHOLDER).join(urls.page)
+    const text = textPart?.split(UNSUBSCRIBE_PLACEHOLDER).join(urls.page)
     const claimed = await opsDb.claimNewsletterDelivery(delivery.id)
     if (!claimed) continue // another execution holds this row's lease
 
@@ -223,6 +245,7 @@ async function deliverNewsletterIssue(
           to: claimed.recipient_email,
           subject: issue.subject,
           html,
+          ...(text ? { text } : {}),
           idempotencyKey: newsletterIdempotencyKey(claimed),
           headers: {
             'List-Unsubscribe': `<${urls.oneClick}>`,

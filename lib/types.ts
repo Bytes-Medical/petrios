@@ -479,11 +479,49 @@ export interface OpsNewsletterSessionSection {
   learning_points: string[]
 }
 
+/**
+ * Server-owned render snapshot stored at `content.render` (spec 06): every
+ * value the email template shows beyond the AI/moderator narrative, captured
+ * once at generation. Saving re-renders from it; sending never re-reads it.
+ * Validated by `NewsletterRenderContextSchema` in lib/ops/newsletter.ts.
+ */
+export interface OpsNewsletterRenderContext {
+  version: 1
+  snapshotAt: string
+  /** Masthead/footer names at generation, so neither part re-reads them. */
+  organizationName: string
+  departmentName: string
+  coordinators: string[]
+  sessions: Record<string, {
+    dateStart: string
+    dateEnd: string
+    locationType: LocationType
+    teachers: string[]
+    recap: { durationSeconds: number } | null
+  }>
+  upcoming: {
+    startIso: string
+    endIso: string
+    /** Published sessions beyond the rows listed. */
+    more: number
+    sessions: {
+      id: string
+      title: string
+      dateStart: string
+      dateEnd: string
+      locationType: LocationType
+      teachers: string[]
+    }[]
+  }
+}
+
 export interface OpsNewsletterContent {
   subject: string
   intro: string
   sessions: OpsNewsletterSessionSection[]
   closing: string
+  /** Absent on legacy rows (pre-"Monitor strip" design). Never AI- or client-authored. */
+  render?: OpsNewsletterRenderContext
 }
 
 export interface OpsNewsletterSourceDocument {

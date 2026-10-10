@@ -39,6 +39,12 @@ vi.mock('@/lib/email', () => ({
 
 vi.mock('@/lib/db/departments', () => ({
   listDepartmentMembersWithProfiles: vi.fn(async () => state.members),
+  // A rename after approval must never reach the sent parts.
+  findDepartment: vi.fn(async (id: string) => ({ id, name: 'Renamed Department' })),
+}))
+
+vi.mock('@/lib/db/organizations', () => ({
+  findOrganizationName: vi.fn(async () => 'Renamed Trust'),
 }))
 
 vi.mock('@/lib/db/ops', () => ({
@@ -289,6 +295,75 @@ describe('executeNewsletterIssue audience', () => {
       [user(2), 'SENT'],
     ])
     expect(state.issue).toMatchObject({ status: 'sent', sent_count: 2 })
+  })
+})
+
+describe('executeNewsletterIssue plain-text part', () => {
+  const SESSION = '44444444-4444-4444-8444-444444444444'
+  const content = {
+    subject: 'Weekly teaching',
+    intro: 'One session ran.',
+    sessions: [{
+      session_id: SESSION,
+      title: 'Sepsis',
+      date_label: 'Monday 5 October',
+      overview: 'Escalate early.',
+      learning_points: [],
+    }],
+    closing: 'Thanks.',
+    render: {
+      version: 1 as const,
+      snapshotAt: '2026-10-12T09:00:00.000Z',
+      organizationName: 'Example Trust',
+      departmentName: 'Paediatrics',
+      coordinators: [],
+      sessions: {
+        [SESSION]: {
+          dateStart: '2026-10-05T09:00:00.000Z',
+          dateEnd: '2026-10-05T10:00:00.000Z',
+          locationType: 'IN_PERSON' as const,
+          teachers: ['Dr A'],
+          recap: null,
+        },
+      },
+      upcoming: { startIso: '2026-10-12T09:00:00.000Z', endIso: '2026-10-19T09:00:00.000Z', more: 0, sessions: [] },
+    },
+  }
+
+  it('sends a text part rendered from the stored snapshot, with the placeholder swapped in both parts', async () => {
+    state.issue = makeIssue({ content, source_session_ids: [SESSION] })
+    await executeNewsletterIssue(action(), noWait)
+    expect(sentTo()).toEqual(['one@nhs.net', 'two@nhs.net'])
+    for (const [index, send] of state.sends.entries()) {
+      const html = String(send.html)
+      const text = String(send.text)
+      expect(html).not.toContain(UNSUBSCRIBE_PLACEHOLDER)
+      expect(text).not.toContain(UNSUBSCRIBE_PLACEHOLDER)
+      const token = text.match(/Unsubscribe: https:\/\/app\.test\/ops\/unsubscribe\/(\S+)/)?.[1]
+      expect(verifyUnsubToken(token!)).toEqual({ orgId: ORG, userId: user(index + 1) })
+      expect(html).toContain(`https://app.test/ops/unsubscribe/${token}`)
+      expect(text).toContain('PETRIOS · PAEDIATRICS')
+      expect(text).toContain('Week commencing 5 October 2026 · Example Trust')
+      expect(text).toContain(`Open: https://app.test/sessions/${SESSION}`)
+      expect(text).not.toContain('Renamed')
+    }
+  })
+
+  it('renders the text part from the stored issue before seeding any delivery', async () => {
+    const { organizationName: _org, departmentName: _dept, ...unnamed } = content.render
+    state.issue = makeIssue({
+      content: { ...content, render: unnamed as typeof content.render },
+      source_session_ids: [SESSION],
+    })
+    await expect(executeNewsletterIssue(action(), noWait)).rejects.toThrow('Regenerate')
+    expect(state.deliveries).toHaveLength(0)
+    expect(state.sends).toHaveLength(0)
+  })
+
+  it('keeps a legacy issue without a render snapshot HTML-only', async () => {
+    await executeNewsletterIssue(action(), noWait)
+    expect(state.sends).toHaveLength(2)
+    expect(state.sends.every((send) => !('text' in send))).toBe(true)
   })
 })
 

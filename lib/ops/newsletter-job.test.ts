@@ -187,4 +187,25 @@ describe('generateDepartmentNewsletter', () => {
     await expect(generateDepartmentNewsletter({ departmentName: 'Paediatrics', sessions, run }))
       .rejects.toThrow('one-page review format')
   })
+
+  it('lets a session without files have no learning points, but not a session with files', async () => {
+    const documents = [{ sessionId: SESSION_A, sessionTitle: 'Sepsis recognition', id: 'doc-1', filename: 'sepsis.pdf', mimeType: 'application/pdf', byteSize: 10, sha256: 'a'.repeat(64) }]
+    mocks.loadSources.mockResolvedValue(sourcesBundle({ documents, files: [{ filename: 'petrios-ai-1.pdf' }] }))
+    const noPointsForB = {
+      ...modelOutput,
+      sessions: [modelOutput.sessions[0], { ...modelOutput.sessions[1], learning_points: [] }],
+    }
+    mocks.opsInference.mockResolvedValue(noPointsForB)
+
+    const result = await generateDepartmentNewsletter({ departmentName: 'Paediatrics', sessions, run })
+    expect(result.content.sessions[1].learning_points).toEqual([])
+    const request = mocks.opsInference.mock.calls[0][0]
+    expect(request.prompt).toContain('For a session with no uploaded file, return an empty learning_points array unless the description itself states the points; never infer clinical guidance from a title.')
+    // The gateway validates with the per-session schema the job built.
+    expect(request.schema.safeParse(noPointsForB).success).toBe(true)
+    expect(request.schema.safeParse({
+      ...modelOutput,
+      sessions: [{ ...modelOutput.sessions[0], learning_points: [] }, modelOutput.sessions[1]],
+    }).success).toBe(false)
+  })
 })
