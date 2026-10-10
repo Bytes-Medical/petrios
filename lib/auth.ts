@@ -1,5 +1,10 @@
 import { createSupabaseClient } from '@/lib/supabase/server'
 import { cache } from 'react'
+import * as departmentsDb from '@/lib/db/departments'
+import {
+  decideDepartmentModerator,
+  type DepartmentModeratorDecision,
+} from '@/lib/department-authz'
 
 export type UserRole = 'org_admin' | 'department_admin' | 'faculty' | 'trainee'
 
@@ -120,14 +125,16 @@ const isOrgManagerCached = cache(async (orgId: string | undefined) => {
   const [superAdmin, orgAdmin, departmentAdmin] = await Promise.all([
     isSuperAdmin(),
     isOrgAdminCached(resolvedOrgId),
+    // Existence check: a moderator of several departments in one org has
+    // several rows, which .maybeSingle() would turn into an error (false).
     supabase
       .from('department_members')
       .select('id')
       .eq('user_id', userId)
       .eq('org_id', resolvedOrgId)
       .eq('role', 'department_admin')
-      .maybeSingle()
-      .then(({ data }) => !!data),
+      .limit(1)
+      .then(({ data, error }) => !error && (data?.length ?? 0) > 0),
   ])
 
   return superAdmin || orgAdmin || departmentAdmin
@@ -164,37 +171,60 @@ export async function requireSuperAdmin() {
   return true
 }
 
-const isDepartmentModeratorCached = cache(async (departmentId: string) => {
-  const userId = await getCurrentUserId()
-  if (!userId) return isSuperAdmin()
+/**
+ * Department moderation (spec/07). The department's owning organisation is
+ * resolved on the server (service-role lookup of the department row), never
+ * taken from the caller, and decideDepartmentModerator grants only:
+ * - a super admin, for any department; or
+ * - a caller whose CURRENT organisation is the department's organisation and
+ *   who is org_admin of it, or holds a moderator department_members row whose
+ *   org_id matches it.
+ * All facts are fetched in one concurrent wave.
+ */
+const resolveDepartmentModeratorCached = cache(
+  async (departmentId: string): Promise<DepartmentModeratorDecision> => {
+    const userId = await getCurrentUserId()
+    if (!userId || !departmentId) return { allowed: false, orgId: null }
 
-  const supabase = await createSupabaseClient()
-  const [superAdmin, orgAdmin, deptModerator] = await Promise.all([
-    isSuperAdmin(),
-    isOrgAdmin(),
-    supabase
-      .from('department_members')
-      .select('id')
-      .eq('department_id', departmentId)
-      .eq('user_id', userId)
-      .in('role', ['department_admin', 'org_admin'])
-      .maybeSingle()
-      .then(({ data, error }) => !error && !!data),
-  ])
+    const [departmentOrgId, currentOrgId, superAdmin, orgAdminOfCurrentOrg, moderatorRowOrgIds] =
+      await Promise.all([
+        departmentsDb.findDepartmentOrgId(departmentId).catch(() => null),
+        getCurrentOrgId(),
+        isSuperAdmin(),
+        getCurrentOrgId().then((orgId) => (orgId ? isOrgAdminCached(orgId) : false)),
+        departmentsDb
+          .listDepartmentModeratorOrgIds(userId, departmentId)
+          .catch(() => [] as string[]),
+      ])
 
-  return superAdmin || orgAdmin || deptModerator
-})
+    return decideDepartmentModerator({
+      departmentOrgId,
+      currentOrgId,
+      superAdmin,
+      orgAdminOfCurrentOrg,
+      moderatorRowOrgIds,
+    })
+  }
+)
 
 export async function isDepartmentModerator(departmentId: string) {
-  return isDepartmentModeratorCached(departmentId)
+  return (await resolveDepartmentModeratorCached(departmentId)).allowed
 }
 
-export async function requireDepartmentModerator(departmentId: string) {
-  const allowed = await isDepartmentModerator(departmentId)
-  if (!allowed) {
+/**
+ * Throws unless the caller may moderate the department, and returns the
+ * department's organisation id. For everyone except a super admin this is
+ * the caller's current organisation (requireOrg()), so follow-up queries
+ * scoped with requireOrg() line up with the department.
+ */
+export async function requireDepartmentModerator(
+  departmentId: string
+): Promise<{ orgId: string }> {
+  const decision = await resolveDepartmentModeratorCached(departmentId)
+  if (!decision.allowed) {
     throw new Error('Department moderator required')
   }
-  return true
+  return { orgId: decision.orgId }
 }
 
 export async function requireOrgManager(orgId?: string) {

@@ -93,6 +93,7 @@ ELEVENLABS_MODEL_ID           # Optional ElevenLabs model (default eleven_multil
 DATABASE_URL                  # Optional: plain-Postgres migration runner (npm run db:migrate)
 INSTANCE_SIGNING_KEY          # Optional: Ed25519 identity enabling signed teaching-record exports (federation)
 NEXT_PUBLIC_JITSI_DOMAIN      # Jitsi domain for Petrios Meet rooms (optional, default meet.jit.si)
+WEBHOOK_ALLOW_PRIVATE         # Exactly "true" disables the webhook private-destination guard (local dev / trusted in-network consumers only)
 OPS_ENABLED                   # Petrios Ops kill switch: unset/anything = on, "false" = every ops surface halts
 OPS_ASSISTANT_ENABLED         # Ops chat assistant opt-in: unset = OFF (default), "true" = enabled (still subject to OPS_ENABLED)
 GOOGLE_SITE_VERIFICATION      # Optional Search Console HTML-tag token (renders the site-wide meta tag)

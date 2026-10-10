@@ -77,13 +77,18 @@ export async function findJoinRequest(
   return (data as DepartmentJoinRequest | null) ?? null
 }
 
+/**
+ * Decides a PENDING request (compare-and-set on status). Returns false when
+ * the request was already decided, so a concurrent second decision never
+ * re-runs the membership writes.
+ */
 export async function updateJoinRequestStatus(input: {
   id: string
-  status: JoinRequestStatus
+  status: Exclude<JoinRequestStatus, 'PENDING'>
   decidedBy: string
-}): Promise<void> {
+}): Promise<boolean> {
   const db = await getServiceDb()
-  const { error } = await db
+  const { data, error } = await db
     .from('department_join_requests')
     .update({
       status: input.status,
@@ -91,8 +96,11 @@ export async function updateJoinRequestStatus(input: {
       decided_by: input.decidedBy,
     })
     .eq('id', input.id)
+    .eq('status', 'PENDING')
+    .select('id')
 
   if (error) throw toDbError(`Failed to ${input.status.toLowerCase()} join request`, error)
+  return ((data as { id: string }[] | null) ?? []).length > 0
 }
 
 // -----------------------------------------------------------------------------

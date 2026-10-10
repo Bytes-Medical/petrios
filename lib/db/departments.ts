@@ -224,6 +224,29 @@ export async function insertDepartmentMember(input: {
   return data as DepartmentMember
 }
 
+/**
+ * org_id values of the caller's own moderator rows (department_admin or the
+ * legacy department-level org_admin) for one department. RLS client: a user
+ * reads their own membership rows. lib/auth.ts compares the org ids with the
+ * department's owning organisation, so a row whose org_id disagrees with the
+ * department never grants moderation.
+ */
+export async function listDepartmentModeratorOrgIds(
+  userId: string,
+  departmentId: string
+): Promise<string[]> {
+  const db = await getDb()
+  const { data, error } = await db
+    .from('department_members')
+    .select('org_id')
+    .eq('department_id', departmentId)
+    .eq('user_id', userId)
+    .in('role', ['department_admin', 'org_admin'])
+
+  if (error) throw toDbError('Failed to load department moderator roles', error)
+  return ((data as { org_id: string }[] | null) ?? []).map((row) => row.org_id)
+}
+
 export async function listDepartmentMembers(
   orgId: string,
   departmentId: string
@@ -318,6 +341,25 @@ export async function listModeratedDepartments(
     if (!row.departments) return []
     return Array.isArray(row.departments) ? row.departments : [row.departments]
   })
+}
+
+/** Service-role: a member's role in one department of one organisation. */
+export async function findDepartmentMemberRole(input: {
+  departmentId: string
+  orgId: string
+  userId: string
+}): Promise<UserRole | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('department_members')
+    .select('role')
+    .eq('department_id', input.departmentId)
+    .eq('org_id', input.orgId)
+    .eq('user_id', input.userId)
+    .limit(1)
+
+  if (error) throw toDbError('Failed to load department membership', error)
+  return ((data as { role: UserRole }[] | null) ?? [])[0]?.role ?? null
 }
 
 export async function deleteDepartmentMember(

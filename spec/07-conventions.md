@@ -94,6 +94,35 @@ tenant, then check the role derived from that target. A client-supplied
 `departmentId` must not authorize a session from another department. API routes
 must self-authenticate because `/api/*` bypasses the proxy.
 
+### Department moderation and join requests
+
+`isDepartmentModerator` / `requireDepartmentModerator(departmentId)` resolve
+the department's owning organisation on the server (service-role
+`findDepartmentOrgId`) and decide in the pure `lib/department-authz.ts`:
+
+- a super admin may moderate any department;
+- anyone else must be working in the department's organisation (their current
+  org from `requireOrg()`), and be org_admin of it or hold a
+  `department_members` moderator row whose `department_id` **and** `org_id`
+  match it (a row stamped with another org never counts). Being org_admin of
+  some other organisation (every self-signup user is org_admin of a personal
+  workspace) never grants moderation of a foreign department.
+
+`requireDepartmentModerator` returns `{ orgId }` — the department's
+organisation, which equals `requireOrg()` for everyone except a super admin.
+
+Department join requests (`app/actions/join-requests.ts`,
+`lib/join-request-policy.ts`): a requester may ask only for `trainee` or
+`faculty`, and the department must belong to the named organisation. Only a
+moderator of that department, acting in that organisation, or a super admin
+may approve or reject. Approval grants the stored role (never one supplied by
+the approver, never `department_admin`/`org_admin`) and never demotes a higher
+role the requester already holds in that department (read scoped to the
+request's organisation) or organisation. It writes the department membership
+before the organisation membership, and a request is decided once
+(compare-and-set on `status = 'PENDING'`). The cross-tenant pending list is
+super-admin only.
+
 ### Error vocabulary
 
 DAL modules use:

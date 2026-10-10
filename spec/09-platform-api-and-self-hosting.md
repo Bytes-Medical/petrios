@@ -163,7 +163,9 @@ found” responses.
 ## Webhook administration
 
 Only super/organization admins manage webhooks. Creation requires at least one
-supported event and a URL accepted by `isBlockedWebhookUrl`. The service creates
+supported event and a URL accepted by `isBlockedWebhookUrl` (see "Delivery
+semantics and SSRF boundary"; the check applies in every environment unless
+`WEBHOOK_ALLOW_PRIVATE=true`). The service creates
 `whsec_` plus 24 random bytes as hex and stores the secret plaintext because it
 must sign future requests. Full secret is returned once; list views expose a
 short hint. Endpoints can be enabled/disabled or deleted.
@@ -223,22 +225,53 @@ payload, `ok`/`failed`, HTTP response code, attempts (default one), and timestam
 Response bodies are not retained. No retry/backoff/dead-letter worker is shipped.
 An initiating action never rolls back or waits for guaranteed webhook success.
 
-URL validation always requires `http` or `https`. In production it blocks
-literal localhost, `.local`, loopback, link-local, and RFC1918 IPv4 patterns plus
-literal `::1`. Nonproduction intentionally allows local listeners.
+The same guard (`lib/webhook-guard.ts`, re-exported from `lib/webhooks.ts`)
+runs at registration and again before every delivery, **in every
+environment** — `NODE_ENV` no longer matters. It rejects:
 
-Current SSRF limitations:
+- any scheme other than `http`/`https`, and URLs carrying credentials;
+- single-label hosts (compose service names such as `db`, `auth`, `rest`,
+  `storage`, `gateway`, `app`) and special-use suffixes (`localhost`, `.local`,
+  `.localdomain`, `.internal`, `.intranet`, `.private`, `.corp`, `.home`,
+  `.lan`, `.arpa` incl. `home.arpa`, `.test`, `.example`, `.invalid`,
+  `.onion`), with trailing dots ignored;
+- IPv4 outside public unicast: `0/8`, `10/8`, `100.64/10`, `127/8`,
+  `169.254/16`, `172.16/12`, `192.0.0/24`, `192.0.2/24`, `192.88.99/24`,
+  `192.168/16`, `198.18/15`, `198.51.100/24`, `203.0.113/24`, `224/4`,
+  `240/4` (WHATWG URL parsing has already normalised `http://0/`,
+  `0x7f.1`, `2130706433` and octal forms to dotted quads); and
+- IPv6 outside global unicast `2000::/3` (so `::`, `::1`, `fc00::/7`,
+  `fe80::/10`, `fec0::/10`, `ff00::/8`, `100::/64`, `64:ff9b:1::/48`), plus
+  `2001::/23` and `2001:db8::/32`; IPv4-mapped `::ffff:0:0/96`, NAT64
+  `64:ff9b::/96` and 6to4 `2002::/16` are judged by their embedded IPv4.
+  Brackets are stripped before parsing; scoped addresses are rejected.
 
-- production still permits plaintext `http`;
-- hostnames are not DNS-resolved before/after connect, so DNS rebinding and a
-  public hostname resolving to private space are not prevented;
-- most private/nonroutable IPv6 ranges and alternative IP encodings are not
-  covered; and
-- redirects rely on platform `fetch` behavior and are not revalidated per hop.
+Delivery transport:
 
-The guard is best-effort, not a complete egress firewall. Production deployments
-should also restrict network egress and resolve/connect safely before claiming
-robust SSRF protection.
+- **Node (Render, self-host):** `node:http(s)` with a guarded `lookup`. It
+  resolves the host (`dns.lookup`, all addresses), rejects the delivery when
+  any address is non-public or none resolve, and hands the socket only the
+  checked addresses, so the connection goes to an address that passed the
+  check (no rebinding gap). Each delivery uses a fresh connection
+  (`agent: false`). Redirects are never followed; a 3xx is recorded as
+  `failed` with its status.
+- **Workers runtime (detected by user agent):** `fetch` with
+  `redirect: 'manual'` (a 3xx is `failed`) after the URL guard above; there
+  the private-egress boundary must come from the platform, not an in-process
+  DNS check.
+
+A blocked or unresolvable destination is stored as `failed` with a null
+response code; no request is sent.
+
+`WEBHOOK_ALLOW_PRIVATE=true` (exactly) disables the destination checks — for
+local development against `localhost` listeners or an in-network consumer a
+self-hoster trusts. Scheme and credential checks still apply. It is unset on
+every hosted deployment.
+
+Remaining limitations:
+
+- plaintext `http` is still permitted for public hosts; and
+- the stored response code of a public endpoint is shown to org admins.
 
 ## Portable teaching-record federation
 

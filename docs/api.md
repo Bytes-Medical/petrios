@@ -63,4 +63,9 @@ function verify(secret, rawBody, signatureHeader) {
 
 Delivery semantics: **one attempt, at-least-zero** — check recent deliveries
 in Settings; automatic retries are on the roadmap. Webhook URLs must be
-public http(s) addresses (private ranges are blocked in production).
+public http(s) addresses in every environment: private, loopback,
+link-local, CGNAT and unique-local IPv4/IPv6 addresses, single-label and
+special-use hostnames (`localhost`, `*.internal`, …) are refused, hostnames are
+DNS-checked before connecting, and redirects are never followed (a 3xx counts
+as a failed delivery). Set `WEBHOOK_ALLOW_PRIVATE=true` only for local
+development listeners. See spec/09 for the full rule.
