@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   NewsletterSchema,
   buildNewsletterHtml,
@@ -8,9 +8,11 @@ import {
   newsletterWeekWindow,
   newsletterWindowFromWeekStart,
   newsletterWordCount,
+  NewsletterUserError,
   verifyUnsubToken,
   UNSUBSCRIBE_PLACEHOLDER,
 } from './newsletter'
+import { formatDayKeyLong } from './format'
 
 describe('newsletterWeekWindow', () => {
   it('returns the previous complete Mon-Sun week from a mid-week date', () => {
@@ -58,6 +60,48 @@ describe('newsletterWindowFromWeekStart', () => {
     expect(() => newsletterWindowFromWeekStart('2026-07-13', new Date('2026-07-08T12:00:00Z')))
       .toThrow("hasn't started")
   })
+
+  it('caps an in-progress week at now so unfinished sessions are never covered', () => {
+    const now = new Date('2026-07-07T10:30:00Z') // Tuesday of the selected week
+    const window = newsletterWindowFromWeekStart('2026-07-06', now)
+    expect(window.weekEnd.toISOString()).toBe('2026-07-13T00:00:00.000Z')
+    expect(window.coverEnd.toISOString()).toBe(now.toISOString())
+  })
+
+  it('covers the whole week once it has ended', () => {
+    const window = newsletterWindowFromWeekStart('2026-06-29', new Date('2026-07-08T12:00:00Z'))
+    expect(window.coverEnd.toISOString()).toBe(window.weekEnd.toISOString())
+    expect(newsletterWeekWindow(new Date('2026-07-08T12:00:00Z')).coverEnd.toISOString())
+      .toBe('2026-07-06T00:00:00.000Z')
+  })
+
+  it('limits generation to the last year (366 days)', () => {
+    const now = new Date('2026-10-10T12:00:00Z')
+    expect(() => newsletterWindowFromWeekStart('2025-10-06', now)).toThrow('last year')
+    expect(newsletterWindowFromWeekStart('2025-10-13', now).weekStartKey).toBe('2025-10-13')
+  })
+
+  it('rejects malformed and impossible dates as expected (moderator-visible) errors', () => {
+    for (const key of ['2026-7-6', '2026-02-30', 'next monday']) {
+      expect(() => newsletterWindowFromWeekStart(key, new Date('2026-07-08T12:00:00Z')))
+        .toThrow(NewsletterUserError)
+    }
+  })
+
+  it('uses UTC week boundaries across the BST/GMT changes', () => {
+    // Clocks went back on Sunday 2026-10-25 (BST -> GMT). Monday 00:30 in
+    // London on 2026-10-26 is already 00:30 UTC: the new week has started.
+    expect(newsletterWindowFromWeekStart('2026-10-26', new Date('2026-10-26T00:30:00Z')).coverEnd.toISOString())
+      .toBe('2026-10-26T00:30:00.000Z')
+    // Clocks went forward on Sunday 2026-03-29. Monday 00:30 BST on 2026-03-30
+    // is still Sunday 23:30 UTC, so the UTC week of 30 March has not started.
+    expect(() => newsletterWindowFromWeekStart('2026-03-30', new Date('2026-03-29T23:30:00Z')))
+      .toThrow("hasn't started")
+    // Each window is exactly seven UTC days even when it spans a clock change.
+    const spanning = newsletterWindowFromWeekStart('2026-10-19', new Date('2026-11-02T09:00:00Z'))
+    expect(spanning.weekEnd.getTime() - spanning.weekStart.getTime()).toBe(7 * 24 * 60 * 60 * 1000)
+    expect(formatDayKeyLong(spanning.weekStartKey)).toBe('19 October 2026')
+  })
 })
 
 describe('unsubscribe tokens', () => {
@@ -77,6 +121,19 @@ describe('unsubscribe tokens', () => {
     expect(verifyUnsubToken(`${org}.${user}.${'0'.repeat(sig.length)}`, secret)).toBeNull()
     expect(verifyUnsubToken('garbage', secret)).toBeNull()
     expect(verifyUnsubToken(`${org}.${user}`, secret)).toBeNull()
+  })
+
+  it('falls back to the server-only service key and fails closed without one', () => {
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-key')
+    try {
+      const token = makeUnsubToken(orgId, userId)
+      expect(verifyUnsubToken(token)).toEqual({ orgId, userId })
+      expect(verifyUnsubToken(token, 'rotated-key')).toBeNull()
+      vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '')
+      expect(() => makeUnsubToken(orgId, userId)).toThrow('not configured')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('tokens signed with a different secret fail verification', () => {
@@ -175,6 +232,18 @@ describe('NewsletterSchema', () => {
       ...content,
       sessions: [session, { ...session, session_id: secondId }],
     }).success).toBe(true)
+  })
+
+  it('rejects duplicate and unknown session ids even when the count matches', () => {
+    const secondId = '22222222-2222-4222-8222-222222222222'
+    const unknownId = '33333333-3333-4333-8333-333333333333'
+    const schema = newsletterSchemaForSessions([session.session_id, secondId])
+    const base = { subject: 's', intro: 'i', closing: 'c' }
+    expect(schema.safeParse({ ...base, sessions: [session, session] }).success).toBe(false)
+    expect(schema.safeParse({
+      ...base,
+      sessions: [session, { ...session, session_id: unknownId }],
+    }).success).toBe(false)
   })
 
   it('enforces the one-page word budget', () => {

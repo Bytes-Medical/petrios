@@ -3,6 +3,7 @@ import { verifiedFileSources } from '@/lib/ai/streaming-body'
 import type { OpsNewsletterSourceDocument } from '@/lib/types'
 import type { OpsSessionRow } from '@/lib/db/ops-reads'
 import * as documentsDb from '@/lib/db/session-documents'
+import { NewsletterUserError } from './newsletter'
 
 /**
  * Product limits that keep a manual job predictable. Anthropic uploads each
@@ -40,19 +41,19 @@ export async function loadNewsletterSourceFiles(
   const flattened = rowsBySession.flatMap(({ session, rows }, sessionIndex) =>
     rows.map((row) => {
       if (!row.sha256) {
-        throw new Error(`Teaching document "${row.display_name}" has no verified integrity hash`)
+        throw new NewsletterUserError(`Teaching document "${row.display_name}" has no verified integrity hash`)
       }
       return { session, sessionIndex, row, sha256: row.sha256 }
     })
   )
   const totalBytes = flattened.reduce((total, item) => total + Number(item.row.byte_size), 0)
   if (flattened.length > NEWSLETTER_MAX_SOURCE_FILES) {
-    throw new Error(
+    throw new NewsletterUserError(
       `This week has ${flattened.length} teaching documents; the newsletter job supports at most ${NEWSLETTER_MAX_SOURCE_FILES}. Archive duplicates and try again.`
     )
   }
   if (totalBytes > NEWSLETTER_MAX_SOURCE_BYTES) {
-    throw new Error(
+    throw new NewsletterUserError(
       'The week’s teaching documents exceed the 50 MiB combined AI input limit. Archive duplicate or unnecessary files and try again.'
     )
   }
@@ -66,7 +67,7 @@ export async function loadNewsletterSourceFiles(
       read: async (signal: AbortSignal) =>
         (await documentsDb.fetchDocumentObject(row.storage_path, { signal })).body,
       integrityError: () =>
-        new Error(
+        new NewsletterUserError(
           `Teaching document "${row.display_name}" failed its integrity check. Re-upload it before generating the newsletter.`
         ),
     }))

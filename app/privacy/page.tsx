@@ -130,7 +130,7 @@ export default function PrivacyPolicyPage() {
           private uploaded PDF/DOCX/PPTX learning documents.
           A deliberate Audio Recap request sends the documents for that session; a deliberate weekly
           newsletter request sends all available documents for every teaching session in the selected
-          department and completed week. Newsletter generation does not use web search. PDFs may be
+          department that ended in the selected week (up to the time of the request). Newsletter generation does not use web search. PDFs may be
           processed as text and page images. Word and PowerPoint files are sent differently by
           provider: an OpenAI-compatible endpoint receives the original file, including any comments,
           tracked changes, headers and footers, embedded images, and document properties such as the

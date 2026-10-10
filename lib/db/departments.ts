@@ -397,28 +397,42 @@ export async function listDepartmentMembersWithProfiles(
 ): Promise<DepartmentMemberWithProfile[]> {
   const db = await getServiceDb()
 
-  const { data: members, error: memError } = await db
-    .from('department_members')
-    .select('user_id, role, grade, created_at')
-    .eq('department_id', departmentId)
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: true })
+  // Page explicitly (PostgREST caps a response at max-rows, 1000 by default)
+  // and look profiles up in bounded chunks so a large department never builds
+  // an `in.(...)` URL past gateway limits.
+  const pageSize = 1000
+  const members: { user_id: string; role: UserRole; grade: string | null; created_at: string }[] = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error: memError } = await db
+      .from('department_members')
+      .select('user_id, role, grade, created_at')
+      .eq('department_id', departmentId)
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: true })
+      .order('user_id', { ascending: true })
+      .range(from, from + pageSize - 1)
 
-  if (memError) throw toDbError('Failed to fetch department members', memError)
-  if (!members || members.length === 0) return []
+    if (memError) throw toDbError('Failed to fetch department members', memError)
+    const page = (data as typeof members | null) ?? []
+    members.push(...page)
+    if (page.length < pageSize) break
+  }
+  if (members.length === 0) return []
 
-  const userIds = (members as { user_id: string }[]).map((m) => m.user_id)
-  const { data: profiles, error: profError } = await db
-    .from('profiles')
-    .select('user_id, email, full_name, first_name, last_name')
-    .in('user_id', userIds)
+  type ProfileRow = { user_id: string; email: string; full_name: string | null; first_name: string | null; last_name: string | null }
+  const userIds = members.map((m) => m.user_id)
+  const profileMap = new Map<string, ProfileRow>()
+  for (let index = 0; index < userIds.length; index += 100) {
+    const { data: profiles, error: profError } = await db
+      .from('profiles')
+      .select('user_id, email, full_name, first_name, last_name')
+      .in('user_id', userIds.slice(index, index + 100))
 
-  if (profError) throw toDbError('Failed to fetch member profiles', profError)
-  const profileMap = new Map(
-    ((profiles as { user_id: string; email: string; full_name: string | null; first_name: string | null; last_name: string | null }[] | null) ?? []).map((p) => [p.user_id, p])
-  )
+    if (profError) throw toDbError('Failed to fetch member profiles', profError)
+    for (const profile of (profiles as ProfileRow[] | null) ?? []) profileMap.set(profile.user_id, profile)
+  }
 
-  return (members as { user_id: string; role: UserRole; grade: string | null; created_at: string }[]).map((m) => {
+  return members.map((m) => {
     const profile = profileMap.get(m.user_id)
     return {
       ...m,

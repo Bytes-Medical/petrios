@@ -10,16 +10,22 @@ import {
 import { opsEnabled } from '@/lib/ops/flags'
 import { executeAction } from '@/lib/ops/executors'
 import { startRun } from '@/lib/ops/run'
-import { generateDepartmentNewsletter } from '@/lib/ops/newsletter-job'
+import {
+  generateDepartmentNewsletter,
+  loadNewsletterWeekSessions,
+} from '@/lib/ops/newsletter-job'
 import {
   buildNewsletterHtml,
+  newsletterIssueControls,
   newsletterPreviewText,
-  newsletterSchemaForSessions,
+  NewsletterUserError,
   newsletterWindowFromWeekStart,
+  normalizeNewsletterEdit,
+  type NewsletterIssueControls,
 } from '@/lib/ops/newsletter'
+import { DbConflictError } from '@/lib/db/errors'
 import { formatDayKeyLong } from '@/lib/ops/format'
 import * as opsDb from '@/lib/db/ops'
-import * as opsReads from '@/lib/db/ops-reads'
 import * as departmentsDb from '@/lib/db/departments'
 import * as organizationsDb from '@/lib/db/organizations'
 import type {
@@ -141,9 +147,11 @@ export async function getNewsletterIssues(): Promise<OpsNewsletterIssue[]> {
   return opsDb.listNewsletterIssues(orgId, departments.map((department) => department.id))
 }
 
+export type NewsletterWorkspaceIssue = OpsNewsletterIssue & { controls: NewsletterIssueControls }
+
 export interface NewsletterWorkspace {
   departments: { id: string; name: string; memberCount: number }[]
-  issues: OpsNewsletterIssue[]
+  issues: NewsletterWorkspaceIssue[]
 }
 
 export async function getNewsletterWorkspace(): Promise<NewsletterWorkspace> {
@@ -153,13 +161,24 @@ export async function getNewsletterWorkspace(): Promise<NewsletterWorkspace> {
     opsDb.listNewsletterIssues(orgId, departments.map((department) => department.id)),
     Promise.all(departments.map((department) => departmentsDb.countDepartmentMembers(department.id))),
   ])
+  // Only an apparently untouched issue needs the ledger lock check: any SENT
+  // or SENDING row (a cut-off run) keeps it locked although sent_count is 0.
+  const locks = await Promise.all(issues.map((issue) =>
+    ['draft', 'failed'].includes(issue.status) && issue.sent_count === 0
+      ? opsDb.newsletterDeliveryLocked(issue.id)
+      : Promise.resolve(issue.sent_count > 0)
+  ))
+  const now = new Date()
   return {
     departments: departments.map((department, index) => ({
       id: department.id,
       name: department.name,
       memberCount: memberCounts[index],
     })),
-    issues,
+    issues: issues.map((issue, index) => ({
+      ...issue,
+      controls: newsletterIssueControls(issue, locks[index], now),
+    })),
   }
 }
 
@@ -170,87 +189,121 @@ function newsletterSummaryPoints(content: OpsNewsletterContent) {
   }))
 }
 
+/**
+ * Newsletter action result. Expected outcomes (stale tab, empty week, partial
+ * delivery, ...) are returned, not thrown: Next masks thrown Server Action
+ * messages in production (spec 07). Unexpected errors still throw.
+ */
+export type NewsletterActionResult<T extends object = object> =
+  | ({ ok: true } & T)
+  | { ok: false; message: string; revision?: number }
+
+function newsletterFailure(error: unknown, extra: { revision?: number } = {}): {
+  ok: false
+  message: string
+  revision?: number
+} {
+  if (error instanceof NewsletterUserError) return { ok: false, message: error.message, ...extra }
+  throw error
+}
+
+function requireOpsEnabled(): void {
+  if (!opsEnabled()) throw new NewsletterUserError('Petrios Ops is disabled (OPS_ENABLED=false).')
+}
+
+function regenerateRefusal(issue: OpsNewsletterIssue, locked: boolean): string | null {
+  const controls = newsletterIssueControls(issue, locked, new Date())
+  if (controls.regenerable) return null
+  if (issue.status === 'sent' || issue.sent_count > 0 || locked) {
+    return 'This department newsletter has already been emailed to some or all members, so it cannot be regenerated'
+  }
+  return 'This newsletter is being delivered; wait for it to finish, then retry any unfinished delivery'
+}
+
 export async function generateWeeklyNewsletter(
   departmentId: string,
   weekStartKey: string
-): Promise<{ issueId: string }> {
-  const { userId, orgId } = await requireOpsManager()
-  if (!opsEnabled()) throw new Error('Petrios Ops is disabled (OPS_ENABLED=false).')
-  await requireDepartmentModerator(departmentId)
-  const department = await departmentsDb.findDepartment(departmentId, orgId)
-  if (!department) throw new Error('Department not found')
-  const window = newsletterWindowFromWeekStart(weekStartKey)
-  const existing = await opsDb.findNewsletterIssue(orgId, departmentId, window.weekStartKey)
-  if (existing && (existing.status === 'sent' || existing.sent_count > 0)) {
-    throw new Error('This department newsletter has already been emailed')
-  }
-
-  const run = await startRun('ops_newsletter', 'manual', orgId)
+): Promise<NewsletterActionResult<{ issueId: string }>> {
   try {
-    const sessions = await opsReads.listDepartmentSessionsEndedInWindow(
-      orgId,
-      departmentId,
-      window.weekStart.toISOString(),
-      window.weekEnd.toISOString(),
-      51
-    )
-    if (sessions.length === 0) throw new Error('No published teaching ended in this department during that week')
-    if (sessions.length > 50) throw new Error('This week contains more than 50 sessions and cannot fit a one-page digest')
+    const { userId, orgId } = await requireOpsManager()
+    requireOpsEnabled()
+    await requireDepartmentModerator(departmentId)
+    const department = await departmentsDb.findDepartment(departmentId, orgId)
+    if (!department) throw new Error('Department not found')
+    const window = newsletterWindowFromWeekStart(weekStartKey)
+    const existing = await opsDb.findNewsletterIssue(orgId, departmentId, window.weekStartKey)
+    if (existing) {
+      const refusal = regenerateRefusal(existing, await opsDb.newsletterDeliveryLocked(existing.id))
+      if (refusal) throw new NewsletterUserError(refusal)
+    }
 
-    const generated = await generateDepartmentNewsletter({
-      departmentName: department.name,
-      sessions,
-      run,
-    })
-    const organizationName = (await organizationsDb.findOrganizationName(orgId)) ?? 'Petrios'
-    const weekLabel = `Week commencing ${formatDayKeyLong(window.weekStartKey)}`
-    const html = buildNewsletterHtml({
-      organizationName,
-      departmentName: department.name,
-      weekLabel,
-      content: generated.content,
-    })
-    const issue = existing
-      ? await opsDb.replaceNewsletterDraft({
+    const run = await startRun('ops_newsletter', 'manual', orgId)
+    try {
+      const sessions = await loadNewsletterWeekSessions({ orgId, departmentId, window })
+      const generated = await generateDepartmentNewsletter({
+        departmentName: department.name,
+        sessions,
+        run,
+      })
+      const organizationName = (await organizationsDb.findOrganizationName(orgId)) ?? 'Petrios'
+      const weekLabel = `Week commencing ${formatDayKeyLong(window.weekStartKey)}`
+      const html = buildNewsletterHtml({
+        organizationName,
+        departmentName: department.name,
+        weekLabel,
+        content: generated.content,
+      })
+      const draft = {
+        orgId,
+        departmentId,
+        generatedBy: userId,
+        subject: generated.content.subject,
+        html,
+        summaryPoints: newsletterSummaryPoints(generated.content),
+        content: generated.content,
+        sourceSessionIds: sessions.map((session) => session.id),
+        sourceDocuments: generated.sourceDocuments,
+      }
+      let issue: OpsNewsletterIssue | null
+      if (existing) {
+        // Revision strictly increases and is compare-and-set on the revision
+        // read above, so a tab holding an older revision cannot overwrite it.
+        issue = await opsDb.replaceNewsletterDraft({
+          ...draft,
           id: existing.id,
-          orgId,
-          departmentId,
-          generatedBy: userId,
-          subject: generated.content.subject,
-          html,
-          summaryPoints: newsletterSummaryPoints(generated.content),
-          content: generated.content,
-          sourceSessionIds: sessions.map((session) => session.id),
-          sourceDocuments: generated.sourceDocuments,
+          expectedRevision: existing.content_revision,
         })
-      : await opsDb.insertNewsletterIssue({
-          orgId,
-          departmentId,
-          weekStart: window.weekStartKey,
-          generatedBy: userId,
-          subject: generated.content.subject,
-          html,
-          summaryPoints: newsletterSummaryPoints(generated.content),
-          content: generated.content,
-          sourceSessionIds: sessions.map((session) => session.id),
-          sourceDocuments: generated.sourceDocuments,
-        })
+        if (!issue) {
+          throw new NewsletterUserError('The newsletter changed while it was being generated; refresh and try again')
+        }
+        await opsDb.deleteUnsentNewsletterDeliveries(existing.id)
+      } else {
+        try {
+          issue = await opsDb.insertNewsletterIssue({ ...draft, weekStart: window.weekStartKey })
+        } catch (error) {
+          if (error instanceof DbConflictError) {
+            throw new NewsletterUserError('Another moderator generated this week at the same time; refresh to review their draft')
+          }
+          throw error
+        }
+      }
 
-    if (existing) await opsDb.deleteUnsentNewsletterDeliveries(existing.id)
-
-    await run.finish('succeeded', `Drafted ${department.name} newsletter from ${sessions.length} session(s) and ${generated.sourceDocuments.length} document(s)`)
-    revalidatePath('/ops/newsletters')
-    return { issueId: issue.id }
-  } catch (err) {
-    await run.finish('failed', err instanceof Error ? err.message : 'newsletter generation failed')
-    throw err
+      await run.finish('succeeded', `Drafted ${department.name} newsletter from ${sessions.length} session(s) and ${generated.sourceDocuments.length} document(s)`)
+      revalidatePath('/ops/newsletters')
+      return { ok: true, issueId: issue.id }
+    } catch (err) {
+      await run.finish('failed', err instanceof Error ? err.message : 'newsletter generation failed')
+      throw err
+    }
+  } catch (error) {
+    return newsletterFailure(error)
   }
 }
 
 async function requireNewsletterIssue(issueId: string) {
   const { userId, orgId } = await requireOpsManager()
   const issue = await opsDb.findNewsletterIssueById(issueId)
-  if (!issue || issue.org_id !== orgId || !issue.department_id) throw new Error('Newsletter not found')
+  if (!issue || issue.org_id !== orgId || !issue.department_id) throw new NewsletterUserError('Newsletter not found')
   await requireDepartmentModerator(issue.department_id)
   const department = await departmentsDb.findDepartment(issue.department_id, orgId)
   if (!department) throw new Error('Department not found')
@@ -262,41 +315,32 @@ async function saveNewsletterContent(input: {
   content: OpsNewsletterContent
   expectedRevision: number
 }) {
-  if (!opsEnabled()) throw new Error('Petrios Ops is disabled (OPS_ENABLED=false).')
+  requireOpsEnabled()
   const scope = await requireNewsletterIssue(input.issueId)
-  if (!scope.issue.content) throw new Error('This legacy newsletter cannot be edited')
-  if (scope.issue.sent_count > 0) throw new Error('A partially delivered newsletter can no longer be edited')
-  const trustedSections = new Map(
-    scope.issue.content.sessions.map((section) => [section.session_id, section])
-  )
-  const normalizedContent: OpsNewsletterContent = {
-    ...input.content,
-    sessions: input.content.sessions.map((section) => {
-      const trusted = trustedSections.get(section.session_id)
-      return trusted
-        ? { ...section, title: trusted.title, date_label: trusted.date_label }
-        : section
-    }),
+  const snapshot = scope.issue.content
+  if (!snapshot) throw new NewsletterUserError('This legacy newsletter cannot be edited')
+  if (scope.issue.sent_count > 0 || await opsDb.newsletterDeliveryLocked(scope.issue.id)) {
+    throw new NewsletterUserError('A newsletter that has been emailed to any member can no longer be edited')
   }
-  const parsed = newsletterSchemaForSessions(scope.issue.source_session_ids).safeParse(normalizedContent)
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Newsletter content is invalid')
+  const content = normalizeNewsletterEdit({ ...scope.issue, content: snapshot }, input.content)
   const organizationName = (await organizationsDb.findOrganizationName(scope.orgId)) ?? 'Petrios'
   const weekLabel = `Week commencing ${formatDayKeyLong(scope.issue.week_start)}`
   const issue = await opsDb.saveNewsletterDraft({
     id: scope.issue.id,
     orgId: scope.orgId,
     departmentId: scope.issue.department_id!,
-    subject: parsed.data.subject,
+    subject: content.subject,
     html: buildNewsletterHtml({
       organizationName,
       departmentName: scope.department.name,
       weekLabel,
-      content: parsed.data,
+      content,
     }),
-    summaryPoints: newsletterSummaryPoints(parsed.data),
-    content: parsed.data,
+    summaryPoints: newsletterSummaryPoints(content),
+    content,
     expectedRevision: input.expectedRevision,
   })
+  if (!issue) throw new NewsletterUserError('The newsletter changed; refresh before saving again')
   await opsDb.deleteUnsentNewsletterDeliveries(scope.issue.id)
   return { ...scope, issue }
 }
@@ -305,10 +349,14 @@ export async function saveWeeklyNewsletter(
   issueId: string,
   content: OpsNewsletterContent,
   expectedRevision: number
-): Promise<{ revision: number }> {
-  const { issue } = await saveNewsletterContent({ issueId, content, expectedRevision })
-  revalidatePath('/ops/newsletters')
-  return { revision: issue.content_revision }
+): Promise<NewsletterActionResult<{ revision: number }>> {
+  try {
+    const { issue } = await saveNewsletterContent({ issueId, content, expectedRevision })
+    revalidatePath('/ops/newsletters')
+    return { ok: true, revision: issue.content_revision }
+  } catch (error) {
+    return newsletterFailure(error)
+  }
 }
 
 async function executeReviewedNewsletter(scope: Awaited<ReturnType<typeof requireNewsletterIssue>>) {
@@ -321,9 +369,10 @@ async function executeReviewedNewsletter(scope: Awaited<ReturnType<typeof requir
     previewBody: newsletterPreviewText(scope.issue.content!),
     createdBy: scope.userId,
   })
-  await opsDb.updateNewsletterIssue(scope.issue.id, { pendingActionId: action.id })
+  // The executor links the issue to this action inside its start CAS; a
+  // separate write here would refresh `updated_at` and defeat the lease.
   const approved = await opsDb.approvePendingAction(action.id, scope.orgId, scope.userId)
-  if (!approved) throw new Error('The newsletter approval changed; refresh and try again')
+  if (!approved) throw new NewsletterUserError('The newsletter approval changed; refresh and try again')
   try {
     await executeAction(approved)
     await opsDb.markActionExecuted(approved.id)
@@ -338,23 +387,42 @@ export async function approveAndSendWeeklyNewsletter(
   issueId: string,
   content: OpsNewsletterContent,
   expectedRevision: number
-): Promise<{ success: true }> {
-  if (!opsEnabled()) throw new Error('Petrios Ops is disabled (OPS_ENABLED=false).')
-  const scope = await saveNewsletterContent({ issueId, content, expectedRevision })
-  await executeReviewedNewsletter(scope)
-  revalidatePath('/ops')
-  revalidatePath('/ops/newsletters')
-  return { success: true }
+): Promise<NewsletterActionResult<{ revision: number }>> {
+  let savedRevision: number | undefined
+  try {
+    requireOpsEnabled()
+    const scope = await saveNewsletterContent({ issueId, content, expectedRevision })
+    savedRevision = scope.issue.content_revision
+    await executeReviewedNewsletter(scope)
+    return { ok: true, revision: savedRevision }
+  } catch (error) {
+    // Report the saved revision even when delivery failed, so the editor
+    // does not keep a revision the server has already moved past.
+    return newsletterFailure(error, savedRevision === undefined ? {} : { revision: savedRevision })
+  } finally {
+    revalidatePath('/ops')
+    revalidatePath('/ops/newsletters')
+  }
 }
 
-export async function retryWeeklyNewsletter(issueId: string): Promise<{ success: true }> {
-  if (!opsEnabled()) throw new Error('Petrios Ops is disabled (OPS_ENABLED=false).')
-  const scope = await requireNewsletterIssue(issueId)
-  if (!scope.issue.content || !['failed', 'approved'].includes(scope.issue.status)) {
-    throw new Error('Only an unfinished reviewed newsletter can be retried')
+export async function retryWeeklyNewsletter(issueId: string): Promise<NewsletterActionResult> {
+  try {
+    requireOpsEnabled()
+    const scope = await requireNewsletterIssue(issueId)
+    const locked = scope.issue.sent_count > 0 || await opsDb.newsletterDeliveryLocked(scope.issue.id)
+    const controls = newsletterIssueControls(scope.issue, locked, new Date())
+    if (controls.inProgress) {
+      throw new NewsletterUserError('This newsletter is still being delivered; wait a few minutes before retrying')
+    }
+    if (!controls.canRetry) {
+      throw new NewsletterUserError('Only an unfinished reviewed newsletter can be retried')
+    }
+    await executeReviewedNewsletter(scope)
+    return { ok: true }
+  } catch (error) {
+    return newsletterFailure(error)
+  } finally {
+    revalidatePath('/ops')
+    revalidatePath('/ops/newsletters')
   }
-  await executeReviewedNewsletter(scope)
-  revalidatePath('/ops')
-  revalidatePath('/ops/newsletters')
-  return { success: true }
 }

@@ -1,9 +1,26 @@
 import { getEmailClient, getFromAddress } from '@/lib/email'
 import { getAppUrl } from '@/lib/app-url'
-import type { OpsPendingAction } from '@/lib/types'
+import type { OpsNewsletterIssue, OpsPendingAction } from '@/lib/types'
 import * as opsDb from '@/lib/db/ops'
 import * as departmentsDb from '@/lib/db/departments'
-import { makeUnsubToken, UNSUBSCRIBE_PLACEHOLDER } from './newsletter'
+import { createRunBudget } from '@/lib/run-budget'
+import {
+  createSendPacer,
+  makeUnsubToken,
+  newsletterIdempotencyKey,
+  newsletterUnsubscribeUrls,
+  NewsletterUserError,
+  NEWSLETTER_EXECUTION_LEASE_MS,
+  NEWSLETTER_SEND_INTERVAL_MS,
+  NEWSLETTER_SEND_SUBREQUEST_BUDGET,
+  NEWSLETTER_SEND_TIME_BUDGET_MS,
+  NEWSLETTER_SUBREQUESTS_PER_RECIPIENT,
+  planNewsletterRecipients,
+  sanitizeNewsletterDeliveryError,
+  staleNewsletterDeliveryIds,
+  tallyNewsletterDeliveries,
+  UNSUBSCRIBE_PLACEHOLDER,
+} from './newsletter'
 
 /**
  * Executors: the ONLY code paths that send ops-originated email. They run
@@ -69,44 +86,120 @@ async function executeSimpleEmail(action: OpsPendingAction): Promise<void> {
   await sendPayloadEmail(action)
 }
 
-async function executeNewsletterIssue(action: OpsPendingAction): Promise<void> {
+/** Injected clock/sleep so delivery pacing and budgets are testable. */
+export interface NewsletterExecutionOptions {
+  now?: () => number
+  sleep?: (ms: number) => Promise<void>
+}
+
+const RATE_LIMIT_RETRIES = 2
+const MAX_RATE_LIMIT_WAIT_MS = 5_000
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Fan one exact reviewed revision out to the CURRENT audience through the
+ * per-recipient ledger. Only `executeAction` (after a human approval) and its
+ * tests call this.
+ */
+export async function executeNewsletterIssue(
+  action: OpsPendingAction,
+  options: NewsletterExecutionOptions = {}
+): Promise<void> {
+  const now = options.now ?? Date.now
+  const sleep = options.sleep ?? defaultSleep
   const payload = action.payload as { issueId?: string; contentRevision?: number }
   const issueId = payload.issueId
   if (!issueId) throw new Error('Newsletter action payload is missing issueId')
 
-  const issue = await opsDb.findNewsletterIssueById(issueId)
-  if (!issue) throw new Error('Newsletter issue not found')
-  if (issue.org_id !== action.org_id || issue.department_id !== action.department_id) {
+  const current = await opsDb.findNewsletterIssueById(issueId)
+  if (!current) throw new NewsletterUserError('Newsletter issue not found')
+  if (current.org_id !== action.org_id || current.department_id !== action.department_id) {
     throw new Error('Newsletter action scope does not match its issue')
   }
-  if (issue.status === 'sent') return // already delivered (double-execution guard)
-  if (!issue.department_id || !issue.content) {
-    throw new Error('Legacy organization-wide newsletters cannot use department delivery')
+  if (current.status === 'sent') return // already delivered (double-execution guard)
+  if (!current.department_id || !current.content) {
+    throw new NewsletterUserError('Legacy organization-wide newsletters cannot use department delivery')
   }
-  if (payload.contentRevision !== issue.content_revision) {
-    throw new Error('The newsletter changed after review; review the current revision before sending')
+  if (typeof payload.contentRevision !== 'number' || payload.contentRevision !== current.content_revision) {
+    throw new NewsletterUserError('The newsletter changed after review; review the current revision before sending')
   }
 
-  await opsDb.updateNewsletterIssue(issue.id, { status: 'approved' })
-
-  const [members, optouts] = await Promise.all([
-    departmentsDb.listDepartmentMembersWithProfiles(action.org_id, issue.department_id),
-    opsDb.listNewsletterOptoutUserIds(action.org_id),
-  ])
-  const recipients = members.filter((member) => !optouts.has(member.user_id))
-  const missingEmail = recipients.filter((member) => !member.email.trim())
-  if (missingEmail.length > 0) {
-    await opsDb.updateNewsletterIssue(issue.id, { status: 'failed' })
-    throw new Error(`${missingEmail.length} department member(s) do not have a deliverable email address`)
-  }
-  await opsDb.seedNewsletterDeliveries({
-    issue,
-    recipients: recipients.map((member) => ({ userId: member.user_id, email: member.email })),
+  // Compare-and-set into `approved` for exactly the reviewed revision, then
+  // send from the row that CAS returned — never from the earlier read, which a
+  // concurrent save or regenerate may already have replaced.
+  const issue = await opsDb.beginNewsletterExecution({
+    id: current.id,
+    orgId: action.org_id,
+    departmentId: current.department_id,
+    contentRevision: payload.contentRevision,
+    staleBefore: new Date(now() - NEWSLETTER_EXECUTION_LEASE_MS).toISOString(),
+    pendingActionId: action.id,
   })
+  if (!issue || !issue.content) {
+    throw new NewsletterUserError(
+      'This newsletter is already being delivered or changed after review; refresh and try again in a few minutes'
+    )
+  }
 
+  try {
+    await deliverNewsletterIssue(action, issue, { now, sleep })
+  } catch (error) {
+    // Never leave the issue holding the lease after a failure: record the
+    // real success count from the ledger (which also keeps editing locked
+    // when any member already received it).
+    await finaliseFailedIssue(issue.id).catch((finaliseError) => {
+      console.error('Failed to record newsletter delivery failure:', finaliseError)
+    })
+    throw error
+  }
+}
+
+async function finaliseFailedIssue(issueId: string): Promise<void> {
+  const { sent } = tallyNewsletterDeliveries(await opsDb.listNewsletterDeliveries(issueId))
+  await opsDb.updateNewsletterIssue(issueId, { status: 'failed', sentCount: sent })
+}
+
+async function deliverNewsletterIssue(
+  action: OpsPendingAction,
+  issue: OpsNewsletterIssue,
+  deps: Required<NewsletterExecutionOptions>
+): Promise<void> {
+  const departmentId = issue.department_id!
+  const members = await departmentsDb.listDepartmentMembersWithProfiles(action.org_id, departmentId)
+  const optouts = await opsDb.listNewsletterOptoutUserIds(
+    action.org_id,
+    members.map((member) => member.user_id)
+  )
+  const { recipients, missingEmail } = planNewsletterRecipients(members, optouts)
+  if (missingEmail > 0) {
+    throw new NewsletterUserError(
+      `${missingEmail} department member(s) do not have a deliverable email address; fix their profiles and try again`
+    )
+  }
+  if (recipients.length === 0) {
+    throw new NewsletterUserError(
+      'No current department member is eligible to receive this newsletter (members may have unsubscribed); nothing was emailed'
+    )
+  }
+
+  // Audience is evaluated at execution, including on retry: unsent rows for
+  // members who left, opted out, or changed address are removed before any
+  // send, and current rows are (re-)seeded.
+  const existing = await opsDb.listNewsletterDeliveries(issue.id)
+  await opsDb.deleteNewsletterDeliveries(issue.id, staleNewsletterDeliveryIds(existing, recipients))
+  await opsDb.seedNewsletterDeliveries({ issue, recipients })
+
+  const eligible = new Map(recipients.map((recipient) => [recipient.userId, recipient.email]))
   const mailer = getEmailClient()
   const fromAddress = getFromAddress()
   const appUrl = getAppUrl()
+  const budget = createRunBudget({
+    maxUnits: NEWSLETTER_SEND_SUBREQUEST_BUDGET,
+    maxDurationMs: NEWSLETTER_SEND_TIME_BUDGET_MS,
+    now: deps.now,
+  })
+  const pace = createSendPacer(NEWSLETTER_SEND_INTERVAL_MS, deps)
 
   const deliveries = await opsDb.listNewsletterDeliveries(issue.id)
   for (const delivery of deliveries) {
@@ -114,39 +207,75 @@ async function executeNewsletterIssue(action: OpsPendingAction): Promise<void> {
     if (delivery.content_revision !== issue.content_revision) {
       throw new Error('A newsletter delivery belongs to an obsolete content revision')
     }
+    if (eligible.get(delivery.recipient_user_id) !== delivery.recipient_email) continue
+    if (!budget.take(NEWSLETTER_SUBREQUESTS_PER_RECIPIENT)) break
+    const urls = newsletterUnsubscribeUrls(appUrl, makeUnsubToken(action.org_id, delivery.recipient_user_id))
+    const html = issue.html.split(UNSUBSCRIBE_PLACEHOLDER).join(urls.page)
     const claimed = await opsDb.claimNewsletterDelivery(delivery.id)
-    if (!claimed) continue
-    try {
-      const unsubUrl = `${appUrl}/ops/unsubscribe/${makeUnsubToken(action.org_id, delivery.recipient_user_id)}`
-      const html = issue.html.split(UNSUBSCRIBE_PLACEHOLDER).join(unsubUrl)
-      const result = await mailer.emails.send({
-        from: fromAddress,
-        to: delivery.recipient_email,
-        subject: issue.subject,
-        html,
-      })
-      if (result.error) throw new Error(result.error.message)
+    if (!claimed) continue // another execution holds this row's lease
+
+    let result: Awaited<ReturnType<typeof mailer.emails.send>> | null = null
+    for (let attempt = 0; ; attempt += 1) {
+      await pace()
+      try {
+        result = await mailer.emails.send({
+          from: fromAddress,
+          to: claimed.recipient_email,
+          subject: issue.subject,
+          html,
+          idempotencyKey: newsletterIdempotencyKey(claimed),
+          headers: {
+            'List-Unsubscribe': `<${urls.oneClick}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
+        })
+      } catch (err) {
+        result = { data: null, error: { message: err instanceof Error ? err.message : 'Newsletter delivery failed' } }
+      }
+      const rateLimited = result.error?.statusCode === 429
+      if (!rateLimited || attempt >= RATE_LIMIT_RETRIES || !budget.take(1)) break
+      const waitMs = Math.min(MAX_RATE_LIMIT_WAIT_MS, (result.error?.retryAfterSeconds ?? 1) * 1000)
+      await deps.sleep(waitMs)
+    }
+
+    if (result?.error) {
+      console.error(`Failed to send newsletter to ${delivery.recipient_user_id}:`, result.error.message)
       await opsDb.finishNewsletterDelivery({
-        id: delivery.id,
-        success: true,
-        providerMessageId: result.data?.id,
-      })
-    } catch (err) {
-      await opsDb.finishNewsletterDelivery({
-        id: delivery.id,
+        id: claimed.id,
+        attemptCount: claimed.attempt_count,
         success: false,
-        error: err instanceof Error ? err.message : 'Newsletter delivery failed',
-      }).catch(() => undefined)
-      console.error(`Failed to send newsletter to ${delivery.recipient_user_id}:`, err)
+        error: sanitizeNewsletterDeliveryError(result.error.message),
+      }).catch((err) => console.error('Failed to record newsletter delivery failure:', err))
+      continue
+    }
+
+    // The provider accepted the email. A failed ledger write must never
+    // downgrade it to FAILED (Retry would email the member again): try the
+    // SENT write twice, then leave the row SENDING under its lease. A later
+    // resend carries the same idempotency key, which the provider dedupes.
+    const sentRecord = {
+      id: claimed.id,
+      attemptCount: claimed.attempt_count,
+      success: true,
+      providerMessageId: result?.data?.id ?? null,
+    }
+    try {
+      await opsDb.finishNewsletterDelivery(sentRecord)
+    } catch {
+      await opsDb.finishNewsletterDelivery(sentRecord).catch((err) => {
+        console.error(`Newsletter to ${delivery.recipient_user_id} was accepted but could not be recorded as SENT:`, err)
+      })
     }
   }
 
-  const final = await opsDb.listNewsletterDeliveries(issue.id)
-  const sent = final.filter((delivery) => delivery.status === 'SENT').length
-  const unfinished = final.filter((delivery) => delivery.status !== 'SENT').length
+  const { sent, unfinished } = tallyNewsletterDeliveries(await opsDb.listNewsletterDeliveries(issue.id))
   if (unfinished > 0) {
     await opsDb.updateNewsletterIssue(issue.id, { status: 'failed', sentCount: sent })
-    throw new Error(`${unfinished} newsletter delivery(s) failed or remain unfinished; successful members will not be emailed again`)
+    throw new NewsletterUserError(
+      budget.exhausted
+        ? `Delivered to ${sent} member(s); ${unfinished} remain because one request sends a bounded batch. Choose "Retry unfinished delivery" to continue — members already emailed will not be emailed again.`
+        : `${unfinished} newsletter delivery(s) failed or remain unfinished; members already emailed will not be emailed again. Choose "Retry unfinished delivery" to try the rest.`
+    )
   }
 
   await opsDb.updateNewsletterIssue(issue.id, { status: 'sent', sentCount: sent })

@@ -74,8 +74,9 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.match(/^\/sessions\/[^/]+\/teacher-rsvp\/[^/]+$/) ||
     request.nextUrl.pathname.match(/^\/departments\/[^/]+\/feedback$/) ||
     request.nextUrl.pathname.match(/^\/claim\/[^/]+$/) ||
-    // Newsletter unsubscribe: must work from an email link without a session.
-    request.nextUrl.pathname.match(/^\/ops\/unsubscribe\/[^/]+$/) ||
+    // Newsletter unsubscribe: must work from an email link without a session
+    // (confirmation page, plus the RFC 8058 one-click POST target).
+    request.nextUrl.pathname.match(/^\/ops\/unsubscribe\/[^/]+(\/one-click)?$/) ||
     // Recall landing page: HMAC email link; content/mutations still require
     // the exact authenticated account inside the page/actions.
     request.nextUrl.pathname.match(/^\/recall\/[^/]+$/) ||

@@ -18,6 +18,17 @@ import type {
 import { getServiceDb } from './client'
 import { toDbError } from './errors'
 
+/** PostgREST's default max-rows; explicit paging never relies on it. */
+const PAGE_SIZE = 1000
+/** Ids per `in.(...)` filter, keeping request URLs far below gateway limits. */
+const IN_FILTER_CHUNK = 100
+
+function chunked<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size))
+  return chunks
+}
+
 /**
  * Petrios Ops DAL. Every ops_* table is deny-all RLS (migration 036), so all
  * access here is service-role by design. Authorization therefore lives with
@@ -554,10 +565,17 @@ export async function updateNewsletterIssue(
   if (error) throw toDbError('Failed to update newsletter issue', error)
 }
 
+/**
+ * Regenerate over an unsent draft/failed issue. The revision strictly
+ * increases (never resets), and the update is a compare-and-set on the
+ * revision the caller read, so a stale tab can never pass the save CAS against
+ * regenerated content. Null when the issue changed or is no longer editable.
+ */
 export async function replaceNewsletterDraft(input: {
   id: string
   orgId: string
   departmentId: string
+  expectedRevision: number
   generatedBy: string
   subject: string
   html: string
@@ -565,7 +583,7 @@ export async function replaceNewsletterDraft(input: {
   content: OpsNewsletterContent
   sourceSessionIds: string[]
   sourceDocuments: OpsNewsletterSourceDocument[]
-}): Promise<OpsNewsletterIssue> {
+}): Promise<OpsNewsletterIssue | null> {
   const db = await getServiceDb()
   const update: Record<string, unknown> = {
     generated_by: input.generatedBy,
@@ -577,7 +595,7 @@ export async function replaceNewsletterDraft(input: {
     pending_action_id: null,
     source_session_ids: input.sourceSessionIds,
     source_documents: input.sourceDocuments,
-    content_revision: 1,
+    content_revision: input.expectedRevision + 1,
     updated_at: new Date().toISOString(),
   }
   const { data, error } = await db
@@ -588,11 +606,11 @@ export async function replaceNewsletterDraft(input: {
     .eq('department_id', input.departmentId)
     .in('status', ['draft', 'failed'])
     .eq('sent_count', 0)
+    .eq('content_revision', input.expectedRevision)
     .select('*')
     .maybeSingle()
   if (error) throw toDbError('Failed to replace newsletter draft', error)
-  if (!data) throw new Error('This newsletter is no longer editable')
-  return data as OpsNewsletterIssue
+  return (data as OpsNewsletterIssue | null) ?? null
 }
 
 export async function saveNewsletterDraft(input: {
@@ -604,7 +622,7 @@ export async function saveNewsletterDraft(input: {
   summaryPoints: { title: string; detail: string }[]
   content: OpsNewsletterContent
   expectedRevision: number
-}): Promise<OpsNewsletterIssue> {
+}): Promise<OpsNewsletterIssue | null> {
   const db = await getServiceDb()
   const { data, error } = await db
     .from('ops_newsletter_issues')
@@ -627,8 +645,42 @@ export async function saveNewsletterDraft(input: {
     .select('*')
     .maybeSingle()
   if (error) throw toDbError('Failed to save newsletter draft', error)
-  if (!data) throw new Error('The newsletter changed; refresh before saving again')
-  return data as OpsNewsletterIssue
+  // Null: another tab saved/regenerated first, or delivery started.
+  return (data as OpsNewsletterIssue | null) ?? null
+}
+
+/**
+ * Start (or resume) delivery of the exact reviewed revision: a compare-and-set
+ * from draft/failed, or from an `approved` execution whose lease expired
+ * (`updated_at` older than `staleBefore`), to `approved`. It returns the row
+ * the executor must send from, or null when a concurrent execution holds the
+ * lease or the content changed after review.
+ */
+export async function beginNewsletterExecution(input: {
+  id: string
+  orgId: string
+  departmentId: string
+  contentRevision: number
+  staleBefore: string
+  pendingActionId: string
+}): Promise<OpsNewsletterIssue | null> {
+  const db = await getServiceDb()
+  const { data, error } = await db
+    .from('ops_newsletter_issues')
+    .update({
+      status: 'approved',
+      pending_action_id: input.pendingActionId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.id)
+    .eq('org_id', input.orgId)
+    .eq('department_id', input.departmentId)
+    .eq('content_revision', input.contentRevision)
+    .or(`status.in.(draft,failed),and(status.eq.approved,updated_at.lt.${input.staleBefore})`)
+    .select('*')
+    .maybeSingle()
+  if (error) throw toDbError('Failed to start newsletter delivery', error)
+  return (data as OpsNewsletterIssue | null) ?? null
 }
 
 export async function listNewsletterIssues(
@@ -638,16 +690,48 @@ export async function listNewsletterIssues(
 ): Promise<OpsNewsletterIssue[]> {
   if (departmentIds.length === 0) return []
   const db = await getServiceDb()
-  const { data, error } = await db
-    .from('ops_newsletter_issues')
-    .select('*')
-    .eq('org_id', orgId)
-    .in('department_id', departmentIds)
-    .order('week_start', { ascending: false })
-    .limit(limit)
+  // Unfinished deliveries stay reachable (Retry is the only way to complete
+  // them) however many newer weeks were generated since.
+  const [recent, unfinished] = await Promise.all([
+    db
+      .from('ops_newsletter_issues')
+      .select('*')
+      .eq('org_id', orgId)
+      .in('department_id', departmentIds)
+      .order('week_start', { ascending: false })
+      .limit(limit),
+    db
+      .from('ops_newsletter_issues')
+      .select('*')
+      .eq('org_id', orgId)
+      .in('department_id', departmentIds)
+      .in('status', ['approved', 'failed'])
+      .order('week_start', { ascending: false })
+      .limit(100),
+  ])
 
-  if (error) throw toDbError('Failed to list newsletter issues', error)
-  return (data as OpsNewsletterIssue[] | null) ?? []
+  if (recent.error) throw toDbError('Failed to list newsletter issues', recent.error)
+  if (unfinished.error) throw toDbError('Failed to list unfinished newsletter issues', unfinished.error)
+  const byId = new Map<string, OpsNewsletterIssue>()
+  for (const issue of [
+    ...((recent.data as OpsNewsletterIssue[] | null) ?? []),
+    ...((unfinished.data as OpsNewsletterIssue[] | null) ?? []),
+  ]) byId.set(issue.id, issue)
+  return [...byId.values()].sort((left, right) =>
+    right.week_start.localeCompare(left.week_start) || right.created_at.localeCompare(left.created_at)
+  )
+}
+
+/** True when the issue's ledger holds any SENT or SENDING row. */
+export async function newsletterDeliveryLocked(issueId: string): Promise<boolean> {
+  const db = await getServiceDb()
+  const { count, error } = await db
+    .from('ops_newsletter_deliveries')
+    .select('id', { count: 'exact', head: true })
+    .eq('issue_id', issueId)
+    .in('status', ['SENT', 'SENDING'])
+  if (error) throw toDbError('Failed to check newsletter delivery lock', error)
+  return (count ?? 0) > 0
 }
 
 export async function insertNewsletterOptout(orgId: string, userId: string): Promise<void> {
@@ -659,15 +743,53 @@ export async function insertNewsletterOptout(orgId: string, userId: string): Pro
   if (error) throw toDbError('Failed to record newsletter opt-out', error)
 }
 
-export async function listNewsletterOptoutUserIds(orgId: string): Promise<Set<string>> {
+export async function deleteNewsletterOptout(orgId: string, userId: string): Promise<void> {
+  const db = await getServiceDb()
+  const { error } = await db
+    .from('ops_newsletter_optouts')
+    .delete()
+    .eq('org_id', orgId)
+    .eq('user_id', userId)
+
+  if (error) throw toDbError('Failed to remove newsletter opt-out', error)
+}
+
+export async function isNewsletterOptedOut(orgId: string, userId: string): Promise<boolean> {
   const db = await getServiceDb()
   const { data, error } = await db
     .from('ops_newsletter_optouts')
     .select('user_id')
     .eq('org_id', orgId)
+    .eq('user_id', userId)
+    .maybeSingle()
 
-  if (error) throw toDbError('Failed to list newsletter opt-outs', error)
-  return new Set(((data as { user_id: string }[] | null) ?? []).map((r) => r.user_id))
+  if (error) throw toDbError('Failed to read newsletter opt-out', error)
+  return !!data
+}
+
+/**
+ * Opted-out users among `userIds` (the candidate audience). Querying only the
+ * candidates in bounded chunks keeps the URL short and never lets the
+ * PostgREST max-rows cap silently drop an opt-out.
+ */
+export async function listNewsletterOptoutUserIds(
+  orgId: string,
+  userIds: string[]
+): Promise<Set<string>> {
+  const optedOut = new Set<string>()
+  if (userIds.length === 0) return optedOut
+  const db = await getServiceDb()
+  for (const chunk of chunked([...new Set(userIds)], IN_FILTER_CHUNK)) {
+    const { data, error } = await db
+      .from('ops_newsletter_optouts')
+      .select('user_id')
+      .eq('org_id', orgId)
+      .in('user_id', chunk)
+
+    if (error) throw toDbError('Failed to list newsletter opt-outs', error)
+    for (const row of (data as { user_id: string }[] | null) ?? []) optedOut.add(row.user_id)
+  }
+  return optedOut
 }
 
 export async function deleteUnsentNewsletterDeliveries(issueId: string): Promise<void> {
@@ -676,8 +798,23 @@ export async function deleteUnsentNewsletterDeliveries(issueId: string): Promise
     .from('ops_newsletter_deliveries')
     .delete()
     .eq('issue_id', issueId)
-    .neq('status', 'SENT')
+    .in('status', ['PENDING', 'FAILED'])
   if (error) throw toDbError('Failed to clear obsolete newsletter deliveries', error)
+}
+
+/** Remove specific unsent ledger rows (audience no longer includes them). */
+export async function deleteNewsletterDeliveries(issueId: string, deliveryIds: string[]): Promise<void> {
+  if (deliveryIds.length === 0) return
+  const db = await getServiceDb()
+  for (const chunk of chunked(deliveryIds, IN_FILTER_CHUNK)) {
+    const { error } = await db
+      .from('ops_newsletter_deliveries')
+      .delete()
+      .eq('issue_id', issueId)
+      .in('id', chunk)
+      .neq('status', 'SENT')
+    if (error) throw toDbError('Failed to remove stale newsletter deliveries', error)
+  }
 }
 
 export async function seedNewsletterDeliveries(input: {
@@ -704,13 +841,22 @@ export async function listNewsletterDeliveries(
   issueId: string
 ): Promise<OpsNewsletterDelivery[]> {
   const db = await getServiceDb()
-  const { data, error } = await db
-    .from('ops_newsletter_deliveries')
-    .select('*')
-    .eq('issue_id', issueId)
-    .order('created_at', { ascending: true })
-  if (error) throw toDbError('Failed to list newsletter deliveries', error)
-  return (data as OpsNewsletterDelivery[] | null) ?? []
+  const rows: OpsNewsletterDelivery[] = []
+  // Page explicitly: the PostgREST max-rows cap (1000 by default) would
+  // otherwise truncate a large ledger and mark it wholly sent.
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await db
+      .from('ops_newsletter_deliveries')
+      .select('*')
+      .eq('issue_id', issueId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) throw toDbError('Failed to list newsletter deliveries', error)
+    const page = (data as OpsNewsletterDelivery[] | null) ?? []
+    rows.push(...page)
+    if (page.length < PAGE_SIZE) return rows
+  }
 }
 
 export async function claimNewsletterDelivery(
@@ -721,11 +867,22 @@ export async function claimNewsletterDelivery(
     .rpc('claim_ops_newsletter_delivery_v1', { p_delivery_id: deliveryId })
     .maybeSingle()
   if (error) throw toDbError('Failed to claim newsletter delivery', error)
-  return (data as OpsNewsletterDelivery | null) ?? null
+  // The function is not SETOF: a missed claim comes back as one composite
+  // whose every field is NULL, which PostgREST serialises as an object. Only
+  // a row with an id is a real claim.
+  const row = data as OpsNewsletterDelivery | null
+  return row?.id ? row : null
 }
 
+/**
+ * Finish exactly the claim the caller holds: the row must still be SENDING
+ * with the attempt number the claim returned, so a run whose lease expired
+ * cannot overwrite a newer claim's outcome. `error` must already be sanitized
+ * (sanitizeNewsletterDeliveryError) — it is persisted.
+ */
 export async function finishNewsletterDelivery(input: {
   id: string
+  attemptCount: number
   success: boolean
   providerMessageId?: string | null
   error?: string | null
@@ -749,6 +906,7 @@ export async function finishNewsletterDelivery(input: {
         })
     .eq('id', input.id)
     .eq('status', 'SENDING')
+    .eq('attempt_count', input.attemptCount)
   if (error) throw toDbError('Failed to finish newsletter delivery', error)
 }
 

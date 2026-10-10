@@ -42,11 +42,34 @@ interface SendEmailParams {
   text?: string
   replyTo?: string
   attachments?: EmailAttachment[]
+  /** Extra message headers (e.g. RFC 8058 List-Unsubscribe). */
+  headers?: Record<string, string>
+  /**
+   * Provider-side deduplication key (Resend `Idempotency-Key`, kept 24 hours):
+   * resending the same payload with the same key is not delivered twice.
+   * SMTP has no equivalent and ignores it.
+   */
+  idempotencyKey?: string
 }
 
 interface SendEmailResult {
   data: { id: string | null } | null
-  error: { message: string } | null
+  error: {
+    message: string
+    /** HTTP status of a Resend rejection (429 = rate limited). */
+    statusCode?: number
+    /** Parsed Retry-After header of a Resend rejection, in seconds. */
+    retryAfterSeconds?: number
+  } | null
+}
+
+/** Bound on one Resend request, so a hung connection cannot stall a ledger loop. */
+const RESEND_TIMEOUT_MS = 30_000
+
+function parseRetryAfterSeconds(value: string | null): number | undefined {
+  if (!value) return undefined
+  const seconds = Number(value)
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined
 }
 
 /** Pull the bare address out of "Display Name <user@host>" (or a bare address). */
@@ -168,6 +191,7 @@ async function sendViaSmtp(
       html: params.html,
       text: params.text,
       replyTo: params.replyTo,
+      headers: params.headers,
       attachments: params.attachments?.map((attachment) => ({
         filename: attachment.filename,
         content:
@@ -249,6 +273,7 @@ export function getEmailClient() {
         }
         if (params.text) body.text = params.text
         if (params.replyTo) body.reply_to = params.replyTo
+        if (params.headers && Object.keys(params.headers).length > 0) body.headers = params.headers
         if (params.attachments?.length) {
           body.attachments = params.attachments.map((attachment) => ({
             filename: attachment.filename,
@@ -262,8 +287,10 @@ export function getEmailClient() {
             headers: {
               Authorization: `Bearer ${apiKey}`,
               'Content-Type': 'application/json',
+              ...(params.idempotencyKey ? { 'Idempotency-Key': params.idempotencyKey } : {}),
             },
             body: JSON.stringify(body),
+            signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
           })
 
           const payload = await response.json().catch(() => null)
@@ -273,7 +300,14 @@ export function getEmailClient() {
               payload?.message ||
               payload?.error?.message ||
               `Resend request failed (${response.status})`
-            return { data: null, error: { message } }
+            return {
+              data: null,
+              error: {
+                message,
+                statusCode: response.status,
+                retryAfterSeconds: parseRetryAfterSeconds(response.headers.get('retry-after')),
+              },
+            }
           }
 
           // Do not persist an untraceable HTTP response as SENT. A genuine

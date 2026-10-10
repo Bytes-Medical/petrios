@@ -1,10 +1,51 @@
 import type { OpsNewsletterContent } from '@/lib/types'
+import * as opsReads from '@/lib/db/ops-reads'
 import type { OpsSessionRow } from '@/lib/db/ops-reads'
 import type { OpsRun } from './run'
 import { formatSessionDateLabel } from './format'
 import { opsInference } from './gateway'
 import { loadNewsletterSourceFiles } from './newsletter-sources'
-import { newsletterSchemaForSessions } from './newsletter'
+import {
+  newsletterSchemaForSessions,
+  NewsletterUserError,
+  type WeekWindow,
+} from './newsletter'
+
+/** A one-page digest covers at most this many sessions; a larger week is
+ *  rejected, never truncated. */
+export const NEWSLETTER_MAX_SESSIONS = 50
+
+/**
+ * Every PUBLISHED department session whose `date_end` falls in
+ * [weekStart, coverEnd): the selected week, capped at "now" so a mid-week
+ * draft never includes teaching that has not ended yet.
+ */
+export async function loadNewsletterWeekSessions(input: {
+  orgId: string
+  departmentId: string
+  window: WeekWindow
+}): Promise<OpsSessionRow[]> {
+  const sessions = await opsReads.listDepartmentSessionsEndedInWindow(
+    input.orgId,
+    input.departmentId,
+    input.window.weekStart.toISOString(),
+    input.window.coverEnd.toISOString(),
+    NEWSLETTER_MAX_SESSIONS + 1
+  )
+  if (sessions.length === 0) {
+    throw new NewsletterUserError(
+      input.window.coverEnd.getTime() < input.window.weekEnd.getTime()
+        ? 'No published teaching in this department has ended yet this week'
+        : 'No published teaching ended in this department during that week'
+    )
+  }
+  if (sessions.length > NEWSLETTER_MAX_SESSIONS) {
+    throw new NewsletterUserError(
+      `This week contains more than ${NEWSLETTER_MAX_SESSIONS} sessions and cannot fit a one-page digest`
+    )
+  }
+  return sessions
+}
 
 /**
  * Build the reviewed artifact candidate from every published session delivered
@@ -63,7 +104,7 @@ Keep the complete result at 700 words or fewer. Do not add sessions, omit sessio
   })
   bundle.throwIfSourceFailed()
   if (!generated) {
-    throw new Error(
+    throw new NewsletterUserError(
       bundle.files.length
         ? 'The AI provider could not create a valid newsletter from the teaching materials. Try again; if it keeps failing, check the AI configuration (Anthropic: Files API enabled for the workspace; OpenAI-compatible: Responses file inputs).'
         : 'The AI provider could not create a valid weekly newsletter. Check the AI configuration and try again.'
@@ -75,7 +116,8 @@ Keep the complete result at 700 words or fewer. Do not add sessions, omit sessio
   const content: OpsNewsletterContent = {
     ...generated,
     sessions: generated.sessions.map((section) => {
-      const session = trusted.get(section.session_id)!
+      const session = trusted.get(section.session_id)
+      if (!session) throw new NewsletterUserError('The generated newsletter did not fit the one-page review format')
       return {
         ...section,
         title: session.title,
@@ -84,6 +126,6 @@ Keep the complete result at 700 words or fewer. Do not add sessions, omit sessio
     }),
   }
   const parsed = newsletterSchemaForSessions(input.sessions.map((session) => session.id)).safeParse(content)
-  if (!parsed.success) throw new Error('The generated newsletter did not fit the one-page review format')
+  if (!parsed.success) throw new NewsletterUserError('The generated newsletter did not fit the one-page review format')
   return { content: parsed.data, sourceDocuments: bundle.documents }
 }

@@ -7,6 +7,7 @@ import {
   generateWeeklyNewsletter,
   retryWeeklyNewsletter,
   saveWeeklyNewsletter,
+  type NewsletterWorkspaceIssue,
 } from '@/app/actions/ops'
 import { Badge } from '@/components/Badge'
 import { Button } from '@/components/Button'
@@ -18,7 +19,6 @@ import {
 } from '@/lib/ops/newsletter'
 import type {
   OpsNewsletterContent,
-  OpsNewsletterIssue,
   OpsNewsletterStatus,
 } from '@/lib/types'
 
@@ -30,7 +30,7 @@ interface DepartmentOption {
 
 interface NewsletterWorkspaceProps {
   departments: DepartmentOption[]
-  issues: OpsNewsletterIssue[]
+  issues: NewsletterWorkspaceIssue[]
   defaultWeekStart: string
 }
 
@@ -75,7 +75,12 @@ function NewsletterGenerator({
     setBusy(true)
     setError(null)
     try {
-      await generateWeeklyNewsletter(departmentId, weekStart)
+      const result = await generateWeeklyNewsletter(departmentId, weekStart)
+      if (!result.ok) {
+        setError(result.message)
+        setProgress(0)
+        return
+      }
       setProgress(100)
       router.refresh()
     } catch (cause) {
@@ -148,7 +153,7 @@ function NewsletterGenerator({
         </div>
       )}
       {error && (
-        <p className="mt-3 border border-red-700 bg-red-50 p-3 font-mono text-xs text-red-800">
+        <p role="alert" className="mt-3 border border-red-700 bg-red-50 p-3 font-mono text-xs text-red-800">
           {error}
         </p>
       )}
@@ -156,20 +161,48 @@ function NewsletterGenerator({
   )
 }
 
-function NewsletterIssueEditor({
+/**
+ * Holds the per-issue error across editor remounts. The editor itself is keyed
+ * by the server revision/updated_at, so a save, regenerate, or failed send
+ * that changes the stored issue resets its local content and revision instead
+ * of letting a stale copy be saved or emailed over the new draft.
+ */
+function NewsletterIssueCard({
   issue,
   department,
 }: {
-  issue: OpsNewsletterIssue
+  issue: NewsletterWorkspaceIssue
   department: DepartmentOption
+}) {
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <NewsletterIssueEditor
+      key={`${issue.content_revision}:${issue.updated_at}`}
+      issue={issue}
+      department={department}
+      error={error}
+      setError={setError}
+    />
+  )
+}
+
+function NewsletterIssueEditor({
+  issue,
+  department,
+  error,
+  setError,
+}: {
+  issue: NewsletterWorkspaceIssue
+  department: DepartmentOption
+  error: string | null
+  setError: (error: string | null) => void
 }) {
   const router = useRouter()
   const [content, setContent] = useState<OpsNewsletterContent>(issue.content!)
-  const [revision, setRevision] = useState(issue.content_revision)
+  const revision = issue.content_revision
   const [busy, setBusy] = useState<'save' | 'send' | 'retry' | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const words = useMemo(() => newsletterWordCount(content), [content])
-  const editable = ['draft', 'failed'].includes(issue.status) && issue.sent_count === 0
+  const { editable, canRetry, inProgress } = issue.controls
 
   function updateSession(index: number, patch: Partial<OpsNewsletterContent['sessions'][number]>) {
     setContent((current) => ({
@@ -194,7 +227,7 @@ function NewsletterIssueEditor({
     setError(null)
     try {
       const result = await saveWeeklyNewsletter(issue.id, content, revision)
-      setRevision(result.revision)
+      if (!result.ok) setError(result.message)
       router.refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save newsletter')
@@ -204,11 +237,14 @@ function NewsletterIssueEditor({
   }
 
   async function send() {
-    if (!window.confirm(`Email this reviewed newsletter to eligible members of ${department.name}?`)) return
+    if (!window.confirm(
+      `Email this reviewed newsletter to the current members of ${department.name} (${department.memberCount} member(s), excluding anyone who has unsubscribed)?`
+    )) return
     setBusy('send')
     setError(null)
     try {
-      await approveAndSendWeeklyNewsletter(issue.id, content, revision)
+      const result = await approveAndSendWeeklyNewsletter(issue.id, content, revision)
+      if (!result.ok) setError(result.message)
       router.refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Newsletter delivery failed')
@@ -222,7 +258,8 @@ function NewsletterIssueEditor({
     setBusy('retry')
     setError(null)
     try {
-      await retryWeeklyNewsletter(issue.id)
+      const result = await retryWeeklyNewsletter(issue.id)
+      if (!result.ok) setError(result.message)
       router.refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Newsletter retry failed')
@@ -352,15 +389,20 @@ function NewsletterIssueEditor({
                   </Button>
                 </>
               )}
-              {!editable && issue.status !== 'sent' && (
+              {canRetry && (
                 <Button onClick={retry} disabled={busy !== null}>
                   {busy === 'retry' ? 'Retrying…' : 'Retry unfinished delivery'}
                 </Button>
               )}
+              {inProgress && (
+                <p className="font-mono text-xs text-gray-600">
+                  Delivery in progress — refresh in a few minutes.
+                </p>
+              )}
             </div>
           </div>
           {error && (
-            <p className="border border-red-700 bg-red-50 p-3 font-mono text-xs text-red-800">
+            <p role="alert" className="border border-red-700 bg-red-50 p-3 font-mono text-xs text-red-800">
               {error}
             </p>
           )}
@@ -408,14 +450,14 @@ export function NewsletterWorkspace({
       {issues.length === 0 ? (
         <Card>
           <p className="font-mono text-sm text-gray-600">
-            No departmental newsletter drafts yet. Generate one from a completed teaching week above.
+            No departmental newsletter drafts yet. Generate one for a teaching week above.
           </p>
         </Card>
       ) : (
         issues.map((issue) => {
           const department = issue.department_id ? departmentById.get(issue.department_id) : null
           if (!department || !issue.content) return null
-          return <NewsletterIssueEditor key={issue.id} issue={issue} department={department} />
+          return <NewsletterIssueCard key={issue.id} issue={issue} department={department} />
         })
       )}
     </div>

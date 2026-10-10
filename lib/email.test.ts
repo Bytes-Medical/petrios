@@ -102,3 +102,64 @@ describe('outbound email switch', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('Resend request options', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  const message = {
+    from: 'Petrios <no-reply@example.org>',
+    to: 'trainee@nhs.net',
+    subject: 'Weekly teaching',
+    html: '<p>x</p>',
+  }
+
+  function stubResend(response: Response) {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const fetchSpy = vi.fn<typeof fetch>(async () => response)
+    vi.stubGlobal('fetch', fetchSpy)
+    vi.stubEnv('SMTP_HOST', '')
+    vi.stubEnv('RESEND_API_KEY', 'test-resend-key')
+    vi.stubEnv('OUTBOUND_EMAIL_ENABLED', '')
+    return fetchSpy
+  }
+
+  it('sends the idempotency key and custom headers, bounded by a timeout', async () => {
+    const fetchSpy = stubResend(
+      new Response(JSON.stringify({ id: 'msg_1' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    )
+    await getEmailClient().emails.send({
+      ...message,
+      idempotencyKey: 'ops-newsletter/d-1/2',
+      headers: { 'List-Unsubscribe': '<https://app.test/u>' },
+    })
+    const [, init] = fetchSpy.mock.calls[0]
+    expect(init?.headers).toMatchObject({ 'Idempotency-Key': 'ops-newsletter/d-1/2' })
+    expect(JSON.parse(String(init?.body)).headers).toEqual({ 'List-Unsubscribe': '<https://app.test/u>' })
+    expect(init?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('omits the idempotency header when no key is given', async () => {
+    const fetchSpy = stubResend(
+      new Response(JSON.stringify({ id: 'msg_1' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    )
+    await getEmailClient().emails.send(message)
+    const [, init] = fetchSpy.mock.calls[0]
+    expect(init?.headers).not.toHaveProperty('Idempotency-Key')
+    expect(JSON.parse(String(init?.body))).not.toHaveProperty('headers')
+  })
+
+  it('reports the status and Retry-After of a rate-limited request', async () => {
+    stubResend(
+      new Response(JSON.stringify({ message: 'Too many requests' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '2' },
+      })
+    )
+    const result = await getEmailClient().emails.send(message)
+    expect(result.error).toEqual({ message: 'Too many requests', statusCode: 429, retryAfterSeconds: 2 })
+  })
+})

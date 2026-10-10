@@ -195,15 +195,40 @@ the exact current editor content, creates the pending row with `issueId` and
 `contentRevision`, immediately records the authenticated moderator's explicit
 approval, and invokes the same sole executor. The executor refuses a stale
 revision, a cross-organization/department action, or a legacy organization-wide
-issue.
+issue. It then starts delivery with a compare-and-set
+(`beginNewsletterExecution`): only the reviewed `content_revision`, only from
+`draft`/`failed` or from an `approved` execution whose ten-minute lease
+(`updated_at`) has expired, moves to `approved` and links the action. A miss
+means another execution holds the lease or the content changed after review,
+and nothing is sent. The executor sends from the row that CAS returned, never
+from its earlier read. Save and regenerate only touch `draft`/`failed` issues,
+so they cannot change an issue while it is being delivered.
 
 Each audience member has one `ops_newsletter_deliveries` row per issue. Claims
 move `PENDING`/`FAILED` (or a stale ten-minute `SENDING` lease) to `SENDING`;
-completion stores `SENT` with provider id or `FAILED` with sanitized error.
-Partial failure marks the issue/action failed. A moderator can retry, and already
-`SENT` rows are never emailed again. Editing is locked after any successful send
-so one issue cannot deliver different content to different members. A wholly
-sent issue is guarded against double execution.
+the claim function is not `SETOF`, so a missed claim is an all-NULL composite
+that the DAL treats as "not claimed" (no send). Completion is bound to that
+claim (`status = 'SENDING'` and the claimed `attempt_count`) and stores `SENT`
+with provider id or `FAILED` with a sanitized error (no recipient addresses,
+at most 300 characters). An email the provider accepted is never downgraded to
+`FAILED`: if both attempts to record `SENT` fail, the row stays `SENDING` under
+its lease. Each send carries a provider idempotency key
+(`ops-newsletter/<delivery id>/<revision>`; Resend deduplicates for 24 hours),
+so a later resend of that row is not delivered twice (SMTP has no equivalent).
+Sends are paced at least 500 ms apart; an HTTP 429 is retried up to twice after
+`Retry-After` (at most 5 s) before the row is recorded `FAILED`. One request
+stops starting sends after four minutes or about 3,000 estimated subrequests
+(inside the ten-minute lease); the rest stay `PENDING`.
+
+Any unfinished row marks the issue `failed` with `sent_count` recounted from the
+ledger, and the action `failed`; this includes the missing-email and
+no-eligible-recipient refusals and any unexpected error after the start CAS. A
+moderator can retry (“Retry unfinished delivery”), which is refused while a
+recent execution still holds the lease, and already `SENT` rows are never
+emailed again. Editing and regenerating are locked when the issue has
+`sent_count > 0` **or** any `SENT`/`SENDING` ledger row (a cut-off run), so one
+issue cannot deliver different content to different members. A wholly sent
+issue is guarded against double execution.
 
 ### Dates in Ops output
 
@@ -297,10 +322,14 @@ moderator authorization check.
 
 ### Window and source completeness
 
-The moderator selects a UTC Monday–Sunday week that has started (mid-week drafts cover sessions ended so far and stay regenerable until sent) no more than one year
-old. Generation selects **every `PUBLISHED` session in the department whose
-`date_end` is in `[weekStart, weekStart + 7 days)`**. An empty week is rejected.
-The job caps a week at 50 sessions so it never silently truncates a larger set.
+The moderator selects a UTC Monday–Sunday week that has started, no more than
+one year (366 days) old. Generation selects **every `PUBLISHED` session in the
+department whose `date_end` is in `[weekStart, min(weekStart + 7 days, now))`**
+(`WeekWindow.coverEnd`, `loadNewsletterWeekSessions`): a mid-week draft covers
+only sessions that have already ended, so later sessions and their documents
+are never sent to the provider or described as delivered, and the draft stays
+regenerable until sent. An empty window is rejected. The job caps a week at 50
+sessions (it reads 51 rows) so it never silently truncates a larger set.
 
 For those sessions the job selects every `AVAILABLE` `session_documents` row,
 including PDF, DOCX, and PPTX. It rejects more than 50 files or more than 50 MiB
@@ -342,17 +371,35 @@ cards, and an unsubscribe placeholder. Every dynamic field is HTML-escaped befor
 storage. “One page” means this constrained, scannable email format and word cap;
 email clients and print settings can still paginate differently.
 
-One active issue is keyed by `(org_id, department_id, week_start)`. Generating
-again replaces only an unsent draft/failed issue, resets it to draft revision 1,
-and removes obsolete unsent delivery rows. A sent issue cannot be regenerated.
+One active issue is keyed by `(org_id, department_id, week_start)`; two
+concurrent first generations for the same week return “Another moderator
+generated this week” instead of a raw unique-violation. Generating again
+replaces only an unsent draft/failed issue (not one being delivered, partially
+delivered, or sent; refused before the AI run starts), with a compare-and-set on
+the revision it read; the revision **increases** (it never resets), so a browser
+tab holding an older revision fails the save CAS instead of overwriting the
+regenerated draft. Obsolete `PENDING`/`FAILED` delivery rows are removed.
 The editor exposes all narrative fields, live word count, saved HTML preview, and
 the exact source-document list. Session identity/title/date labels remain bound
 to the generated trusted snapshot even if a crafted client submits alternatives.
 Save uses compare-and-swap on
 `content_revision`; stale browser tabs are rejected. Every save revalidates exact
-session coverage and the 700-word limit, rebuilds escaped HTML, increments the
-revision, and resets status to draft. Saving or editing after any successful
-recipient delivery is forbidden.
+session coverage and the 700-word limit (`normalizeNewsletterEdit`), rebuilds
+escaped HTML, increments the revision, and resets status to draft. Saving or
+editing after any recipient delivery (or while a `SENDING` row exists) is
+forbidden. The editor is keyed by the stored revision and `updated_at`, so a
+save, regenerate or failed send that changes the issue resets its local content
+and revision; “Approve & email” reports the saved revision even when delivery
+then fails.
+
+Generate, save, approve and retry return `{ ok: false, message }` for expected
+outcomes (`NewsletterUserError`: empty or oversized week, document limits or
+integrity failure, provider failure, stale tab, in-progress delivery, missing
+member email, partial delivery) because Next masks thrown Server Action
+messages in production (spec 07); the workspace shows the message in an alert.
+Unexpected errors still throw. The workspace always lists `approved`/`failed`
+issues, however many newer weeks exist, so an unfinished delivery stays
+reachable.
 
 ### Review, audience, and delivery
 
@@ -361,13 +408,29 @@ review event described in the approval state machine. The pending action binds
 the exact saved issue revision; the executor checks that binding before any
 recipient claim.
 
-Audience membership is evaluated at execution, not generation: every current
-`department_members.user_id` joined to an email-bearing profile, minus users in
-the organization-level `ops_newsletter_optouts` set. Missing profile email fails
-the execution instead of silently dropping a member. Each email receives a
-user-bound HMAC unsubscribe link. Delivery uses the per-recipient retry ledger
-described above; the issue stores the number of successful sends, and the UI
-offers “Retry unfinished” after a partial failure without duplicating successes.
+Audience membership is evaluated at every execution, including retries, not at
+generation: every current `department_members.user_id` joined to an
+email-bearing profile (members paged, profiles looked up 100 at a time), minus
+users in the organization-level `ops_newsletter_optouts` set (queried only for
+those candidates). A second account sharing an address is not emailed twice.
+Before any send, unsent ledger rows for members who left, opted out, or changed
+address are removed and current rows re-seeded, so a retry never emails someone
+the rule now excludes and never uses a stale address. Missing profile email
+fails the execution instead of silently dropping a member; an empty audience
+also fails (nothing is marked sent). Delivery uses the per-recipient retry
+ledger described above; the issue stores the number of successful sends, and
+the UI offers “Retry unfinished delivery” after a partial failure without
+duplicating successes.
+
+Each email carries a user-bound HMAC unsubscribe link (keyed by the service-role
+key, so rotating that key invalidates links already sent) and RFC 8058
+`List-Unsubscribe` / `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+headers. The public page `/ops/unsubscribe/[token]` never changes state on GET,
+because mail link scanners fetch every URL: it shows the current preference and
+records the organization-wide opt-out (or a resubscribe) only from an explicit
+form post (`app/actions/newsletter-unsubscribe.ts`). Mailbox providers'
+one-click POST goes to `/ops/unsubscribe/[token]/one-click`, which requires the
+`List-Unsubscribe=One-Click` body. Both paths are public in `proxy.ts`.
 
 ## Organizer assistant
 
