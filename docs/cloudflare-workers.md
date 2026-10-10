@@ -114,8 +114,10 @@ The script refuses to deploy when:
   These are the `lib/app-url.ts` / `lib/runtime-config.ts` rules plus pinning to
   this Worker, so a production or localhost URL cannot ship to staging.
 - the top level of `wrangler.jsonc` has cron triggers, routes,
-  `workers_dev: false`, or `CRON_ENABLED` or `OUTBOUND_EMAIL_ENABLED` other
-  than `"false"`.
+  `workers_dev: false`, or `CRON_ENABLED`, `OUTBOUND_EMAIL_ENABLED` or
+  `ROTA_INTEGRATION_ENABLED` other than `"false"`. The rota pin keeps the
+  staging Worker from ever writing trainee rota data to the production database
+  (`docs/rota.md`, spec 14).
 - a `--secrets-file` fails the checks below.
 - `cf:build` or its guard fails.
 
@@ -140,7 +142,7 @@ binds the file *after* the config and `--var`, with no collision check, so a
 same-named entry would silently replace a validated var. `cf:deploy:staging`
 therefore reads the file's variable **names** (never values) and refuses it if
 it names a `vars` key (`APP_URL`, `CRON_ENABLED`, `OUTBOUND_EMAIL_ENABLED`,
-`TRUSTED_CLIENT_IP_HEADER`), a
+`ROTA_INTEGRATION_ENABLED`, `TRUSTED_CLIENT_IP_HEADER`), a
 name from the never-set row, or an `APP_URL` fallback (`NEXT_PUBLIC_APP_URL`,
 `NEXT_PUBLIC_BASE_URL`, `NEXTAUTH_URL`, `VERCEL_*`, `RENDER_EXTERNAL_URL`).
 It also refuses a file inside the repository or named like `.dev.vars*` or `.env*`.
@@ -149,7 +151,7 @@ Afterwards use `npx wrangler secret put <NAME> --env=""`. The empty `--env` pins
 top level even if `CLOUDFLARE_ENV` is set in your shell. Never store a secret
 under a `vars` name. If one was ever stored, for example by an older deploy
 with a copied file, delete it: `npx wrangler secret delete APP_URL --env=""`
-(likewise `CRON_ENABLED`, `OUTBOUND_EMAIL_ENABLED`).
+(likewise `CRON_ENABLED`, `OUTBOUND_EMAIL_ENABLED`, `ROTA_INTEGRATION_ENABLED`).
 
 Deploys are config-as-source-of-truth (no `--keep-vars`). Plain variables set in
 the dashboard are removed on the next deploy. Store every environment-specific
@@ -166,9 +168,9 @@ variables are read at runtime, server-side only, by `lib/meeting/config.ts`
 
 | Kind | Names |
 |---|---|
-| `vars` in `wrangler.jsonc` | `APP_URL` (staging: empty in config, set per deploy; production: `https://petrios.uk` in both phases), `CRON_ENABLED` (`"false"` at top level and in `env.production_preflight`, `"true"` only in `env.production`), `OUTBOUND_EMAIL_ENABLED` (`"false"` at top level and in preflight, `"true"` in `env.production`; see [Outbound email on staging](#outbound-email-on-staging)), `TRUSTED_CLIENT_IP_HEADER` (`"cf-connecting-ip"` everywhere: Cloudflare overwrites it, while the first `x-forwarded-for` hop is client-supplied, so the login-link and group-code rate limits must not use it), `HOSTING_PROVIDER` (`"cloudflare-workers"` everywhere, so `/privacy` and `/subprocessors` name Cloudflare Workers as the application host) |
+| `vars` in `wrangler.jsonc` | `APP_URL` (staging: empty in config, set per deploy; production: `https://petrios.uk` in both phases), `CRON_ENABLED` (`"false"` at top level and in `env.production_preflight`, `"true"` only in `env.production`), `OUTBOUND_EMAIL_ENABLED` (`"false"` at top level and in preflight, `"true"` in `env.production`; see [Outbound email on staging](#outbound-email-on-staging)), `TRUSTED_CLIENT_IP_HEADER` (`"cf-connecting-ip"` everywhere: Cloudflare overwrites it, while the first `x-forwarded-for` hop is client-supplied, so the login-link and group-code rate limits must not use it), `HOSTING_PROVIDER` (`"cloudflare-workers"` everywhere, so `/privacy` and `/subprocessors` name Cloudflare Workers as the application host), `ROTA_INTEGRATION_ENABLED` (`"false"` at top level and in `env.production_preflight`, enforced by the validators; declared `"false"` in `env.production` too until the owner's rota go-live, when only that value becomes `"true"`; see [Rota availability on Workers](#rota-availability-on-workers)) |
 | Required secrets: deploy fails without them | Staging: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`. Production (both phases) adds `RESEND_API_KEY`, `MAIL_FROM`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTACT_EMAIL` (`PRIVACY_CONTROLLER_ADDRESS`, `DATA_HOSTING_REGION` and `DATA_TRANSFER_SAFEGUARDS` are optional, as on Render, and show as not declared until set) |
-| Optional secrets (set when used) | `ATTENDANCE_RATE_LIMIT_SECRET`, `INSTANCE_SIGNING_KEY`, `RESEND_API_KEY` and `MAIL_FROM` (staging: only reach `OUTBOUND_EMAIL_ALLOWLIST` addresses), `OUTBOUND_EMAIL_ALLOWLIST` (staging only), `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_FALLBACKS`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `TTS_PROVIDER`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `OPS_ENABLED`, `OPS_ASSISTANT_ENABLED`, Petrios Meet: `JAAS_APP_ID`, `JAAS_API_KEY_ID`, `JAAS_PRIVATE_KEY` (all three or none; the private key is a critical secret), or `JITSI_DOMAIN` with optional `JITSI_APP_ID` + `JITSI_APP_SECRET` (critical secret), `JITSI_JWT_AUDIENCE`, `JITSI_JWT_SUBJECT`, `TEACHER_INVITATIONS_RLS_LOCKED` (exactly `true` only after the spec 13 database fix), `GOOGLE_SITE_VERIFICATION`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL`, `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` |
+| Optional secrets (set when used) | `ATTENDANCE_RATE_LIMIT_SECRET`, `INSTANCE_SIGNING_KEY`, `RESEND_API_KEY` and `MAIL_FROM` (staging: only reach `OUTBOUND_EMAIL_ALLOWLIST` addresses), `OUTBOUND_EMAIL_ALLOWLIST` (staging only), `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_FALLBACKS`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `TTS_PROVIDER`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `OPS_ENABLED`, `OPS_ASSISTANT_ENABLED`, `ROTA_IDENTITY_SECRET` (production only, at least 32 random bytes; never needed on staging, where rota is pinned off), Petrios Meet: `JAAS_APP_ID`, `JAAS_API_KEY_ID`, `JAAS_PRIVATE_KEY` (all three or none; the private key is a critical secret), or `JITSI_DOMAIN` with optional `JITSI_APP_ID` + `JITSI_APP_SECRET` (critical secret), `JITSI_JWT_AUDIENCE`, `JITSI_JWT_SUBJECT`, `TEACHER_INVITATIONS_RLS_LOCKED` (exactly `true` only after the spec 13 database fix), `GOOGLE_SITE_VERIFICATION`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL`, `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` |
 | Not secret, usually unset | `APP_TIME_ZONE` (IANA zone for server-rendered dates and teaching-slot wall times; default `Europe/London`, so a UK deployment sets nothing). To change it, add it to `vars` in `wrangler.jsonc` at the top level **and** in both production environments (environments do not inherit `vars`; the production validator requires identical keys), which also lets `cf:preview` read it from `.dev.vars`; or store it as a secret like `MAIL_FROM` (the production secrets template lists it: copy it if Render sets it). `TZ` has no effect: the Workers clock is always UTC |
 | Never set on Workers | `SUPABASE_INTERNAL_URL`, `AUTH_INTERNAL_URL`, `STORAGE_INTERNAL_URL`: Docker-network hostnames, which `global_fetch_strictly_public` blocks. Also `SELF_HOSTED_SETUP`/`SETUP_TOKEN` (self-host setup depends on unapplied migration 061), `DATABASE_URL`, and `NEXTJS_ENV` |
 | Build-time only | `NODE_ENV` is inlined as `production` by `next build` |
@@ -233,6 +235,42 @@ Even with email off, staging writes to the production database. Do not run real
 workflows there: generating certificates, inviting teachers, publishing slots
 or approving Ops actions for real sessions creates production rows (with failed
 deliveries for everyone not on the allowlist).
+
+### Rota availability on Workers
+
+Rota availability (spec 14, [docs/rota.md](rota.md)) is off unless
+`ROTA_INTEGRATION_ENABLED` is exactly `"true"`. The staging Worker and the
+production preflight both serve the production database, so `wrangler.jsonc`
+pins it to `"false"` in the top-level `vars` and in
+`env.production_preflight.vars`; `stagingConfigProblems` and
+`productionConfigProblems` (`scripts/cloudflare/lib.mjs`) refuse a deploy with
+any other value there, and the secrets checks refuse a secret named like the
+var. `env.production.vars` declares it too (`"false"` today), because
+`productionConfigProblems` requires both production phases to declare the same
+`vars` keys, and the two phases are one Worker sharing its secrets, so a secret
+of that name would shadow preflight's `"false"`. The value is the one key
+allowed to differ between the phases: preflight must be `"false"`, live must be
+`"false"` or `"true"`.
+
+**Rota go-live on Workers** (owner only, after migrations 063 and 064 are
+applied and the pilot's DPIA reference exists):
+
+1. Set the `ROTA_IDENTITY_SECRET` Worker secret (copy Render's value byte for
+   byte if Render already has one; a new value orphans every identity link).
+2. Edit only `env.production.vars.ROTA_INTEGRATION_ENABLED` in `wrangler.jsonc`
+   from `"false"` to `"true"`. Leave the top-level and preflight values at
+   `"false"`.
+3. Deploy with `npm run cf:deploy:production -- live --render-crons-disabled`
+   as usual; `check-secrets` and the validators run first.
+
+To switch it off again, set the live value back to `"false"` and redeploy
+(disable each organisation in Settings first, `docs/rota.md` section 7).
+Leave `ROTA_IDENTITY_SECRET` unset on staging.
+
+Even with the switch off, the deletion-only rota purge runs inside every
+`post-session-reports` cron run. Staging has no crons and preflight dispatches
+none, so on those hosts it never runs; on staging only check that the feature
+is inert (the rota pages return 404 and the actions refuse).
 
 ### Privacy register while staging serves production data
 
@@ -561,9 +599,10 @@ the JaaS PEM, are JSON strings with `\n` escapes.
 | `JAAS_APP_ID` + `JAAS_API_KEY_ID` + `JAAS_PRIVATE_KEY`, or `JITSI_DOMAIN` (Render's `NEXT_PUBLIC_JITSI_DOMAIN`) with `JITSI_APP_ID` + `JITSI_APP_SECRET`, `JITSI_JWT_*` | Optional; as on Render (`docs/petrios-meet.md`) |
 | `OUTBOUND_EMAIL_ALLOWLIST` | Optional, preflight testing only (ignored once email is on). Delete it after the cutover |
 | `APP_TIME_ZONE` | Copy if set on Render (default `Europe/London`) |
+| `ROTA_IDENTITY_SECRET` | Copy byte for byte if Render has it (a new value orphans every rota identity link, so every trainee would need re-linking). Omit until rota availability goes live |
 
 Never store `APP_URL`, `CRON_ENABLED`, `OUTBOUND_EMAIL_ENABLED`,
-`TRUSTED_CLIENT_IP_HEADER`, `HOSTING_PROVIDER` (vars), `NEXT_PUBLIC_APP_URL` or
+`ROTA_INTEGRATION_ENABLED`, `TRUSTED_CLIENT_IP_HEADER`, `HOSTING_PROVIDER` (vars), `NEXT_PUBLIC_APP_URL` or
 other `APP_URL` fallbacks, `*_INTERNAL_URL`, `DATABASE_URL`, `NEXTJS_ENV`,
 `NODE_ENV`, `RENDER*` or `SMTP_*` (unverified on Workers; refused).
 
@@ -896,6 +935,7 @@ take writes production rows. Use test sessions only, and send email only to
 - [ ] Webhooks: in a test organization whose only webhook endpoint is one you control, publish a test session and confirm `webhook_deliveries` rows and receipt with a valid `X-Petrios-Signature`.
 - [ ] Email to a non-allowlisted address is refused (ledger row `FAILED`, nothing sent). Email to an allowlisted address arrives, and its links use the staging `APP_URL`.
 - [ ] Cron routes return 401 without the bearer secret. No scheduled invocations appear in the staging Worker's logs.
+- [ ] Rota availability is inert: `/rota` and `/departments/<id>/rota` return 404, Settings has no Rota availability section, and no rota action succeeds. Do no functional rota testing on staging.
 - [ ] Workers Observability shows no unexpected errors or CPU-limit exceedances.
 
 ## Rollback

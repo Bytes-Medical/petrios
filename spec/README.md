@@ -2,7 +2,9 @@
 
 This directory is the detailed, implementation-facing specification for
 Petrios. It describes the application represented by the source tree and by
-database migrations through `060_department_weekly_newsletters.sql`. `CLAUDE.md` is
+database migrations through `064_recall_excused_catchup.sql` (063 and 064, the
+rota-availability and Recall-widening migrations, are applied by the owner and
+the code is inert without them; spec 14). `CLAUDE.md` is
 the short architecture briefing; these documents are the durable contract for
 maintainers, reviewers, operators, and coding agents.
 
@@ -52,6 +54,7 @@ data to whoever possesses it.
 | [11 — Identity and administration](./11-identity-and-administration.md) | Login methods, signup posture, join workflow, profiles, memberships, roles, and administrator surfaces |
 | [12 — Audit and reporting](./12-audit-and-reporting.md) | Audit scope, metric denominators, equity views, member reports, exports, and privacy caveats |
 | [13 — Privacy, security, accessibility, and compliance](./13-privacy-security-and-compliance.md) | Public disclosures, data map, cookies/GPC, provider transparency, browser headers, contrast, and operator evidence boundary |
+| [14 — Rota availability](./14-rota-availability.md) | Off-by-default rota upload (in-browser mapping, minimised payload), keyed-hash identity links, per-session "rostered unavailable" flags, moderator-confirmed excusal suggestions, trainee contest, retention purge, and the Recall widening to finalized `EXCUSED` |
 
 ## Non-negotiable invariants
 
@@ -117,6 +120,14 @@ must not be used to erase those details.
     Cloudflare Workers: no floating promises on server paths (request paths use
     `after()`, crons await), no whole-file buffering where a stream will do, and
     no local `.env*` value in a Worker upload. Specs 07 and 09 give the rules.
+15. **Rota data never decides attendance; every excusal is an individual
+    moderator decision.** A rota suggestion becomes attendance only when a
+    moderator confirms that one row after the session has ended, which writes
+    a reasoned `MODERATOR_CONFIRMATION`. There is no bulk accept, finalization
+    never reads rota data, no leave category is stored or shown, and
+    per-person rota status is visible only to the session's own moderators
+    (never super admins acting in another organisation) and to the trainee
+    themself (spec 14).
 
 ## Change protocol
 

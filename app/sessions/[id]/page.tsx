@@ -15,6 +15,8 @@ import { getApprovedAudioRecap } from '@/app/actions/audio-recaps'
 import { AudioRecapPlayer } from '@/components/AudioRecapPlayer'
 import * as onboardingDb from '@/lib/db/onboarding'
 import { canUploadSessionDocuments, getSessionDocuments } from '@/app/actions/session-documents'
+import { getMyRotaFlag } from '@/app/actions/rota-attendance'
+import { RotaOwnFlagNotice } from '@/components/rota/RotaOwnFlagNotice'
 
 export default async function SessionPage(
   props: {
@@ -41,16 +43,27 @@ export default async function SessionPage(
   // explains a draft, cancelled, not-yet-open or ended room.
   const isVideoSession = session.location_type === 'JITSI'
 
-  const [teachers, attendance, canManage, approvedRecap, videoProfile, documents, canUploadDocuments] =
-    await Promise.all([
-      getSessionTeachers(params.id),
-      getAttendance(params.id),
-      isDepartmentModerator(session.department_id),
-      getApprovedAudioRecap(params.id),
-      isVideoSession ? onboardingDb.findProfileByUserId(user.id) : Promise.resolve(null),
-      getSessionDocuments(params.id),
-      canUploadSessionDocuments(params.id),
-    ])
+  const [
+    teachers,
+    attendance,
+    canManage,
+    approvedRecap,
+    videoProfile,
+    documents,
+    canUploadDocuments,
+    ownRotaFlag,
+  ] = await Promise.all([
+    getSessionTeachers(params.id),
+    getAttendance(params.id),
+    isDepartmentModerator(session.department_id),
+    getApprovedAudioRecap(params.id),
+    isVideoSession ? onboardingDb.findProfileByUserId(user.id) : Promise.resolve(null),
+    getSessionDocuments(params.id),
+    canUploadSessionDocuments(params.id),
+    // Rota availability (spec/14): the caller's own flag only; null when
+    // rota is unavailable here; never throws.
+    getMyRotaFlag(params.id),
+  ])
 
   // Mode, room window and availability are resolved on the server; the name
   // is what the room shows (never an email).
@@ -87,6 +100,8 @@ export default async function SessionPage(
             )}
           </div>
         </div>
+
+        {ownRotaFlag && <RotaOwnFlagNotice flag={ownRotaFlag} />}
 
         {meetingView && <JitsiMeetingPanel view={meetingView} audience={{ kind: 'member' }} />}
 

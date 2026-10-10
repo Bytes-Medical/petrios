@@ -59,6 +59,7 @@ supabase db push
 | Video (optional) | meet.jit.si, opened in a new tab (never embedded: meet.jit.si cuts embedded calls after 5 minutes, and the first person in must sign in to Jitsi). For embedded rooms set **`JAAS_APP_ID`**, **`JAAS_API_KEY_ID`** and **`JAAS_PRIVATE_KEY`** (8x8 Jitsi as a Service; all three or none; step by step in [docs/petrios-meet.md](petrios-meet.md)). External teachers get room passes only with **`TEACHER_INVITATIONS_RLS_LOCKED=true`**, set after the database fix in spec/13 | **`JITSI_DOMAIN`** → your own Jitsi server, embedded; add **`JITSI_APP_ID`** + **`JITSI_APP_SECRET`** so only Petrios room passes can join (see [Self-hosted Jitsi](#self-hosted-jitsi)). `NEXT_PUBLIC_JITSI_DOMAIN` is a legacy alias |
 | AI agent kill switch | on | `OPS_ENABLED=false` halts every agent surface |
 | Chat assistant | **off** | `OPS_ASSISTANT_ENABLED=true` opts a deployment in (needs its own safety review) |
+| Rota availability | **off** | **`ROTA_INTEGRATION_ENABLED=true`** (exactly) plus **`ROTA_IDENTITY_SECRET`** (≥ 32 random bytes, server-only; rotating it means re-linking every trainee), after migrations 063/064 are applied. Each organisation then enables it in Settings with a DPIA reference. See [docs/rota.md](rota.md) |
 | Time zone (optional) | `Europe/London` | **`APP_TIME_ZONE`** (IANA name) for dates the server renders (emails, certificate/audit/portfolio PDFs, server pages, cron and Ops drafts) and for teaching-slot wall times. The container's `TZ` is not needed: these paths ignore the server clock's zone. Client panels that show teaching-slot or Ops times receive the server's value, so every surface uses the same zone |
 | Public compliance facts | Required for production | `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL`, `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` |
 
@@ -136,6 +137,10 @@ each route is idempotent and authenticated with an `Authorization: Bearer $CRON_
 | `/api/cron/recall-awards` | every 5–15 minutes, or hourly |
 | `/api/cron/ops-synthesis` | daily |
 | `/api/cron/ops-weekly` | weekly |
+
+`post-session-reports` also runs the deletion-only rota retention purge on every
+run, even when rota availability is switched off, so keep it scheduled hourly
+(spec/14).
 
 Example crontab entry:
 

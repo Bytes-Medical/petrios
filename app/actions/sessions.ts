@@ -20,6 +20,7 @@ import * as slotsDb from '@/lib/db/teaching-slots'
 import * as certificatesDb from '@/lib/db/certificates'
 import { DbNotFoundError } from '@/lib/db'
 import { emitWebhook } from '@/lib/webhooks'
+import { onSessionScheduleChanged } from '@/lib/rota/session-hooks'
 
 export async function createSession(sessionData: {
   department_id: string
@@ -138,6 +139,15 @@ export async function updateSession(id: string, updates: Partial<Session>) {
     orgId,
     normalizedUpdates
   )
+
+  // Rota availability (spec/14): a time change or cancellation deletes the
+  // session's rota flags; the next upload recomputes them. Never throws.
+  await onSessionScheduleChanged({
+    orgId,
+    sessionId: id,
+    before: { date_start: scope.date_start, date_end: scope.date_end, status: scope.status },
+    after: { date_start: nextDateStart, date_end: nextDateEnd, status: nextStatus },
+  })
 
   // Integration event on the DRAFT -> PUBLISHED transition, sent after the
   // response so it never slows the action.

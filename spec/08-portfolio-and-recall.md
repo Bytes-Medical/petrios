@@ -173,7 +173,8 @@ must be server-side.
 
 Migration 059 changes Recall from a short, unauthenticated retention quiz into
 a governed post-session learning pathway for **registered expected attendees
-whose finalized result is `ABSENT`**. The learner listens to the exact approved
+whose finalized result is `ABSENT` or `EXCUSED`** (the `EXCUSED` half since
+migration 064; see "Eligible statuses" below). The learner listens to the exact approved
 Audio Recap, earns 5/5 on five moderator-published multiple-choice questions,
 and is then represented as `PRESENT` with primary source `RECALL`. That source is
 displayed as **Audio recap catch-up** and must never be described as physical
@@ -191,9 +192,13 @@ longer receive the former +3-day quiz or +14-day boost.
 2. Catch-up is available only to a policy-v2, `PUBLISHED`, ended session with
    `attendance_phase = FINALIZED`.
 3. The subject must be a registered `EXPECTED` `ATTENDEE` in the finalized
-   `session_participants` snapshot, must have current-revision `ABSENT`
-   attendance, and must not be an accepted session teacher. External/email-only
-   subjects are unsupported.
+   `session_participants` snapshot, must have current-revision `ABSENT` or
+   `EXCUSED` attendance (the eligible statuses below), and must not be an
+   accepted session teacher. The status is the only test: there is no branch on
+   the reason for an excusal, so a rota excusal (spec 14) and any other
+   moderator excusal are treated alike. External/email-only subjects are
+   unsupported. A participant whose roster expectation itself is `EXCUSED` is
+   not an `EXPECTED` attendee and is refused.
 4. The current recap must be `approved`, contain audio, and share its
    `script_digest` with an `approved` set of exactly five questions.
 5. Questions are not sent to the browser until server-recorded playback has
@@ -203,14 +208,43 @@ longer receive the former +3-day quiz or +14-day boost.
    question revision.
 7. Only `complete_recall_catchup_v2` may create policy-v2 `RECALL` attendance
    evidence. Generic evidence actions continue to reject `RECALL`.
-8. Completion, append-only evidence, the same-revision `ABSENT` → `PRESENT`
-   transition, and the activity event commit in one database transaction.
+8. Completion, append-only evidence, the same-revision `ABSENT`/`EXCUSED` →
+   `PRESENT` transition, and the activity event commit in one database
+   transaction. A completed catch-up stays primary when later evidence causes a
+   recomputation, unless a moderator records a newer decision after it (spec 03,
+   "Evidence sources and derivation").
 9. A catch-up certificate is labelled with recognition basis
    `AUDIO_RECAP_CATCH_UP`; the certificate trigger rejects relabelling it as
    live attendance.
 10. Certificate/provider failure cannot roll back successful learning or
     attendance recognition. The durable award row and delivery ledger permit
     retry without duplicate certificates or email.
+
+### Eligible statuses
+
+Migration 064 widens catch-up from finalized `ABSENT` to finalized `ABSENT` or
+`EXCUSED` (owner decision O2: an excused trainee who completes the catch-up
+becomes transparent catch-up `PRESENT`, the same outcome as the absent path).
+It adds the marker function `recall_catchup_eligible_statuses_v1()`, returning
+`{ABSENT,EXCUSED}`. The application reads it through
+`listCatchupEligibleStatusesAsSystem()` (`lib/db/recall.ts`) in three places:
+the `recall-send` audience, the token-page eligibility check, and answer
+submission. Before 064 is applied the function does not exist and the
+application falls back to `['ABSENT']`, so behaviour is unchanged. The
+widening therefore activates when the owner applies 064, independently of the
+rota kill switch, and applies to every finalized excused expected attendee.
+
+Packages already sent before 064: the `recall-send` cron skips sets whose
+`sent_catchup_at` watermark is closed, so 064 re-opens that watermark on every
+approved set whose catch-up window is still open. The next cron run then
+invites the newly eligible `EXCUSED` expected attendees; the per-recipient
+`RECALL_CATCHUP_INVITE` delivery ledger skips everyone already invited, and
+sets whose window has closed are left alone (their excused attendees are not
+invited).
+
+The token page's refusal copy is "This pathway is only available to registered
+attendees whose finalized result is absent or excused." Recall never reads rota
+data, and no Recall email, subject, or URL mentions the rota.
 
 ### Recap and question provenance
 
@@ -364,7 +398,7 @@ and playback check. Attempts are numbered 1–3 and unique per
   but receives no correct answers or explanations.
 - On a perfect attempt, the full answer/explanation review is returned.
 - After failed attempt 3, the full review is returned for learning, attendance
-  remains `ABSENT`, and the route reports attempts exhausted.
+  remains `ABSENT` or `EXCUSED`, and the route reports attempts exhausted.
 - The original `recall_answers` row is populated best-effort with the final
   catch-up outcome so aggregate-only historical analytics continue to work. It
   is not the source of attendance authority.
@@ -385,7 +419,8 @@ transaction it locks the session/result and verifies:
 - playback complete for the current audio revision;
 - the supplied attempt belongs to this set/user and is a perfect 5/5;
 - expected registered attendee snapshot and no accepted-teacher assignment;
-- current finalized `ABSENT` row at the session revision; and
+- current finalized `ABSENT` or `EXCUSED` row at the session revision (064;
+  `ABSENT` only before it); and
 - no earlier completion for this session/user.
 
 It then inserts `recall_completions`, appends `attendance_evidence` source
@@ -474,7 +509,8 @@ valid and attendance is finalized.
 
 Recipients are the intersection of:
 
-- current finalized `ABSENT` attendance user ids;
+- current finalized attendance user ids whose status is an eligible status
+  (`ABSENT`, plus `EXCUSED` once 064 is applied);
 - finalized `EXPECTED`/`ATTENDEE` participant snapshot; and
 - not an accepted registered teacher.
 
@@ -484,12 +520,16 @@ to the immutable set revision. Provider `{ error }` is treated as failure,
 successful rows are skipped on retry, and the set watermark is written only
 after every eligible profile delivery succeeds. Missing profile email leaves the
 set retryable. An expired set is watermarked without mail. The legacy attendee
-and boost watermarks are closed without sending because current Recall is an
-absentee-only pathway.
+and boost watermarks are closed without sending because current Recall is a
+pathway only for people who missed the session (absent or excused).
 
 The invitation states the deadline, sign-in requirement, Audio Recap, 5/5
 requirement, three-attempt limit, attendance-source wording, certificate effect,
-and physical-presence caveat. Its dates are formatted by `lib/ops/format.ts` in
+and physical-presence caveat. Its opening is neutral between absent and excused
+recipients ("You missed {title}. An optional catch-up is available until
+{deadline}: …"), and it adds "Where you can, complete it in working time. It
+does not replace exception reporting for missed teaching." It never mentions the
+rota or why someone missed the session. Its dates are formatted by `lib/ops/format.ts` in
 `APP_TIME_ZONE` (spec 06).
 
 ### Analytics and privacy

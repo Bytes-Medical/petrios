@@ -27,6 +27,12 @@ import { ApiTokensPanel } from '@/components/ApiTokensPanel'
 import { WebhooksPanel } from '@/components/WebhooksPanel'
 import { listOrgApiTokens, listWebhooks, type SafeApiToken, type WebhookView } from '@/app/actions/api-platform'
 import type { WebhookDelivery } from '@/lib/db/api-platform'
+import { getRotaAdminState } from '@/app/actions/rota-admin'
+import { RotaSettingsPanel } from '@/components/rota/RotaSettingsPanel'
+import { RotaUploadersPanel } from '@/components/rota/RotaUploadersPanel'
+import { isRotaKillSwitchOn } from '@/lib/rota/config'
+import { appTimeZone } from '@/lib/datetime'
+import type { RotaAdminState, RotaResult } from '@/lib/rota/types'
 import { getAddressBook } from '@/app/actions/contacts'
 import type {
   ContactGroupWithCount,
@@ -59,6 +65,11 @@ export default async function SettingsPage() {
     deliveries: [],
   }
   let orgAdminAccess = false
+  // Rota availability (spec/14): org admins only. Full controls while the
+  // ROTA_INTEGRATION_ENABLED kill switch is on; with it off, a cleanup-only
+  // section (disable, remove departments/uploaders) appears only when this
+  // organisation still holds rota data.
+  let rotaAdmin: RotaResult<RotaAdminState> | null = null
 
   if (orgId) {
     const [orgAdmin, canManageOrgAccess, orgDepartments, moderatedDepartments] = await Promise.all([
@@ -89,7 +100,12 @@ export default async function SettingsPage() {
     // to the whole org's data).
     orgAdminAccess = orgAdmin
     if (orgAdmin) {
-      ;[apiTokens, webhookData] = await Promise.all([listOrgApiTokens(), listWebhooks()])
+      ;[apiTokens, webhookData, rotaAdmin] = await Promise.all([
+        listOrgApiTokens(),
+        listWebhooks(),
+        getRotaAdminState(),
+      ])
+      if (rotaAdmin && !rotaAdmin.ok && !isRotaKillSwitchOn()) rotaAdmin = null
     }
   }
 
@@ -205,6 +221,32 @@ export default async function SettingsPage() {
                         deliveries={webhookData.deliveries}
                       />
                     </SettingsSection>
+
+                    {rotaAdmin ? (
+                      <SettingsSection
+                        title="Rota availability"
+                        description="Suggest excusals from the department rota. Off until a DPIA reference and privacy notice are confirmed."
+                      >
+                        {rotaAdmin.ok ? (
+                          <div className="space-y-6">
+                            <RotaSettingsPanel state={rotaAdmin.data} />
+                            <div className="border-t border-black pt-6">
+                              <h3 className="mb-3 font-mono text-sm font-bold uppercase tracking-wider text-gray-500">
+                                Rota uploaders
+                              </h3>
+                              <RotaUploadersPanel state={rotaAdmin.data} timeZone={appTimeZone()} />
+                            </div>
+                            {rotaAdmin.data.settings?.enabled && !rotaAdmin.data.cleanupOnly ? (
+                              <Link href="/rota" className="inline-block font-mono text-sm underline">
+                                Go to rota upload →
+                              </Link>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="font-mono text-sm text-gray-600">{rotaAdmin.message}</p>
+                        )}
+                      </SettingsSection>
+                    ) : null}
                   </>
                 ) : null}
               </div>

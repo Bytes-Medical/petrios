@@ -1,5 +1,6 @@
 import type { RecallQuestion } from '@/lib/recall'
 import type { RecallAnswerStat } from '@/lib/recall-analytics'
+import type { AttendanceStatus } from '@/lib/types'
 import { getServiceDb } from './client'
 import { toDbError } from './errors'
 
@@ -399,4 +400,30 @@ export async function listCompletionsNeedingAward(limit: number): Promise<Recall
     .limit(limit)
   if (error) throw toDbError('Failed to list pending catch-up awards', error)
   return (data as RecallCompletion[] | null) ?? []
+}
+
+const CATCHUP_STATUS_VALUES: ReadonlySet<string> = new Set(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED'])
+const CATCHUP_NOT_INSTALLED_CODES: ReadonlySet<string> = new Set(['PGRST202', '42883'])
+
+/**
+ * 064 marker (plan D7). Finalized statuses that may use Recall catch-up
+ * recognition, read from `recall_catchup_eligible_statuses_v1()` so the app
+ * widens exactly when the owner applies 064 (which also widens
+ * complete_recall_catchup_v2). Missing function (pre-064) → ['ABSENT'].
+ * Service-role: the marker is revoked from anon/authenticated.
+ */
+export async function listCatchupEligibleStatusesAsSystem(): Promise<AttendanceStatus[]> {
+  const db = await getServiceDb()
+  const { data, error } = await db.rpc('recall_catchup_eligible_statuses_v1')
+  if (error) {
+    const code = (error as { code?: unknown }).code
+    if (typeof code === 'string' && CATCHUP_NOT_INSTALLED_CODES.has(code)) return ['ABSENT']
+    throw toDbError('Failed to read catch-up eligible statuses', error)
+  }
+  const statuses = Array.isArray(data)
+    ? (data as unknown[]).filter(
+        (value): value is AttendanceStatus => typeof value === 'string' && CATCHUP_STATUS_VALUES.has(value)
+      )
+    : []
+  return statuses.length > 0 ? [...new Set(statuses)] : ['ABSENT']
 }

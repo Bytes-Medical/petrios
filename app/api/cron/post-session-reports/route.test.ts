@@ -34,6 +34,8 @@ const db = vi.hoisted(() => ({
   certificates: new Map<string, string>(),
   deliveries: [] as DeliveryRow[],
   sends: [] as string[],
+  purgeCalls: 0,
+  purgeResult: { flags_expired: 0 } as Record<string, number> | 'not_installed' | Error,
 }))
 
 vi.mock('@/lib/cron-auth', () => ({ unauthorizedCronResponse: () => null }))
@@ -150,6 +152,14 @@ vi.mock('@/lib/db/session-deliveries', () => ({
   },
 }))
 
+vi.mock('@/lib/db/rota', () => ({
+  purgeRotaData: async () => {
+    db.purgeCalls++
+    if (db.purgeResult instanceof Error) throw db.purgeResult
+    return db.purgeResult
+  },
+}))
+
 import { GET } from './route'
 
 function addSession(id: string, dateEnd: string, attendeeCount: number) {
@@ -204,6 +214,8 @@ beforeEach(() => {
   db.certificates = new Map()
   db.deliveries = []
   db.sends = []
+  db.purgeCalls = 0
+  db.purgeResult = { flags_expired: 0 }
 })
 
 describe('post-session-reports run budget', () => {
@@ -237,5 +249,56 @@ describe('post-session-reports run budget', () => {
     await runCron()
     expect(db.sessions.every((session) => session.reported)).toBe(true)
     expect(new Set(sendCounts(big))).toEqual(new Set([1]))
+  })
+})
+
+describe('post-session-reports rota retention purge', () => {
+  it('purges on the early "no sessions" return', async () => {
+    db.purgeResult = { flags_expired: 2, flags_retention: 1 }
+    const response = await GET(new NextRequest('http://localhost/api/cron/post-session-reports'))
+    const body = (await response.json()) as { processed: number; rota_purged: unknown }
+    expect(response.status).toBe(200)
+    expect(db.purgeCalls).toBe(1)
+    expect(body.processed).toBe(0)
+    expect(body.rota_purged).toEqual({ flags_expired: 2, flags_retention: 1 })
+  })
+
+  it('purges once after processing sessions', async () => {
+    addSession('s1', '2026-01-01', 1)
+    const response = await GET(new NextRequest('http://localhost/api/cron/post-session-reports'))
+    const body = (await response.json()) as { processed: number; rota_purged: unknown }
+    expect(body.processed).toBe(1)
+    expect(db.purgeCalls).toBe(1)
+    expect(body.rota_purged).toEqual({ flags_expired: 0 })
+  })
+
+  it('stays silent before migration 063 is applied', async () => {
+    db.purgeResult = 'not_installed'
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const response = await GET(new NextRequest('http://localhost/api/cron/post-session-reports'))
+      const body = (await response.json()) as { rota_purged: unknown }
+      expect(response.status).toBe(200)
+      expect(body.rota_purged).toBeNull()
+      expect(errors).not.toHaveBeenCalled()
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
+  it('never fails the cron when the purge fails, and logs no details', async () => {
+    db.purgeResult = new Error('secret detail org-123')
+    addSession('s1', '2026-01-01', 1)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const response = await GET(new NextRequest('http://localhost/api/cron/post-session-reports'))
+      const body = (await response.json()) as { processed: number; rota_purged: unknown }
+      expect(response.status).toBe(200)
+      expect(body.processed).toBe(1)
+      expect(body.rota_purged).toBeNull()
+      expect(errors.mock.calls).toEqual([['[rota] purge failed']])
+    } finally {
+      errors.mockRestore()
+    }
   })
 })

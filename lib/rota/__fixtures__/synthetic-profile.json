@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "layout": "WIDE",
+  "columns": { "staffId": "Staff Number", "email": "Email", "name": "Name", "dateColumns": "AUTO" },
+  "dateFormat": "DD/MM/YYYY",
+  "idNormalisation": { "stripAssignmentSuffix": true },
+  "codes": {
+    "SD": { "letter": "A", "start": "08:00", "end": "17:00" },
+    "LD": { "letter": "D", "start": "08:00", "end": "20:30" },
+    "N": { "letter": "N", "start": "20:30", "end": "09:30", "night": true },
+    "OC": { "letter": "D" },
+    "OFF": { "letter": "X" },
+    "ZD": { "letter": "X" },
+    "AL": { "letter": "L" }
+  },
+  "postNight": { "enabled": true, "trigger": "ANY", "restHours": 46 }
+}

@@ -43,6 +43,13 @@ export interface EvidenceForCompute {
   source: EvidenceSource
   observed_at: string
   metadata?: EvidenceMetadata | null
+  /**
+   * Row insertion time and id, used only to break ties between moderator
+   * decisions (or catch-up rows) observed at the same instant, exactly like
+   * the SQL selector in record_attendance_evidence_v2 (migration 064).
+   */
+  created_at?: string | null
+  id?: string | null
 }
 
 export interface ComputedAttendance {
@@ -116,16 +123,94 @@ export function isWithinEvidenceWindow(
   }
 }
 
+function timeOf(value: string | null | undefined): number {
+  if (!value) return Number.NEGATIVE_INFINITY
+  const ms = new Date(value).getTime()
+  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms
+}
+
+/**
+ * Chronological order by observed_at, then created_at, then id: the SQL
+ * selector's `observed_at, created_at, id` ordering (uuid order equals the
+ * lowercase hex string order). Exported so the rota Expected-roster panel
+ * picks the same latest moderator decision as the SQL (lib/rota/suggestions.ts).
+ */
+export function compareChronological(
+  a: Pick<EvidenceForCompute, 'observed_at' | 'created_at' | 'id'>,
+  b: Pick<EvidenceForCompute, 'observed_at' | 'created_at' | 'id'>
+): number {
+  const observed = timeOf(a.observed_at) - timeOf(b.observed_at)
+  if (observed !== 0) return observed
+  const created = timeOf(a.created_at) - timeOf(b.created_at)
+  if (created !== 0 && Number.isFinite(created)) return created
+  const idA = a.id ?? ''
+  const idB = b.id ?? ''
+  return idA < idB ? -1 : idA > idB ? 1 : 0
+}
+
+/** Moderator overrides after which a later catch-up (RECALL) row becomes primary. */
+const CATCHUP_REPLACEABLE_OVERRIDES = new Set(['ABSENT', 'EXCUSED'])
+
+/**
+ * Pick the primary evidence row (spec/03; mirrored by the SQL selector in
+ * record_attendance_evidence_v2, migration 064):
+ * - When any valid MODERATOR_CONFIRMATION exists, the LATEST one is the
+ *   decision (a later moderator decision corrects an earlier one).
+ * - If that decision is an ABSENT or EXCUSED override and a valid RECALL row
+ *   was observed after it, the earliest such RECALL row is primary: the
+ *   learner completed the governed catch-up after the decision. A moderator
+ *   decision made after the catch-up still wins. Keyed on status and order
+ *   only, never on a reason code.
+ * - Otherwise the highest-priority source wins, earliest observation first.
+ *   This is also the whole rule before migration 064 (latestDecisionWins
+ *   false), matching the pre-064 SQL writer.
+ */
+function selectPrimaryEvidence(valid: EvidenceForCompute[], latestDecisionWins: boolean): EvidenceForCompute {
+  const decisions = valid.filter((ev) => ev.source === 'MODERATOR_CONFIRMATION')
+  if (latestDecisionWins && decisions.length > 0) {
+    const latest = [...decisions].sort((a, b) => compareChronological(b, a))[0]
+    const override = latest.metadata?.status_override
+    if (override && CATCHUP_REPLACEABLE_OVERRIDES.has(override)) {
+      const decidedAt = timeOf(latest.observed_at)
+      const catchUp = valid
+        .filter((ev) => ev.source === 'RECALL' && timeOf(ev.observed_at) > decidedAt)
+        .sort(compareChronological)[0]
+      if (catchUp) return catchUp
+    }
+    return latest
+  }
+
+  return [...valid].sort((a, b) => {
+    const priorityDiff = EVIDENCE_PRIORITY[b.source] - EVIDENCE_PRIORITY[a.source]
+    if (priorityDiff !== 0) return priorityDiff
+    return timeOf(a.observed_at) - timeOf(b.observed_at)
+  })[0]
+}
+
 /**
  * Derive an attendee's attendance from their evidence rows: filter to
- * evidence inside its validity window, take the highest-priority earliest
- * item as the primary source, and mark LATE when the first evidence lands
- * after the late threshold. `metadata.status_override` on the primary
- * evidence wins over the derived status. No valid evidence means ABSENT.
+ * evidence inside its validity window, pick the primary row
+ * (selectPrimaryEvidence: the latest moderator decision, a catch-up after an
+ * ABSENT/EXCUSED decision, else the highest-priority earliest item), and mark
+ * LATE when the primary evidence lands after the late threshold.
+ * `metadata.status_override` on the primary evidence wins over the derived
+ * status. No valid evidence means ABSENT.
  */
+export interface ComputeAttendanceOptions {
+  /**
+   * Migration 064's primary-evidence rule (default true): the latest moderator
+   * decision wins and a later catch-up beats an ABSENT/EXCUSED decision.
+   * Callers pass false until 064 is applied (its marker is missing), so this
+   * TypeScript recomputation never disagrees with the SQL writer, which keeps
+   * the earlier earliest-first rule until then.
+   */
+  latestDecisionWins?: boolean
+}
+
 export function computeAttendanceFromEvidence(
   evidence: EvidenceForCompute[],
-  session: AttendanceWindowSession
+  session: AttendanceWindowSession,
+  options: ComputeAttendanceOptions = {}
 ): ComputedAttendance {
   const valid = evidence.filter((ev) => {
     if (!isWithinEvidenceWindow(ev.source, new Date(ev.observed_at), session)) {
@@ -145,13 +230,7 @@ export function computeAttendanceFromEvidence(
     return { status: 'ABSENT', primarySource: null, firstEvidenceAt: null }
   }
 
-  const sorted = [...valid].sort((a, b) => {
-    const priorityDiff = EVIDENCE_PRIORITY[b.source] - EVIDENCE_PRIORITY[a.source]
-    if (priorityDiff !== 0) return priorityDiff
-    return new Date(a.observed_at).getTime() - new Date(b.observed_at).getTime()
-  })
-
-  const primary = sorted[0]
+  const primary = selectPrimaryEvidence(valid, options.latestDecisionWins ?? true)
   const firstEvidenceAt = new Date(primary.observed_at)
   const lateThreshold = new Date(
     new Date(session.date_start).getTime() +

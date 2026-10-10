@@ -673,13 +673,16 @@ export function buildRecallEmailHtml(params: RecallEmailParams): string {
   const deadlineStr = escapeHtml(params.deadlineStr)
   const intro =
     params.kind === 'CATCH_UP'
-      ? `You were marked absent from <strong>${sessionTitle}</strong>.
-         You can complete the approved learning pathway by
-         <strong>${deadlineStr}</strong>: sign in, listen to the Audio
-         Recap, then answer all five mastery questions correctly. Successful
-         completion records PRESENT with the transparent “Audio recap catch-up”
-         source and emails your attendance certificate; it does not claim you
-         were physically at the original session.`
+      ? // Neutral for ABSENT and EXCUSED results: never says why the learner
+        // missed the session (no rota or leave wording).
+        `You missed <strong>${sessionTitle}</strong>. An optional catch-up is
+         available until <strong>${deadlineStr}</strong>: sign in, listen to
+         the Audio Recap, then answer all five mastery questions correctly.
+         Successful completion records PRESENT with the transparent
+         “Audio recap catch-up” source and emails your attendance
+         certificate; it does not claim you were physically at the original
+         session. Where you can, complete it in working time. It does not
+         replace exception reporting for missed teaching.`
       : params.kind === 'BOOST'
         ? `One week left: a final chance to lock in the learning from
            <strong>${sessionTitle}</strong>. Five quick questions,

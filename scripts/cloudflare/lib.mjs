@@ -110,6 +110,10 @@ export function stagingConfigProblems(config) {
   if (config.vars?.TRUSTED_CLIENT_IP_HEADER !== 'cf-connecting-ip') {
     problems.push('top-level vars.TRUSTED_CLIENT_IP_HEADER must be "cf-connecting-ip"')
   }
+  // Staging serves the production database: rota availability (spec/14) stays off.
+  if (config.vars?.[ROTA_KILL_SWITCH_VAR] !== 'false') {
+    problems.push(`top-level vars.${ROTA_KILL_SWITCH_VAR} must be "false"`)
+  }
   return problems
 }
 
@@ -254,6 +258,7 @@ export const PRODUCTION_OPTIONAL_SECRETS = [
   'JITSI_JWT_SUBJECT',
   'OUTBOUND_EMAIL_ALLOWLIST',
   'APP_TIME_ZONE',
+  'ROTA_IDENTITY_SECRET',
 ]
 
 /**
@@ -283,6 +288,13 @@ const PRODUCTION_ENV_KEYS = [
 ]
 const ACCOUNT_ID = /^[0-9a-f]{32}$/
 const PRODUCTION_PHASE_VARS = ['CRON_ENABLED', 'OUTBOUND_EMAIL_ENABLED']
+/**
+ * Rota availability kill switch (spec/14). Declared "false" at the top level
+ * (staging) and in preflight; env.production declares it too (the phases must
+ * declare the same vars keys) and the owner flips only that value to "true"
+ * at go-live, after migrations 063/064 and ROTA_IDENTITY_SECRET are in place.
+ */
+export const ROTA_KILL_SWITCH_VAR = 'ROTA_INTEGRATION_ENABLED'
 const SELF_REFERENCE_BINDING = 'WORKER_SELF_REFERENCE'
 
 /**
@@ -431,7 +443,7 @@ export function productionConfigProblems(config, { expectedCrons }) {
     problems.push('both production environments must declare the same vars keys (environments do not inherit vars)')
   }
   for (const key of Object.keys(live.vars ?? {})) {
-    if (!PRODUCTION_PHASE_VARS.includes(key) && live.vars[key] !== preflight.vars?.[key]) {
+    if (!PRODUCTION_PHASE_VARS.includes(key) && key !== ROTA_KILL_SWITCH_VAR && live.vars[key] !== preflight.vars?.[key]) {
       problems.push(`vars.${key} must be identical in both production environments`)
     }
   }
@@ -493,6 +505,14 @@ export function productionConfigProblems(config, { expectedCrons }) {
   if (preflight.vars?.CRON_ENABLED !== 'false') problems.push(`env.${PREFLIGHT_ENV}.vars.CRON_ENABLED must be "false"`)
   if (preflight.vars?.OUTBOUND_EMAIL_ENABLED !== 'false') {
     problems.push(`env.${PREFLIGHT_ENV}.vars.OUTBOUND_EMAIL_ENABLED must be "false"`)
+  }
+
+  // Rota availability: never on in preflight; live is an explicit owner choice.
+  if (preflight.vars?.[ROTA_KILL_SWITCH_VAR] !== 'false') {
+    problems.push(`env.${PREFLIGHT_ENV}.vars.${ROTA_KILL_SWITCH_VAR} must be "false"`)
+  }
+  if (!['false', 'true'].includes(live.vars?.[ROTA_KILL_SWITCH_VAR])) {
+    problems.push(`env.${PRODUCTION_ENV}.vars.${ROTA_KILL_SWITCH_VAR} must be declared as "false" or "true"`)
   }
   return problems
 }

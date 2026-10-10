@@ -25,7 +25,7 @@ export default async function RecallPage(props: { params: Promise<{ token: strin
           : state.reason === 'not-ready'
             ? 'This catch-up package is not available yet. Attendance, the audio, and all five questions must be approved first.'
             : state.reason === 'not-eligible'
-              ? 'This pathway is only available to registered attendees whose finalized result is ABSENT.'
+              ? 'This pathway is only available to registered attendees whose finalized result is absent or excused.'
               : state.reason === 'attempts-exhausted'
                 ? 'All three mastery attempts have been used. Contact the session organiser if you need help.'
             : 'This recall link is not valid. Please use the link from your email.'

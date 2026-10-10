@@ -16,8 +16,10 @@ import * as deliveriesDb from '@/lib/db/session-deliveries'
 
 /**
  * Delivers the moderator-published Audio Recap catch-up package to finalized
- * registered absentees. Per-recipient delivery rows make retries idempotent;
- * the set watermark closes only after every eligible recipient is SENT.
+ * registered expected attendees whose result is ABSENT (or EXCUSED once
+ * migration 064 is applied). The email never says why they missed it.
+ * Per-recipient delivery rows make retries idempotent; the set watermark
+ * closes only after every eligible recipient is SENT.
  */
 export async function GET(request: NextRequest) {
   const unauthorized = unauthorizedCronResponse(request)
@@ -59,14 +61,16 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      const [absentIds, expectedIds, teacherIds] = await Promise.all([
-        attendanceDb.listAttendeeUserIdsByStatusAsSystem(set.session_id, ['ABSENT']),
+      // ABSENT, plus EXCUSED once migration 064 is applied (spec/08).
+      const eligibleStatuses = await recallDb.listCatchupEligibleStatusesAsSystem()
+      const [eligibleStatusIds, expectedIds, teacherIds] = await Promise.all([
+        attendanceDb.listAttendeeUserIdsByStatusAsSystem(set.session_id, eligibleStatuses),
         attendanceDb.listExpectedAttendeeUserIdsAsSystem(set.session_id),
         certificatesDb.listAcceptedRegisteredTeacherIdsAsSystem(set.session_id),
       ])
       const teachers = new Set(teacherIds)
       const expected = new Set(expectedIds)
-      const eligibleIds = absentIds.filter(
+      const eligibleIds = eligibleStatusIds.filter(
         (userId) => expected.has(userId) && !teachers.has(userId)
       )
       const profiles = await onboardingDb.listProfilesForUsers(eligibleIds)
@@ -128,8 +132,9 @@ export async function GET(request: NextRequest) {
 
       if (!hadFailure) {
         await recallDb.markSetSent(set.id, 'sent_catchup_at')
-        // Legacy watermarks are retired: Recall is now exclusively an absentee
-        // pathway, so close them without sending attendee/boost emails.
+        // Legacy watermarks are retired: Recall is now exclusively a catch-up
+        // pathway for finalized absences and excusals, so close them without
+        // sending attendee/boost emails.
         await recallDb.markSetSent(set.id, 'sent_attendees_at')
         await recallDb.markSetSent(set.id, 'sent_boost_at')
         processed++

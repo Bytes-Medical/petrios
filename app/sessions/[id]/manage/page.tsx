@@ -19,6 +19,7 @@ import type { MeetingConfig } from '@/lib/meeting/types'
 import type { Session } from '@/lib/types'
 import { canUploadSessionDocuments, getSessionDocuments } from '@/app/actions/session-documents'
 import { getSessionAttendanceGovernance } from '@/app/actions/attendance-evidence'
+import { getRotaSuggestionsForSession } from '@/app/actions/rota-attendance'
 
 /**
  * The overview's join link. sessionMeetingUrl never throws; without a public
@@ -70,6 +71,7 @@ export default async function ManageSessionPage(
     documents,
     canUploadDocuments,
     attendanceGovernance,
+    rotaSuggestions,
   ] = await Promise.all([
     getDepartment(session.department_id),
     isDepartmentModerator(session.department_id),
@@ -84,6 +86,9 @@ export default async function ManageSessionPage(
     getSessionDocuments(params.id, true),
     canUploadSessionDocuments(params.id),
     getSessionAttendanceGovernance(params.id),
+    // Rota availability (spec/14): null unless enabled for this department
+    // and the caller is a rota moderator; never throws.
+    getRotaSuggestionsForSession(params.id),
   ])
 
   if (!canManage) {
@@ -133,6 +138,7 @@ export default async function ManageSessionPage(
           canUploadDocuments={canUploadDocuments}
           currentUserId={user.id}
           attendanceGovernance={attendanceGovernance}
+          rotaSuggestions={rotaSuggestions}
         />
       </div>
     </div>

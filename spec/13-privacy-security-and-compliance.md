@@ -276,7 +276,7 @@ linked from the shared footer:
 
 | Route | Contract |
 |---|---|
-| `/privacy` | Data categories, purposes, lawful-basis responsibility, feedback/AI truth, cookies, recipients, hosting/transfers, retention limitation, rights, security, and change notice |
+| `/privacy` | Data categories, purposes, lawful-basis responsibility, feedback/AI truth, rota availability (where enabled), cookies, recipients, hosting/transfers, retention limitation, rights, security, and change notice |
 | `/privacy/choices` | Exact sale/share posture, operator-change caveat, request-scoped GPC detection, and controller request route |
 | `/subprocessors` | Runtime-aware service-category register plus operator reconciliation and change-notice obligations |
 | `/data-processing-agreement` | Article 28 contracting framework and processing schedule; explicitly not executed terms |
@@ -315,6 +315,31 @@ confidentiality, measures, subprocessors/change notice, transfers, rights/DPIA/
 breach assistance, return/deletion, audit, notices, governing terms, liability,
 and order of precedence.
 
+### Rota availability disclosure
+
+`/privacy` carries a "Rota availability (where enabled)" section. Its first line
+states the runtime status from `isRotaKillSwitchOn()` (`lib/rota/config.ts`):
+available on this deployment (each organisation decides), or switched off. It
+then adapts the staff privacy-notice wording from spec 14: what the summary is
+(one of five statuses per day), that the export, shift codes, names, and leave
+reasons stay on the coordinator's device, that the summary is used on arrival
+and not kept, that identifiers are stored only as a keyed code after moderator
+confirmation, that before an upload the staff number or email of **every row**
+of the export (non-trainees included) is checked once and not stored, that only
+an "unavailable" note per session is kept, that the moderator decides each case
+and the trainee can contest, who can see it, that a confirmed excusal stays in
+the attendance record and that confirmations, dismissals, and contests (never a
+reason) stay in the session's activity history, the no-performance-use and
+no-analytics promise, the retention rule, and the exception-reporting
+signpost (exception reports go to the educational supervisor; the DME is named
+as a further contact). The employing trust and the DME contact are not deployment
+configuration, so they render as `MissingDisclosure` ("Not declared by this
+deployment: employing trust" / "… DME contact"); the organisation's own staff
+notice must name them. `lib/compliance-pages.test.ts` pins the section title and
+the no-leave-reason, no-automatic-excusal, and 90-day-cap wording. The section
+does not claim the Audio Recap catch-up as a purpose, because Recall never reads
+rota data.
+
 ## Personal-data map
 
 The public privacy notice summarizes these active families:
@@ -329,6 +354,7 @@ The public privacy notice summarizes these active families:
 | Learning evidence | Certificates and recognition basis, registered user or external invitation/email identity, recipient/coordinator/issuer names, Recall playback progress/attempts/answers/completion, reflections, snapshots | Identity-bound catch-up page; personal dashboards; certificate PDF email attachments; PDFs; capability verification pages (certificate coordinator/issuer and catch-up attribution are visible to a code bearer) |
 | Communications | Recipient, reviewed content, newsletter source-document metadata, attachment, send/status/claim/unsubscribe metadata | SMTP/Resend; delivery ledgers; in-app notifications; capability links |
 | Ops assistant (opt-in) | Chat threads with organiser messages and assistant replies stored verbatim (`ops_chat_messages`), tool-call summaries, organisation-wide memory notes (`ops_memory`) | `/ops/assistant` only when `OPS_ASSISTANT_ENABLED=true`; messages and tool results (which can include teacher names and invitee emails) go to the LLM provider |
+| Rota availability (only where enabled; spec 14) | Per session, only for trainees the rota had unavailable: a "rostered unavailable" flag with as-of time, planned/as-worked, decision state, decider and time, contest time. Keyed-HMAC identity links (never the identifier). Batch and match-preview audit (counts, keyed digest, upload id, range, uploader). `ROTA_EXCUSAL_CONFIRMED` / `ROTA_SUGGESTION_DISMISSED` / `ROTA_FLAG_CONTESTED` session activity events (batch id and kind, no reason). A confirmed excusal's `MODERATOR_CONFIRMATION` row with `reason_code: ROTA_UNAVAILABLE`. **Received transiently, never stored:** the per-person day-status grid (A/D/N/X/L) and staff numbers/emails in clear (at the match check, those of every row of the export, non-trainees included). **Never received:** the raw export, shift codes, names, leave reason or type, sickness data | Browser-side mapping by the rota coordinator; one Server Action per batch; flags visible only to the session's own moderators (never a super admin acting in another organisation) from session start until finalization, and to the trainee for their own sessions; no category, analytics, API, export, or report surface |
 | Security/technical | Essential cookie, IP/network/provider logs (error lines can include recipient email addresses), HMAC-pseudonymized group-code attempt data, API/audit/run metadata | App/database/provider logs (Workers Logs on Cloudflare), security monitoring and incident review |
 
 Petrios is not designed for patient data. That design intention does not
@@ -561,6 +587,27 @@ and delivery rows have no automated expiry. Archived private session documents
 remain stored until a separate deletion/retention operation removes the object;
 deleting an object does not rewrite a newsletter provenance snapshot or an email
 already sent.
+
+### Rota availability retention (implemented)
+
+Rota availability (spec 14) is the one family with automated retention. The
+deletion-only `purge_rota_data_v1` runs on every ingest and on every hourly
+`post-session-reports` run, including while the kill switch is off, and the org
+admin can disable (deleting every flag and link), remove departments, and
+remove uploaders with the switch off too:
+
+| Data | Deleted |
+|---|---|
+| Session flag | `retention_days` (organisation setting, default 30, 1–90) after the later of attendance finalization and the session's approved Recall-set close; never later than session end + 90 days; earlier when the session is cancelled or moved, the user stops being a trainee of the department, the department is un-enrolled, or the organisation disables rota |
+| Identity link | When the user is no longer a current trainee in an enrolled department of an enabled organisation, on moderator revocation, or on disable |
+| Uploader grant | When the user leaves the organisation, or on revocation |
+| Batch and preview audit (counts and a keyed digest) | After 12 months |
+
+The read view hides expired flags before the purge removes them, and account
+deletion cascades to flags and links. The confirmed excusal's evidence row is
+ordinary attendance evidence and follows the controller's attendance retention.
+Disabling rota for an organisation hard-deletes its flags and links at once.
+Backups and provider logs keep their own expiry; request bodies are not logged.
 
 ## Browser security baseline
 
@@ -836,8 +883,9 @@ and the absence of any canvas;
 `docs/compliance/` contains:
 
 - a DTAC evidence workbook that separates product controls from operator proof;
-- a detailed DPIA template with purpose-by-purpose lawful-basis and risk work;
-  and
+- a detailed DPIA template with purpose-by-purpose lawful-basis and risk work,
+  including a "Rota availability integration" section for organisations that
+  enable it; and
 - an index pointing back to this canonical implementation contract.
 
 Language such as “working workbook”, “template”, and “operator evidence” is
@@ -889,5 +937,5 @@ deployed environment.
 - Are controller/processor/legal conclusions left to the parties with evidence?
 - Do colour and interaction changes retain automated and manual accessibility
   evidence?
-- Have specs 05/06/09/11/12 and public notices changed where the underlying
+- Have specs 05/06/09/11/12/14 and public notices changed where the underlying
   subsystem behaviour changed?

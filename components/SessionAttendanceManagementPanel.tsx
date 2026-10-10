@@ -16,12 +16,18 @@ export function SessionAttendanceManagementPanel({
   participants,
   evidence,
   invitations,
+  undecidedRotaSuggestions = 0,
 }: {
   session: Session
   attendance: Attendance[]
   participants: SessionParticipant[]
   evidence: AttendanceEvidence[]
   invitations: TeacherInvitation[]
+  /**
+   * Rota suggestions nobody has confirmed or dismissed (spec/14). A UI hint
+   * for the finalize confirmation only: finalizing never reads rota data.
+   */
+  undecidedRotaSuggestions?: number
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -41,7 +47,11 @@ export function SessionAttendanceManagementPanel({
   }
 
   async function finalize() {
-    if (!window.confirm('Finalize this attendance roster? Certificate eligibility will use this revision.')) return
+    const question =
+      undecidedRotaSuggestions > 0
+        ? `${undecidedRotaSuggestions} rota suggestion${undecidedRotaSuggestions === 1 ? ' is' : 's are'} undecided and will be recorded as absent. Finalize anyway?`
+        : 'Finalize this attendance roster?'
+    if (!window.confirm(`${question} Certificate eligibility will use this revision.`)) return
     setBusy(true)
     setError(null)
     setNotice(null)

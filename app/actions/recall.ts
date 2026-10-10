@@ -95,7 +95,7 @@ export async function saveRecallQuestions(
       throw new Error('Approve the matching current Audio Recap before publishing its questions')
     }
     if (session.attendance_phase !== 'FINALIZED') {
-      throw new Error('Finalize attendance before publishing the absentee catch-up package')
+      throw new Error('Finalize attendance before publishing the catch-up package')
     }
   }
 
@@ -166,7 +166,16 @@ export async function getRecallForToken(token: string): Promise<RecallPageState>
   if (!user) return { valid: false, reason: 'auth-required' }
   if (user.id !== verified.userId) return { valid: false, reason: 'wrong-account' }
 
-  const [session, set, recap, attendance, completion, acceptedTeacher, expectedAttendee] = await Promise.all([
+  const [
+    session,
+    set,
+    recap,
+    attendance,
+    completion,
+    acceptedTeacher,
+    expectedAttendee,
+    eligibleStatuses,
+  ] = await Promise.all([
     sessionsDb.findPublishedSessionWithFeedbackFields(verified.sessionId),
     recallDb.findSetForSession(verified.sessionId),
     audioRecapsDb.findRecapForSession(verified.sessionId),
@@ -174,6 +183,9 @@ export async function getRecallForToken(token: string): Promise<RecallPageState>
     recallDb.findCompletion(verified.sessionId, verified.userId),
     certificatesDb.userIsAcceptedTeacherAsSystem(verified.sessionId, verified.userId),
     attendanceDb.isExpectedAttendeeAsSystem(verified.sessionId, verified.userId),
+    // Migration 064 widens catch-up to finalized EXCUSED; before it is
+    // applied this resolves to ['ABSENT'] (spec/08).
+    recallDb.listCatchupEligibleStatusesAsSystem(),
   ])
 
   if (
@@ -212,7 +224,12 @@ export async function getRecallForToken(token: string): Promise<RecallPageState>
     return { valid: false, reason: 'closed', sessionTitle: session.title }
   }
 
-  if (!expectedAttendee || acceptedTeacher || attendance?.status !== 'ABSENT') {
+  if (
+    !expectedAttendee ||
+    acceptedTeacher ||
+    !attendance ||
+    !eligibleStatuses.includes(attendance.status)
+  ) {
     return { valid: false, reason: 'not-eligible', sessionTitle: session.title }
   }
 
@@ -337,15 +354,24 @@ export async function submitRecallAnswers(
     throw new Error('The answer window for this session has closed')
   }
 
-  const [attendance, acceptedTeacher, expectedAttendee, playback, attempts] = await Promise.all([
-    attendanceDb.findAttendanceForUserAsSystem(verified.sessionId, user.id),
-    certificatesDb.userIsAcceptedTeacherAsSystem(verified.sessionId, user.id),
-    attendanceDb.isExpectedAttendeeAsSystem(verified.sessionId, user.id),
-    recallDb.findPlaybackProgress(set.id, user.id),
-    recallDb.listAttempts(set.id, user.id),
-  ])
-  if (!expectedAttendee || acceptedTeacher || attendance?.status !== 'ABSENT') {
-    throw new Error('This catch-up route is only for registered attendees marked absent')
+  const [attendance, acceptedTeacher, expectedAttendee, playback, attempts, eligibleStatuses] =
+    await Promise.all([
+      attendanceDb.findAttendanceForUserAsSystem(verified.sessionId, user.id),
+      certificatesDb.userIsAcceptedTeacherAsSystem(verified.sessionId, user.id),
+      attendanceDb.isExpectedAttendeeAsSystem(verified.sessionId, user.id),
+      recallDb.findPlaybackProgress(set.id, user.id),
+      recallDb.listAttempts(set.id, user.id),
+      recallDb.listCatchupEligibleStatusesAsSystem(),
+    ])
+  if (
+    !expectedAttendee ||
+    acceptedTeacher ||
+    !attendance ||
+    !eligibleStatuses.includes(attendance.status)
+  ) {
+    throw new Error(
+      'This catch-up route is only for registered attendees whose finalized result is absent or excused'
+    )
   }
   if (!playback?.completed_at) throw new Error('Finish the Audio Recap before answering')
   if (attempts.length >= 3) throw new Error('All three attempts have been used')

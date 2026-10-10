@@ -136,6 +136,58 @@ join request grants the stored `trainee`/`faculty` role but never demotes a
 higher role the requester already holds in that department (read scoped to the
 request's organisation) or organisation.
 
+### Rota authorization, kill switch, and not-installed objects
+
+Rota availability (spec 14) uses its own guards in `lib/rota/access.ts` and
+never calls `requireDepartmentModerator` or `isSuperAdmin`.
+`requireRotaModerator(departmentId)` decides in the pure `decideRotaModerator`
+(`lib/rota/authz.ts`) from the department's organisation, the caller's current
+organisation, org-admin status of that organisation, and the organisations of
+the caller's moderator rows for the department. Super-admin status is not an
+input, so a super admin acting in another organisation is refused even though
+the general department rule above admits them. `requireRotaUploaderOrModerator`
+adds the per-department `rota_uploaders` grant (department organisation equal
+to the current organisation), and `requireRotaOrgAdmin` covers settings. Every
+guard checks the environment first (the kill switch, the identity secret), then
+authorization, and only then the installed migrations (063, and 064's marker
+including `EXCUSED`), the organisation's `enabled` flag, and department
+enrolment, so a caller without a rota role is always "forbidden" and cannot
+probe whether a department uses rota. The deletion-only cleanup guards
+(`requireRotaOrgAdminForCleanup`, `requireRotaModeratorForCleanup`) check the
+role and migration 063 only, so stored data can be deleted with the switch
+off.
+
+The pattern for an off-by-default feature whose migration the owner applies
+later:
+
+- an environment kill switch that enables only on the exact string `"true"`
+  (`ROTA_INTEGRATION_ENABLED`), pinned to `"false"` wherever a non-production
+  host serves the production database;
+- a DAL that maps "relation/function does not exist" (PostgREST `PGRST205`/
+  `PGRST202`, Postgres `42P01`/`42883`) to a typed not-installed error
+  (`RotaNotInstalledError`), which callers treat as "unavailable": never a 500
+  and never an error log;
+- Server Actions that return `{ ok: false, message }` for every expected
+  failure, including unavailable and forbidden, and never log request bodies;
+- versioned RPCs (`_v1`) whose errors are fixed `rota:<code>` messages with no
+  interpolated ids or values; and
+- a marker function the application reads to discover whether a migration is
+  applied (`recall_catchup_eligible_statuses_v1()`, falling back to the
+  pre-migration behaviour when it is missing); a feature that depends on a
+  second migration (rota on 064) treats a missing marker as "not installed",
+  and TypeScript logic mirroring an RPC (`computeAttendanceFromEvidence`)
+  follows the same marker so the two never disagree.
+
+The deliberate exceptions to "nothing runs while the switch is off" are
+deletion only: the rota purge runs on every `post-session-reports` pass so data
+already stored keeps its retention promise after the switch is turned off
+(before migration 063 it is a silent no-op), and an org admin can disable,
+un-enrol and remove uploaders, and a moderator revoke links, from a
+cleanup-only Settings section that appears only while the organisation still
+holds rota data. Hooks on session edits
+and membership removal run only while the switch is on; the flag snapshot and
+read view cover the gap.
+
 ### Error vocabulary
 
 DAL modules use:
@@ -247,7 +299,7 @@ Current cron families:
 | Route | Primary idempotency |
 |---|---|
 | `session-reminders` | Per-recipient `SESSION_REMINDER` delivery rows (related_id = session id) plus `reminder_sent_at` watermark; watermark closes only when every recipient is `SENT` or has used 3 attempts |
-| `post-session-reports` | Finalized-session report watermark plus per-recipient `ATTENDANCE_CERTIFICATE` delivery keyed by certificate id; watermark closes only after one budget-bounded pass completes every recipient |
+| `post-session-reports` | Finalized-session report watermark plus per-recipient `ATTENDANCE_CERTIFICATE` delivery keyed by certificate id; watermark closes only after one budget-bounded pass completes every recipient. Every run, including the early "no sessions" return, also awaits the deletion-only rota purge (`rota_purged` in the response; a failure is logged as `[rota] purge failed` and never fails the job) |
 | `recall-send` | Per-recipient catch-up invite delivery plus set watermarks; watermark closes only after all eligible sends |
 | `recall-awards` | Unique completion/certificate plus claimed `ATTENDANCE_CERTIFICATE` delivery; 10 completions per run, two concurrently |
 | `ops-weekly` | Pending-action dedupe, chase counts, Ops memory; low-score notification has no dedupe |

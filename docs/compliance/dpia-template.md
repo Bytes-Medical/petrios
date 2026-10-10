@@ -34,6 +34,7 @@ Map each purpose separately. Do not use one generic basis for the whole system.
 | Operational communications | Recipient and email content/status | *[basis; PECR assessment]* | *[fill in]* |
 | Security and audit | Actor, action, object, IP/provider logs | *[basis]* | *[fill in]* |
 | Optional AI assistance | Purpose-limited prompts/output, speech script, and run/provider metadata | *[basis; Art. 22 assessment]* | *[provider/disabled alternative]* |
+| Rota availability (optional, off by default) | Per-session "rostered unavailable" flags for matched trainees, keyed identity links, counts-only audit; per-day status grid received transiently | *[Art. 6(1)(e) expected; Art. 8A compatibility; see section 9]* | *[why rota-based excusal is needed; the manual alternative is trainee self-report]* |
 
 If special-category data is intentionally processed or foreseeably retained in
 free text, identify an Article 9 condition and Schedule 1/DPA 2018 requirements.
@@ -60,6 +61,9 @@ free text, identify an Article 9 condition and Schedule 1/DPA 2018 requirements.
 - **Learning record:** certificates and recognition basis, Recall playback,
   attempts/answers/completion and reflections
   coverage, portfolio snapshots and teaching dossier data.
+- **Rota availability (only where enabled; section 9):** per-session
+  "rostered unavailable" flags for matched trainees, decision/contest state,
+  keyed identity links, and counts-only upload audit. No leave category.
 - **Communications:** recipients, bodies, attachments, delivery status,
   unsubscribe capabilities and provider logs.
 - **Technical/security:** cookies, request/network metadata, audit events,
@@ -155,7 +159,172 @@ Score likelihood/impact before and after controls using the controller's method.
 | Vendor/region drift | Public runtime-aware register and env disclosures | Contract/dashboard reconciliation and subprocessor change process |
 | Service outage/data loss | Stateless app, database backup capability | Tested backups, restore, RPO/RTO, communications plan |
 
-## 9. Sign-off
+## 9. Rota availability integration (complete only if enabled)
+
+Petrios's rota availability feature (spec 14, operator guide `docs/rota.md`) is
+off by default. Complete this section before an organisation enables it; the
+organisation admin must enter this DPIA's reference in Settings before Petrios
+allows the switch. It covers Phase 1 only (browser upload and attendance
+suggestions). Scheduling availability counts and an automated push API are not
+built; assess them separately if they ship.
+
+### 9.1 Screening and roles
+
+| Field | Assessment |
+|---|---|
+| Why a DPIA is mandatory | Data matching across systems (ICO list); employees as data subjects; a form of worker monitoring. Record the DPO's advice (Art. 35(2)) and staff-side views (Art. 35(9)) |
+| Controller of the rota data | Normally the employing trust. *[confirm; in a lead-employer arrangement name the employer]* |
+| Petrios's role | Normally processor under Art. 28 terms. If the Petrios organisation is run by a different body from the employing trust (for example a deanery, NHSE WT&E region, or a programme hosted elsewhere), the rota summary is a controller-to-controller disclosure and needs a data-sharing agreement. *[record the determination]* |
+| Information Asset Owner (rostering system) | *[name; approval of the extract and its minimisation; licence check]* |
+| DME and Guardian of Safe Working Hours | *[sign-off of the code map and post-night rule]* |
+| Staff side (LNC / resident doctors' forum) | *[consultation date, views, and response]* |
+| Assurance requested | *[Petrios DSPT status, DTAC, Caldicott Guardian briefing (Principles 3, 4, 8)]* |
+
+### 9.2 Lawful basis and compatibility
+
+- **Article 6:** *[Art. 6(1)(e) public task is expected for NHS trusts:
+  education is part of the 2016 TCS work schedule; Art. 6(1)(b) is the
+  alternative]*. Not consent, because of the employment power imbalance.
+- **Purpose compatibility (UK GDPR Article 8A,** inserted by the Data (Use and
+  Access) Act 2025 s.71, in force from 5 February 2026**):** the rota was
+  collected for rostering and pay; reuse is to excuse missed teaching fairly.
+  *[record the assessment: link between purposes, context and expectations,
+  nature of the data, consequences, safeguards]*.
+- **Article 9: expected not to be engaged; confirm.** Every kind of leave,
+  including sickness, collapses to the single letter `L` inside the trust
+  boundary (the coordinator's browser) before anything is sent, no category is
+  stored, and no logic branches on one. ICO guidance treats a bare absence
+  record as not likely to be special category. It would become special category
+  if anyone intended to infer health from it or treated people differently
+  because of such an inference: hence the bans on analytics, category splits,
+  and performance use. *[confirm; re-check the ICO workers' health guidance,
+  which is under review after the DUAA]*.
+
+### 9.3 Data flow
+
+```text
+Rostering system (trust)
+  -> export CSV on a trust device
+  -> coordinator's browser: parse, map codes to A/D/N/X/L, infer post-night rest,
+     drop names/codes/other columns, match identities
+  -> Petrios Server Action (HTTPS): per matched person a day-status string,
+     staff number and/or work email in clear (transient)
+  -> keyed HMAC of identifiers; session overlap computed; grid discarded
+  -> stored: per-session "rostered unavailable" flags, keyed links, counts-only audit
+  -> moderator confirms individually -> attendance evidence (EXCUSED)
+```
+
+No new subprocessors: the request travels through the existing application host
+(Render, or Cloudflare Workers including edge processing and Workers Logs) and
+Supabase. The existing `DATA_HOSTING_REGION` and `DATA_TRANSFER_SAFEGUARDS`
+disclosures must cover it. Request bodies are not logged.
+
+### 9.4 Field list
+
+| Stored by Petrios | Received in the request, used, then discarded | Never received |
+|---|---|---|
+| Per session, only for unavailable trainees: "rostered unavailable" flag, as-of time, planned/as-worked, decision state, who decided and when, contest time | The per-person day-status grid (one letter per day, −2 to +8 weeks; runs of `L` and patterns of `X` are visible for the length of the request) | The raw export; shift codes; leave reason or type; sickness or occupational-health data |
+| Keyed-HMAC identity links (staff number or email → account), moderator-confirmed | Staff numbers and work emails in clear, only to compute the HMAC. At the match check, the staff number or email of **every row** of the export (up to 500, including consultants, nurses and other staff in the file) is checked once against the department's trainees and discarded; coordinators should export only the department's doctors in training | Names (moderator name matching happens in the browser); ward, grade, pay codes, hours, LTFT status or reason, notes |
+| Upload and match-preview audit: counts, keyed digest (HMAC with the server secret, never a plain hash), upload id, date range, uploader | | Number of unavailable people per upload |
+| Session activity events for a confirmed, dismissed or contested suggestion (batch id and planned/as-worked; never a reason) | | |
+| The moderator's `MODERATOR_CONFIRMATION` evidence row (`EXCUSED`, `reason_code: ROTA_UNAVAILABLE`, reason "Rostered unavailable (rota)", upload batch id): a lasting part of the attendance record | | |
+
+Status letters:
+
+| Letter | Status |
+|---|---|
+| `A` | Available (a normal day shift counts as available) |
+| `D` | On duty elsewhere (on-call or a clashing long day, per code) |
+| `N` | Nights or post-night rest (46 hours after any night run by default) |
+| `X` | Not working |
+| `L` | Leave of any kind |
+
+### 9.5 Human involvement (Art. 22 and ICO ADM guidance)
+
+- Each suggestion is confirmed or dismissed individually; there is no bulk
+  accept and nothing is pre-selected.
+- Confirmation is possible only after the session has ended, and is re-checked
+  on the server (no check-in or other moderator decision exists).
+- The suggestion is logged separately from the decision, with the rota's as-of
+  time shown.
+- The trainee sees their own flag at any time and can contest it (after a
+  confirmation step); a contested flag cannot be confirmed from the
+  suggestion. Dismissals and contests leave a lasting activity record.
+- The finalize confirmation warns how many suggestions are still undecided.
+- Finalization never depends on rota data; without a decision a trainee is
+  simply recorded absent, as before.
+
+*[record why this is meaningful human involvement and not a solely automated
+decision]*
+
+### 9.6 Access
+
+Per-person rota status is visible to the session's department moderators and
+the organisation's admins of the same organisation (from session start until
+finalization, and again after a reopen), and to the trainee for their own
+sessions. Teachers, faculty, the rota coordinator, API clients, reports, and
+platform super admins see none of it. *[confirm against role assignments]*
+
+### 9.7 Retention
+
+| Data | Kept until |
+|---|---|
+| Session flag | *[N, default 30; 1–90]* days after the later of attendance finalization and the Audio Recap catch-up closing; never later than session end + 90 days; earlier on session move/cancel, leaving the department, or disable |
+| Identity link | Until the person is no longer a trainee in an enrolled department, the moderator revokes it, the organisation disables rota, or the account is deleted |
+| Uploader grant | Until revoked or the coordinator leaves the organisation |
+| Upload and preview audit (counts and a keyed digest) | 12 months |
+| Confirm / dismiss / contest activity events | The organisation's session activity retention *[fill in]* |
+| Confirmed excusal evidence | The organisation's attendance retention *[fill in]* |
+| Raw file, per-day grid, codes, names, reasons | Never stored |
+
+Deletion is automatic (an hourly purge, also on every upload, running even if
+the feature is switched off). The organisation admin can also disable (deleting
+every flag and identity link), remove departments and remove uploaders while
+the feature is switched off. *[backup expiry for deleted rows]*
+
+### 9.8 Accuracy (Art. 5(1)(d))
+
+As-worked uploads for past days, the as-of time on every suggestion, the
+"rota changed since you confirmed" marker, the trainee contest, and human
+confirmation. Upload discipline is the main accuracy risk: *[weekly upload
+owner and cover]*.
+
+### 9.9 Residual risks
+
+| Risk | Product control | Operator treatment |
+|---|---|---|
+| Inference over time: repeated confirmed excusals may suggest extended absence (for example parental or long-term sick leave) to a moderator | No category, no analytics, no history or trend view, no performance use; excused attendance already reveals this today | *[accept / mitigate; moderator guidance]* |
+| Perceived surveillance by trainees or the BMA (R10) | Off by default, one phrase only, published wording, contest route, catch-up kept, invitation copy signposts exception reporting | *[staff-side consultation outcome; communications plan]* |
+| Membership oracle: the coordinator's "matched / not matched" booleans reveal whether an identifier belongs to a trainee | One preview per upload, at most 500 people, 10 per day (enforced atomically); the upload can carry only rows from that preview; the coordinator's upload result carries counts only; a trainee of the department cannot be the coordinator; audited by counts | *[accept; coordinator role limited to the named person]* |
+| Wrong-person link | Moderator confirmation per person, links resolve only to current trainees of the department, revocable, no self-linking, anti-hijack rule across departments | *[moderator training]* |
+| Stale or wrong rota | As-worked uploads, as-of time, contest, rota-changed marker, finalize independent of rota | *[upload discipline]* |
+| Rubber-stamping | No bulk accept, per-row server checks, separate suggestion and decision records | *[moderator guidance]* |
+| Small-cohort inference from scheduling counts (R9) | **Not applicable to Phase 1**: no counts are produced. If Phase 2 ships: 5-person floor, banding, rounding to 5, no names | *[reassess before Phase 2]* |
+| Staging or preflight writing to the production database | Kill switch pinned to `"false"` there; deploy validators refuse other values | *[deployment review]* |
+
+### 9.10 Staff privacy-notice wording
+
+Adapt for the trust's staff notice (Petrios `/privacy` carries a version):
+
+> Your department's teaching platform, Petrios, receives a limited summary of
+> your rota from *[Trust]*'s e-rostering system. The summary gives one status per
+> day: available, on duty elsewhere, on nights or post-night rest, not working,
+> or on leave. Petrios uses it at the moment it arrives and does not keep it.
+> Petrios keeps only a note against each teaching session for which you were
+> rostered unavailable. It never receives the reason for leave or any sickness
+> information. The note is used only to suggest to the session moderator that
+> your absence be excused (the moderator decides, and you can say the rota was
+> wrong). Session notes are deleted within *[30]* days of attendance being
+> finalised and never later than 90 days after the session. If your moderator
+> confirms an excusal, your attendance record for that session shows "excused –
+> rostered unavailable" and is kept with your other attendance records. It is
+> never used to assess your performance. Before an upload, the staff number or
+> email of every row in the export is checked once against the department's
+> trainees and is not stored. This does not replace exception reporting;
+> please still exception-report missed teaching to your educational supervisor
+> (*[DME]* can also help). Lawful basis: *[public task]*. Contact: *[DPO]*.
+
+## 10. Sign-off
 
 Record unresolved high risks, consultation outcomes, controller/processor actions,
 decision, accountable approver, expiry/review date, and triggers including new

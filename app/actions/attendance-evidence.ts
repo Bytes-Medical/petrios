@@ -13,6 +13,7 @@ import * as sessionsDb from '@/lib/db/sessions'
 import * as attendanceDb from '@/lib/db/attendance'
 import * as codeAttemptsDb from '@/lib/db/attendance-code-attempts'
 import * as notificationsDb from '@/lib/db/notifications'
+import * as recallDb from '@/lib/db/recall'
 import type { EvidenceSource, EvidenceMetadata } from '@/lib/db/attendance'
 import { DbNotFoundError } from '@/lib/db'
 import { clientIpFromHeaders } from '@/lib/rate-limit'
@@ -224,14 +225,21 @@ export async function recomputeAttendance(
     throw new DbNotFoundError('Session not found')
   }
 
-  const allEvidence = await attendanceDb.listEvidenceForAttendee({
-    orgId,
-    sessionId,
-    userId,
-    externalEmail,
-  })
+  const [allEvidence, catchupStatuses] = await Promise.all([
+    attendanceDb.listEvidenceForAttendee({
+      orgId,
+      sessionId,
+      userId,
+      externalEmail,
+    }),
+    // 064 marker: until it exists the SQL writer keeps the earliest-first
+    // rule, so this recomputation must too (spec/03).
+    recallDb.listCatchupEligibleStatusesAsSystem(),
+  ])
 
-  const computed = computeAttendanceFromEvidence(allEvidence, session)
+  const computed = computeAttendanceFromEvidence(allEvidence, session, {
+    latestDecisionWins: catchupStatuses.includes('EXCUSED'),
+  })
 
   return attendanceDb.upsertAttendance({
     orgId,

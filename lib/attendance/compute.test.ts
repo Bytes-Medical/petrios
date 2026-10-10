@@ -245,3 +245,98 @@ describe('computeAttendanceFromEvidence', () => {
     expect(result.primarySource).toBe('MODERATOR_CONFIRMATION')
   })
 })
+
+// Primary-selection parity cases P1–P9 (rota Phase 1 plan §5.3). The SQL
+// selector in record_attendance_evidence_v2 (migration 064) is checked
+// against the same table by the lab checks (L10); keep the two identical.
+describe('primary selection parity (latest moderator decision, catch-up after override)', () => {
+  const v2: AttendanceWindowSession = {
+    date_start: '2026-07-01T12:30:00.000Z',
+    date_end: '2026-07-01T13:30:00.000Z',
+    attendance_policy_version: 2,
+  }
+  const t1 = '2026-07-01T14:00:00.000Z'
+  const t2 = '2026-07-01T15:00:00.000Z'
+  const t3 = '2026-07-01T16:00:00.000Z'
+  const mc = (observedAt: string, status: 'PRESENT' | 'ABSENT' | 'EXCUSED') =>
+    evidence('MODERATOR_CONFIRMATION', observedAt, { status_override: status })
+  const recall = (observedAt: string) =>
+    evidence('RECALL', observedAt, { status_override: 'PRESENT', method: 'RECALL_CATCH_UP' })
+
+  const cases: [string, EvidenceForCompute[], string, string | null][] = [
+    ['P1 no evidence', [], 'ABSENT', null],
+    ['P2 self check-in', [evidence('SELF_CHECKIN', '2026-07-01T12:25:00.000Z')], 'PRESENT', 'SELF_CHECKIN'],
+    [
+      'P3 self check-in then excusal',
+      [evidence('SELF_CHECKIN', '2026-07-01T12:25:00.000Z'), mc(t1, 'EXCUSED')],
+      'EXCUSED',
+      'MODERATOR_CONFIRMATION',
+    ],
+    ['P4 latest moderator decision wins', [mc(t1, 'EXCUSED'), mc(t2, 'PRESENT')], 'PRESENT', 'MODERATOR_CONFIRMATION'],
+    ['P5 catch-up after excusal', [mc(t1, 'EXCUSED'), recall(t2)], 'PRESENT', 'RECALL'],
+    [
+      'P6 re-excusal after catch-up wins',
+      [mc(t1, 'EXCUSED'), recall(t2), mc(t3, 'EXCUSED')],
+      'EXCUSED',
+      'MODERATOR_CONFIRMATION',
+    ],
+    ['P7 catch-up after an ABSENT override', [mc(t1, 'ABSENT'), recall(t2)], 'PRESENT', 'RECALL'],
+    [
+      'P8 later live evidence keeps the catch-up primary',
+      [mc(t1, 'EXCUSED'), recall(t2), evidence('TEAMS', t3)],
+      'PRESENT',
+      'RECALL',
+    ],
+    ['P9 excusal made after the catch-up', [recall(t1), mc(t2, 'EXCUSED')], 'EXCUSED', 'MODERATOR_CONFIRMATION'],
+  ]
+
+  it.each(cases)('%s', (_label, rows, status, primary) => {
+    const result = computeAttendanceFromEvidence(rows, v2)
+    expect(result.status).toBe(status)
+    expect(result.primarySource).toBe(primary)
+  })
+
+  it('evaluates every case independently of input order', () => {
+    for (const [, rows, status, primary] of cases) {
+      const result = computeAttendanceFromEvidence([...rows].reverse(), v2)
+      expect(result.status).toBe(status)
+      expect(result.primarySource).toBe(primary)
+    }
+  })
+
+  it('P4 also holds on policy v1', () => {
+    const result = computeAttendanceFromEvidence([mc(t2, 'PRESENT'), mc(t1, 'EXCUSED')], {
+      ...v2,
+      attendance_policy_version: 1,
+    })
+    expect(result.status).toBe('PRESENT')
+    expect(result.primarySource).toBe('MODERATOR_CONFIRMATION')
+  })
+
+  it('breaks a same-instant moderator tie by the later created_at, then id', () => {
+    const first = { ...mc(t1, 'EXCUSED'), created_at: '2026-07-01T14:00:01.000Z', id: 'b' }
+    const second = { ...mc(t1, 'PRESENT'), created_at: '2026-07-01T14:00:02.000Z', id: 'a' }
+    expect(computeAttendanceFromEvidence([second, first], v2).status).toBe('PRESENT')
+    const sameCreated = { ...second, created_at: first.created_at }
+    // Same observed_at and created_at: the greater id is the latest.
+    expect(computeAttendanceFromEvidence([sameCreated, first], v2).status).toBe('EXCUSED')
+  })
+
+  it('keeps the pre-064 earliest-first rule when the 064 marker is missing', () => {
+    const before064 = { latestDecisionWins: false }
+    // The earliest moderator decision stays primary, exactly like the pre-064 SQL writer.
+    const p4 = computeAttendanceFromEvidence([mc(t2, 'PRESENT'), mc(t1, 'EXCUSED')], v2, before064)
+    expect(p4.status).toBe('EXCUSED')
+    expect(p4.primarySource).toBe('MODERATOR_CONFIRMATION')
+    // A later catch-up does not beat the decision before 064.
+    const p5 = computeAttendanceFromEvidence([mc(t1, 'EXCUSED'), recall(t2)], v2, before064)
+    expect(p5.status).toBe('EXCUSED')
+    expect(p5.primarySource).toBe('MODERATOR_CONFIRMATION')
+  })
+
+  it('a moderator PRESENT decision is never replaced by a later catch-up', () => {
+    const result = computeAttendanceFromEvidence([mc(t1, 'PRESENT'), recall(t2)], v2)
+    expect(result.primarySource).toBe('MODERATOR_CONFIRMATION')
+    expect(result.status).toBe('PRESENT')
+  })
+})

@@ -31,6 +31,8 @@ import { SessionDocumentsPanel } from './SessionDocumentsPanel'
 import type { AttendanceEvidence, SessionParticipant } from '@/lib/db/attendance'
 import { SessionAttendanceManagementPanel } from './SessionAttendanceManagementPanel'
 import { LocalDateTime } from './LocalSessionDateTime'
+import { RotaSuggestionsPanel } from './rota/RotaSuggestionsPanel'
+import type { RotaSuggestionsView } from '@/lib/rota/types'
 
 /**
  * Server-resolved Petrios Meet facts for the meeting card (the manage page is
@@ -71,6 +73,8 @@ interface ManageSessionTabsProps {
     participants: SessionParticipant[]
     evidence: AttendanceEvidence[]
   }
+  /** Rota availability Expected roster (spec/14); null when rota is unavailable. */
+  rotaSuggestions?: RotaSuggestionsView | null
 }
 
 export function ManageSessionTabs({
@@ -91,6 +95,7 @@ export function ManageSessionTabs({
   canUploadDocuments = false,
   currentUserId,
   attendanceGovernance = { participants: [], evidence: [] },
+  rotaSuggestions = null,
 }: ManageSessionTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'attendance' | 'feedback' | 'recall' | 'documents' | 'certificates'>('overview')
   const [editMode, setEditMode] = useState(false)
@@ -281,16 +286,27 @@ export function ManageSessionTabs({
         )}
 
         {activeTab === 'attendance' && (
-          <Card>
-            <h2 className="text-xl font-mono font-bold mb-4">Attendance Governance</h2>
-            <SessionAttendanceManagementPanel
-              session={session}
-              attendance={attendance}
-              participants={attendanceGovernance.participants}
-              evidence={attendanceGovernance.evidence}
-              invitations={invitations}
-            />
-          </Card>
+          <div className="space-y-6">
+            {rotaSuggestions && (
+              <Card>
+                <h2 className="text-xl font-mono font-bold mb-4">Expected roster</h2>
+                <RotaSuggestionsPanel view={rotaSuggestions} />
+              </Card>
+            )}
+            <Card>
+              <h2 className="text-xl font-mono font-bold mb-4">Attendance Governance</h2>
+              <SessionAttendanceManagementPanel
+                session={session}
+                attendance={attendance}
+                participants={attendanceGovernance.participants}
+                evidence={attendanceGovernance.evidence}
+                invitations={invitations}
+                undecidedRotaSuggestions={
+                  rotaSuggestions ? rotaSuggestions.rows.filter((row) => row.state === 'SUGGESTED').length : 0
+                }
+              />
+            </Card>
+          </div>
         )}
 
         {activeTab === 'documents' && (

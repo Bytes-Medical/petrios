@@ -37,6 +37,8 @@ export interface AttendanceEvidence {
   created_by: string | null
   source_event_key?: string | null
   correction_reason?: string | null
+  /** Row insertion time; breaks ties between rows observed at the same instant. */
+  created_at?: string | null
 }
 
 export interface SessionParticipant {

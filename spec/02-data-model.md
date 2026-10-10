@@ -15,7 +15,11 @@ read exception in `lib/auth.ts`. See spec 01 for the import boundary.
 
 Migration filenames are `NNN_snake_case.sql`, with a unique monotonically
 increasing numeric prefix. The implemented baseline ends at
-`058_audio_recap_tts_provider.sql`.
+`064_recall_excused_catchup.sql`. Migrations 063 (rota availability) and 064
+(Recall widening and primary-evidence selection) are owner-applied, in the same
+release; the code that reads them treats their absence as "feature
+unavailable", and rota stays unavailable until 064's marker includes `EXCUSED`
+(spec 14).
 
 Rules for a schema change:
 
@@ -124,7 +128,60 @@ Migration 059 adds a narrow post-finalization transition. The only producer is
 revision, current audio revision, complete playback, perfect attempt, expected
 registered absentee, and current session revision before atomically appending
 `RECALL` evidence, inserting completion, and changing that row to `PRESENT`.
-Generic evidence writers cannot invoke this source.
+Generic evidence writers cannot invoke this source. Migration 064 widens the
+same function to a finalized `EXCUSED` row (status-keyed, no reason branch),
+adds the marker `recall_catchup_eligible_statuses_v1()`, and replaces only the
+primary-row selection inside `record_attendance_evidence_v2` (same signature):
+the latest `MODERATOR_CONFIRMATION` wins, and a later valid `RECALL` wins over an
+`ABSENT`/`EXCUSED` override (spec 03). It also re-opens `sent_catchup_at` on
+approved question sets whose catch-up window is still open, so excused
+attendees of packages sent earlier are invited (spec 08).
+
+## Rota availability tables (migration 063)
+
+All are deny-all: RLS enabled, **no policies**, all privileges revoked from
+`PUBLIC`, `anon`, and `authenticated`, and access only through the service DAL
+`lib/db/rota.ts` after `lib/rota/access.ts` has authorized the caller. None
+holds a person-level rota grid, a shift code, a name, an email, a staff number,
+or a leave category (spec 14).
+
+| Table | Purpose | Key constraints |
+|---|---|---|
+| `rota_settings` | One row per organisation: `enabled`, `retention_days` (1–90, default 30), `horizon_days` (7–84, default 56), DPIA reference, privacy-notice confirmation, who enabled | `CHECK (NOT enabled OR (dpia_reference IS NOT NULL AND privacy_notice_confirmed_at IS NOT NULL))` |
+| `rota_departments` | Enrolled pilot departments | Composite FK `(department_id, org_id)` → `departments(id, org_id)` refuses a cross-organisation department |
+| `rota_uploaders` | Narrow per-department grant for the rota coordinator | PK `(department_id, user_id)`; FK to the enrolment row |
+| `rota_upload_profiles` | Saved mapping: header names, date format, code legend, post-night rule | `config` jsonb object ≤ 32 KiB; unique `(department_id, name)` |
+| `rota_identity_links` | Keyed HMAC of a staff number or email → user | PK `(org_id, key_type, key_hmac)`; `key_type IN ('STAFF_ID','EMAIL')`; 64-hex hash; origin `MODERATOR`/`EMAIL_MATCH` |
+| `rota_import_batches` | Upload audit: kind, upload id, keyed `payload_digest` (HMAC with `ROTA_IDENTITY_SECRET`, never a plain hash), range, uploader, counts | PK `(org_id, id)` so idempotency is per tenant; unique `(org_id, upload_id, kind)` (one batch per kind per upload); range ≤ 98 days; `people_received ≤ 500`; `sessions_annotated` is not a count of unavailable people |
+| `rota_match_previews` | Membership-oracle audit: one preview per upload, counts only; every ingest requires its upload's preview by the same caller | Unique `(org_id, upload_id)` |
+| `rota_session_flags` | The only per-person rota data: one row per session and unavailable trainee | PK `(session_id, user_id)`; state `OPEN`/`CONFIRMED`/`DISMISSED`/`CONTESTED` with matching decided/contested timestamps; snapshot of the session's start/end; `expires_at` = session end + 90 days; FK to the batch |
+
+`rota_visible_session_flags` is a `security_invoker` view and the only read path
+for flags: it hides expired flags, flags of a disabled organisation or
+un-enrolled department, flags whose user is no longer a trainee of the
+department, flags whose session times differ from the snapshot, and flags of
+cancelled sessions. It is granted `SELECT` to `service_role` only.
+
+Functions (all revoked from `PUBLIC`, `anon`, and `authenticated`, granted to
+`service_role`; errors are fixed `rota:<code>` messages without values):
+
+| Function | Kind | Contract |
+|---|---|---|
+| `rota_is_department_trainee(org, department, user)` | `STABLE`, `SECURITY INVOKER` helper | Current `department_members.role = 'trainee'` in that organisation |
+| `rota_apply_identity_link(org, department, actor, key_type, key_hmac, user, origin, now)` | `SECURITY INVOKER` helper | One link: current trainee only; never moves a key from a current trainee of another enrolled department |
+| `record_rota_match_preview_v1(org, department, upload, caller, role, people, max_per_day)` | `SECURITY DEFINER` | Under a per-caller advisory lock: `duplicate` for a second preview of an upload, `rate_limited` past the uploader's daily limit, else records it |
+| `ingest_rota_batch_v1(org, department, actor, batch, flags, cleared, links)` | `SECURITY DEFINER` | One transaction under a per-organisation advisory lock: per-session size cap, the upload's preview by the actor (`preview_required`), idempotency and one batch per kind per upload, links, flag precedence (`PUBLISHED` sessions only), counts, purge |
+| `link_rota_identity_v1(org, department, actor, user, links)` | `SECURITY DEFINER` | A moderator's staff-number/email link for one current trainee, under the per-organisation lock, through `rota_apply_identity_link` |
+| `confirm_rota_excusal_v1(org, session, user, actor)` | `SECURITY DEFINER` | Requires 064's marker to include `EXCUSED`; locks the session, moves one flag `OPEN` → `CONFIRMED`, refuses presence, catch-up (`RECALL`) or existing moderator evidence, writes one `MODERATOR_CONFIRMATION` `EXCUSED` through `record_attendance_evidence_v2` with a deterministic key |
+| `dismiss_rota_suggestion_v1(org, session, user, actor)` / `contest_rota_flag_v1(org, session, user)` | `SECURITY DEFINER` | Conditional `OPEN` → `DISMISSED` / `CONTESTED` (snapshot matching) plus a `ROTA_SUGGESTION_DISMISSED` / `ROTA_FLAG_CONTESTED` session activity event, in one transaction |
+| `purge_rota_data_v1(org default NULL)` | `SECURITY DEFINER` | Deletion only; retention rules in spec 14 |
+| `disable_rota_for_org_v1(org, actor)` | `SECURITY DEFINER` | Deletes flags and links, sets `enabled = false`, keeps profiles, grants, enrolment, and audit |
+
+Retention is enforced by the purge (hourly with `post-session-reports`, and on
+every ingest): flags 1–90 days after the later of finalization and Recall close,
+hard cap session end + 90 days; links and uploader grants when the person leaves;
+batch and preview audit after 12 months. Flags and links cascade on account
+deletion; flags cascade on session deletion.
 
 ## Feedback and recognition tables
 
@@ -293,7 +350,8 @@ policy instead.
 
 Ops, API credentials, webhooks, portable snapshots, session documents/activity/
 rosters, attendance-code attempts, teacher feedback reports, delivery ledgers,
-and some public-capability records enable RLS without granting browser policies.
+every `rota_*` table and view, and some public-capability records enable RLS
+without granting browser policies.
 Only server code with a justified service-role client may access them. Such a
 DAL must:
 

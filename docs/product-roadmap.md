@@ -73,21 +73,29 @@ catch-up) before finalizing the revision from the same screen.
   `MODERATOR_CONFIRMATION` through the existing transactional RPC; absentee
   chase drafts into the Ops approval queue.
 
-### 3. Rota-Clash Flag (consent-based excusal + Recall priority)
+### 3. Rota-aware teaching (rota integration; Phase 1 built, off by default)
 
-A trainee raises a "rota clash" flag (nights, on-call, leave) on a session; a
-moderator acknowledges it, setting their roster expectation to the existing
-EXCUSED state with visible provenance. Acknowledged clash-flagged absentees go
-first in the recall-send queue. Deliberately **no** rota-system integration.
+The first integration with the trust rota. The rota coordinator uploads a CSV
+export weekly; it is mapped **in the browser**, so Petrios receives only a
+per-day status letter (A/D/N/X/L, no leave category) for matched trainees and
+keeps only a "rostered unavailable" flag per session. After a session ends the
+moderator's Expected roster panel suggests "excused (rostered unavailable)",
+confirmed one row at a time; excused trainees keep the Audio Recap catch-up
+(migration 064). Kill switch, per-org DPIA gate, automatic retention purge.
+Spec: `spec/14-rota-availability.md`; operator guide: `docs/rota.md`.
 
 - **Why killer**: missed-teaching unfairness is the loudest ARCP-visible trainee
-  grievance, and this fixes it with incentive-aligned self-report plus moderator
-  gatekeeping — avoiding both surveillance concerns (no inference about
-  individuals) and the dirty-data trap of roster ingestion. The append-only
-  trail keeps the excused number defensible.
-- **First step**: `session_clash_flags` migration (deny-all RLS, DAL in
-  `lib/db/`), raise/acknowledge actions writing EXCUSED via existing roster
-  machinery, priority ordering in `app/api/cron/recall-send`.
+  grievance. Moderator gatekeeping and the trainee contest keep a human in
+  every decision, while the browser-side minimisation and deletion schedule make
+  it something a trust IG team can approve. The append-only trail keeps the
+  excused number defensible.
+- **Remaining phases**: Phase 2, scheduling availability counts (banded, no
+  names, per rota scope); Phase 3, a signed push API so a trust can automate the
+  weekly export from inside its own network.
+- **Fallback**: the earlier consent-based design, a trainee-raised "rota clash"
+  flag that a moderator acknowledges as `EXCUSED`, remains the option for
+  organisations that cannot get IG approval for the rota upload. It is not
+  built.
 
 ## Tier 2 — Strategic bets (weeks to ~2 months)
 
@@ -130,7 +138,7 @@ when a light stays red inside a lead-time window.
 
 Dated membership windows so a trainee's record stops counting sessions from
 before they rotated in (a distortion spec/08 documents), combined with
-acknowledged clash flags, so progress records and portfolio packs report
+moderator-confirmed excusals (rota-aware or manual), so progress records and portfolio packs report
 *"attended X% of attendable sessions"* with visible excusal provenance.
 
 - **Why killer**: turns ARCP fairness from a plea to the TPD into a verifiable
@@ -235,11 +243,14 @@ Recorded so they aren't re-litigated from scratch:
   verify-linked pack already ships and does the ARCP job; the import half is
   worthless until other trusts run Petrios. Parked behind adoption (see #11 for
   the sequencing that works).
-- **Rota ingestion / clash-aware "reach scores"** — rostering data is jealously
-  guarded, trust informatics queues run in years, and roster exports are dirty;
-  a confident-looking score built on a garbage denominator is worse than none.
-  The consent-based clash flag (#3) achieves the fairness goal without the
-  dependency.
+- **Server-side rota ingestion / live rota query / clash-aware "reach
+  scores"** — rostering data is jealously guarded, trust informatics queues run
+  in years, a live query needs an inbound trust endpoint, and roster exports are
+  dirty; a confident-looking score built on a garbage denominator is worse than
+  none. Rota integration is now #3, deliberately built the other way round:
+  browser-side minimisation of a coordinator's export, human confirmation of
+  every excusal, and banded counts (Phase 2) rather than scores. The manual
+  clash flag stays the fallback where IG approval is not available.
 - **Benchmarking-first** — statistically misleading below ~5 comparable peers
   and no DME can take a median of three self-selected early adopters to an
   education committee. Sequenced behind the deanery anchor (#10).
@@ -260,8 +271,9 @@ Recorded so they aren't re-litigated from scratch:
 
 1. **Now**: Signed Consultant Teaching-Hours Statement (#1) — days of work,
    manufactures champions.
-2. **Immediately after**: Reconciliation Autopilot (#2) and Rota-Clash Flag
-   (#3) — retention and fairness.
+2. **Immediately after**: Reconciliation Autopilot (#2) and the rota-aware
+   teaching pilot (#3; Phase 1 built, waiting on a trust DPIA) — retention and
+   fairness.
 3. **Following month(s)**: GMC Governance Pack (#4, the institutional buying
    trigger), Readiness Board (#5), Fair-Denominator (#6), Appraisal Autopilot
    (#7, spring deadline), Regional Speaker Exchange (#8).

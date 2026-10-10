@@ -16,6 +16,7 @@ import { DbNotFoundError } from '@/lib/db'
 import type { TraineeGrade, UserRole } from '@/lib/types'
 import { validateTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
 import { validateDepartmentName } from '@/lib/tenant-names'
+import { onDepartmentMemberRemoved } from '@/lib/rota/session-hooks'
 
 export async function createDepartment(name: string) {
   const userId = await requireAuth()
@@ -148,6 +149,8 @@ export async function leaveDepartment(departmentId: string) {
 
   await departmentsDb.deleteDepartmentMember(departmentId, orgId, userId)
   await departmentsDb.deleteOrgMember(orgId, userId)
+  // Rota availability (spec/14): the leaver's flags go now. Never throws.
+  await onDepartmentMemberRemoved({ orgId, departmentId, userId })
 
   revalidatePath('/dashboard')
   revalidatePath('/departments')
@@ -213,6 +216,8 @@ export async function removeDepartmentMember(
 
   await departmentsDb.deleteDepartmentMember(departmentId, orgId, memberUserId)
   await departmentsDb.deleteOrgMember(orgId, memberUserId)
+  // Rota availability (spec/14): the removed member's flags go now. Never throws.
+  await onDepartmentMemberRemoved({ orgId, departmentId, userId: memberUserId })
 
   revalidatePath(`/departments/${departmentId}`)
   revalidatePath('/admin')

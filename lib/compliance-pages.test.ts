@@ -64,4 +64,16 @@ describe('legal wording fixed by spec/13', () => {
     )
     expect(DISPLAY_COOKIE_MAX_AGE).toBeLessThanOrEqual(183 * 24 * 60 * 60)
   })
+
+  it('discloses rota availability on /privacy without any leave category (spec/14)', () => {
+    const raw = read('app/privacy/page.tsx')
+    const source = prose(raw)
+    expect(sectionTitles(raw)).toContain('Rota availability (where enabled)')
+    expect(source).toContain('It never receives the reason for leave or any sickness information')
+    expect(source).toContain('nothing is excused automatically')
+    expect(source).toContain('never later than 90 days after the session')
+    expect(source).toContain('<MissingDisclosure>employing trust</MissingDisclosure>')
+    expect(source).toContain('<MissingDisclosure>DME contact</MissingDisclosure>')
+    expect(source).toContain('isRotaKillSwitchOn()')
+  })
 })

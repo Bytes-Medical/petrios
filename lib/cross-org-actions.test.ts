@@ -150,6 +150,10 @@ vi.mock('@/lib/db/sessions', () => ({
   ),
 }))
 vi.mock('@/lib/db/certificates', () => ({}))
+vi.mock('@/lib/rota/session-hooks', () => ({
+  onSessionScheduleChanged: async () => undefined,
+  onDepartmentMemberRemoved: async () => undefined,
+}))
 
 import {
   getDepartmentMemberUsers,

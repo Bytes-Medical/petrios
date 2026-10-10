@@ -141,6 +141,7 @@ describe('wrangler config checks', () => {
       CRON_ENABLED: 'false',
       OUTBOUND_EMAIL_ENABLED: 'false',
       TRUSTED_CLIENT_IP_HEADER: 'cf-connecting-ip',
+      ROTA_INTEGRATION_ENABLED: 'false',
     }
     const safe = { workers_dev: true, triggers: { crons: [] }, vars }
     expect(stagingConfigProblems(safe)).toEqual([])
@@ -151,7 +152,23 @@ describe('wrangler config checks', () => {
     expect(stagingConfigProblems({ ...safe, workers_dev: false })).toHaveLength(1)
     expect(stagingConfigProblems({ ...safe, vars: { ...vars, CRON_ENABLED: 'true' } })).toHaveLength(1)
     expect(stagingConfigProblems({ ...safe, vars: { ...vars, OUTBOUND_EMAIL_ENABLED: 'true' } })).toHaveLength(1)
-    expect(stagingConfigProblems({ ...safe, vars: { CRON_ENABLED: 'false' } })).toHaveLength(2)
+    expect(stagingConfigProblems({ ...safe, vars: { CRON_ENABLED: 'false' } })).toHaveLength(3)
+  })
+
+  it('keeps rota availability off on staging (it serves the production database)', () => {
+    const vars = {
+      CRON_ENABLED: 'false',
+      OUTBOUND_EMAIL_ENABLED: 'false',
+      TRUSTED_CLIENT_IP_HEADER: 'cf-connecting-ip',
+      ROTA_INTEGRATION_ENABLED: 'false',
+    }
+    const safe = { workers_dev: true, triggers: { crons: [] }, vars }
+    expect(stagingConfigProblems({ ...safe, vars: { ...vars, ROTA_INTEGRATION_ENABLED: 'true' } })).toEqual([
+      'top-level vars.ROTA_INTEGRATION_ENABLED must be "false"',
+    ])
+    expect(stagingConfigProblems({ ...safe, vars: { ...vars, ROTA_INTEGRATION_ENABLED: undefined } })).toHaveLength(1)
+    expect(stagingConfigProblems({ ...safe, vars: { ...vars, ROTA_INTEGRATION_ENABLED: 'TRUE' } })).toHaveLength(1)
+    expect(wranglerConfig.vars.ROTA_INTEGRATION_ENABLED).toBe('false')
   })
 
   it('accepts the committed top level (staging) of wrangler.jsonc', () => {
@@ -387,6 +404,28 @@ describe('production wrangler environments', () => {
     expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.APP_TIME_ZONE = 'Europe/London')))).toEqual([
       expect.stringMatching(/same vars keys/),
     ])
+  })
+
+  it('keeps rota availability off in preflight and an explicit choice in live', () => {
+    expect(committedPreflight.vars.ROTA_INTEGRATION_ENABLED).toBe('false')
+    expect(committedLive.vars.ROTA_INTEGRATION_ENABLED).toBe('false')
+    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.ROTA_INTEGRATION_ENABLED = 'true')))).toEqual([
+      expect.stringMatching(/production_preflight.vars.ROTA_INTEGRATION_ENABLED must be "false"/),
+    ])
+    // Go-live flips only the live value; the phases may differ on this key.
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.ROTA_INTEGRATION_ENABLED = 'true')))).toEqual([])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.ROTA_INTEGRATION_ENABLED = 'yes')))).toEqual([
+      expect.stringMatching(/production.vars.ROTA_INTEGRATION_ENABLED must be declared as "false" or "true"/),
+    ])
+    const absent = withEnv(PRODUCTION_ENV, (env) => delete env.vars.ROTA_INTEGRATION_ENABLED)
+    delete absent.env[PREFLIGHT_ENV].vars.ROTA_INTEGRATION_ENABLED
+    expect(problemsOf(absent)).toEqual([
+      expect.stringMatching(/production_preflight.vars.ROTA_INTEGRATION_ENABLED must be "false"/),
+      expect.stringMatching(/production.vars.ROTA_INTEGRATION_ENABLED must be declared/),
+    ])
+    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => delete env.vars.ROTA_INTEGRATION_ENABLED))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/same vars keys/)])
+    )
   })
 
   it('keeps preflight off production hostnames and live off workers.dev', () => {

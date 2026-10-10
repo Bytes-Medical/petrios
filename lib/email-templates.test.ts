@@ -260,6 +260,24 @@ describe('untrusted text in every email builder', () => {
     expectEscaped(build())
   })
 
+  it('keeps the recall catch-up intro neutral about why the session was missed', () => {
+    const html = buildRecallEmailHtml({
+      recipientName: 'Ada',
+      sessionTitle: 'Sepsis',
+      kind: 'CATCH_UP',
+      answerUrl: 'https://petrios.example/recall/token',
+      deadlineStr: 'Friday, 30 October 2026',
+    })
+    const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+    expect(text).toContain('You missed Sepsis . An optional catch-up is available until Friday, 30 October 2026')
+    expect(text).toContain('Where you can, complete it in working time.')
+    expect(text).toContain('It does not replace exception reporting for missed teaching.')
+    // Shared by ABSENT and EXCUSED results: no rota, leave or absence wording.
+    expect(text).not.toMatch(/\brota\b/i)
+    expect(text).not.toMatch(/absent/i)
+    expect(text).not.toMatch(/excused|leave|sick/i)
+  })
+
   it('keeps the reminder join link usable after escaping', () => {
     const html = buildSessionReminderEmailHtml({
       recipientName: 'Ada',

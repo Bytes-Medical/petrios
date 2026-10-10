@@ -19,7 +19,7 @@ interface RecallQuestionsPanelProps {
  * Moderator review of AI-drafted recall questions. Nothing is emailed until
  * a moderator has (optionally edited and) APPROVED the set here — this is
  * the human gate on AI-generated content, and it also enables catch-up
- * attendance for absentees.
+ * attendance for finalized absent or excused attendees.
  */
 export function RecallQuestionsPanel({
   sessionId,
@@ -105,14 +105,14 @@ export function RecallQuestionsPanel({
 
       <div className="space-y-4 border-t border-black p-4">
         <p className="font-mono text-sm text-gray-600">
-          Registered absentees complete the approved audio and must answer all
-          five questions correctly. Check every answer before publishing.
+          Registered finalized absent or excused attendees complete the approved
+          audio and must answer all five questions correctly. Check every answer before publishing.
         </p>
 
         {initialSet.status === 'approved' && initialSet.catchup_closes_at && (
           <div className="border border-green-800 bg-green-50 px-3 py-2 font-mono text-xs text-green-900">
-            Published revision {initialSet.revision}. Registered finalized absentees
-            can complete this pathway until{' '}
+            Published revision {initialSet.revision}. Registered finalized absent or
+            excused attendees can complete this pathway until{' '}
             <strong>
               <LocalDateTime value={initialSet.catchup_closes_at} />
             </strong>.

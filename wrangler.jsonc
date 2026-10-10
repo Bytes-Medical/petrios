@@ -41,7 +41,10 @@
     // client-supplied, so rate limits (lib/rate-limit.ts) must not trust it.
     "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip",
     // Names Cloudflare Workers as the host on /privacy and /subprocessors.
-    "HOSTING_PROVIDER": "cloudflare-workers"
+    "HOSTING_PROVIDER": "cloudflare-workers",
+    // Rota availability (spec/14) stays off on staging, which serves the
+    // production database (stagingConfigProblems enforces "false").
+    "ROTA_INTEGRATION_ENABLED": "false"
   },
   // Deploy fails unless these exist as Worker secrets (wrangler secret put).
   "secrets": {
@@ -55,7 +58,10 @@
     // `npm run cf:deploy:production -- <phase>` (docs/cloudflare-workers.md,
     // "Cutover"); scripts/cloudflare/lib.mjs productionConfigProblems() and its
     // tests enforce everything below. The phases may differ only in routes,
-    // workers_dev, triggers.crons, CRON_ENABLED and OUTBOUND_EMAIL_ENABLED.
+    // workers_dev, triggers.crons, CRON_ENABLED and OUTBOUND_EMAIL_ENABLED,
+    // plus ROTA_INTEGRATION_ENABLED: always "false" in preflight; in live the
+    // owner flips it to "true" only at rota go-live (docs/rota.md), after
+    // migrations 063/064 and the ROTA_IDENTITY_SECRET secret are in place.
     //
     // LIVE. A Workers route on the EXISTING proxied DNS record of petrios.uk
     // makes the Worker serve the traffic; no DNS record is created, changed or
@@ -87,7 +93,9 @@
         "CRON_ENABLED": "true",
         "OUTBOUND_EMAIL_ENABLED": "true",
         "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip",
-        "HOSTING_PROVIDER": "cloudflare-workers"
+        "HOSTING_PROVIDER": "cloudflare-workers",
+        // Off until the owner's rota go-live (see the comment above).
+        "ROTA_INTEGRATION_ENABLED": "false"
       },
       // Deploy fails unless these exist as secrets of the "petrios" Worker.
       // MAIL_FROM: lib/email.ts cannot send without it. PRIVACY_CONTROLLER_NAME
@@ -129,7 +137,8 @@
         "CRON_ENABLED": "false",
         "OUTBOUND_EMAIL_ENABLED": "false",
         "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip",
-        "HOSTING_PROVIDER": "cloudflare-workers"
+        "HOSTING_PROVIDER": "cloudflare-workers",
+        "ROTA_INTEGRATION_ENABLED": "false"
       },
       "secrets": {
         "required": [

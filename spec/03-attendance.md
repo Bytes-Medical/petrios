@@ -30,7 +30,11 @@ derivation contract.
 4. Feedback submission, teacher invitation acceptance, and teaching-slot claim
    do not create policy-v2 attendance. Recall is a narrow exception: only the
    guarded Audio Recap completion RPC can append source `RECALL` and transition
-   a current finalized expected attendee from `ABSENT` to `PRESENT`.
+   a current finalized expected attendee from `ABSENT` or `EXCUSED` to
+   `PRESENT`. The `EXCUSED` path exists only once migration 064 is applied;
+   before that the RPC and the application accept `ABSENT` only (spec 08).
+   Rota availability (spec 14) never creates attendance: it only suggests an
+   excusal that a moderator confirms row by row.
 5. A certificate requires the current finalized revision and a `PRESENT` or
    `LATE` result. Both application code and a database trigger enforce this.
 6. Finalized attendance cannot be generally edited. A moderator correction must
@@ -181,8 +185,18 @@ change; it creates a controlled review window.
 
 Manual marking uses `MODERATOR_CONFIRMATION`, a new random idempotency key, a
 required reason, and an explicit override of `PRESENT`, `LATE`, `ABSENT`, or
-`EXCUSED`. It outranks all earlier evidence but does not delete it. After review,
-the moderator finalizes again, creating the next revision.
+`EXCUSED`. It outranks every other source but does not delete it. Among several
+moderator decisions for one person, the **latest** wins (latest `observed_at`,
+then latest `created_at`, then highest id), so a moderator can correct their own
+earlier confirmation by appending a new one. Before this rule an equal-priority
+tie went to the earliest row, so a second confirmation could not override the
+first. The policy-v2 database RPC applies the new rule from migration 064, and
+`lib/attendance/compute.ts` (used for policy-v1 recomputation) follows the same
+064 marker (`recall_catchup_eligible_statuses_v1()` including `EXCUSED`): until
+it exists `recomputeAttendance` passes `latestDecisionWins: false` and keeps
+the earliest-first rule, so the two implementations never disagree whichever
+ships first. After review, the moderator finalizes again, creating the next
+revision.
 
 Calling finalize twice without an intervening reopen is rejected by the
 database trigger, even if a client bypasses the disabled UI button.
@@ -204,16 +218,45 @@ For a subject, derivation:
 1. revalidates every row using its stored `observed_at`;
 2. under policy v2 excludes `FEEDBACK` and `TEACHER` rows whose
    metadata says `assigned_as_teacher: true`;
-3. sorts valid evidence by priority descending and then observation time
-   ascending;
-4. selects the first row as primary;
-5. uses its `status_override` when present, otherwise derives `PRESENT` or
-   `LATE`; and
+3. if any valid `MODERATOR_CONFIRMATION` exists, selects the **latest** one
+   (latest `observed_at`, then `created_at`, then id) as primary. When that
+   decision's `status_override` is `ABSENT` or `EXCUSED` and a valid `RECALL`
+   row was observed **after** it, the earliest such `RECALL` row becomes primary
+   instead, so a completed catch-up is not undone by a later recomputation; a
+   moderator decision recorded after the catch-up still wins. The rule is keyed
+   on status and order only, never on a reason code;
+4. otherwise sorts valid evidence by priority descending and then observation
+   time ascending, and selects the first row;
+5. uses the primary row's `status_override` when present, otherwise derives
+   `PRESENT` or `LATE`; and
 6. returns `ABSENT` with no primary source when no evidence is valid.
 
+Parity cases (policy v2; session 12:30–13:30; `t1 < t2 < t3` after the end):
+
+| # | Evidence | Status / primary |
+|---|---|---|
+| P1 | none | `ABSENT` / none |
+| P2 | `SELF_CHECKIN` 12:25 | `PRESENT` / `SELF_CHECKIN` |
+| P3 | `SELF_CHECKIN` 12:25, MC `EXCUSED` t1 | `EXCUSED` / MC |
+| P4 | MC `EXCUSED` t1, MC `PRESENT` t2 | `PRESENT` / MC (latest decision wins) |
+| P5 | MC `EXCUSED` t1, `RECALL` t2 | `PRESENT` / `RECALL` |
+| P6 | MC `EXCUSED` t1, `RECALL` t2, MC `EXCUSED` t3 | `EXCUSED` / MC |
+| P7 | MC `ABSENT` t1, `RECALL` t2 | `PRESENT` / `RECALL` |
+| P8 | MC `EXCUSED` t1, `RECALL` t2, `TEAMS` t3 | `PRESENT` / `RECALL` |
+| P9 | `RECALL` t1, MC `EXCUSED` t2 | `EXCUSED` / MC |
+
+Neither finalization nor reopening recomputes results; recomputation happens
+only when new evidence is recorded for that person. The rule matters when a
+reopened session receives new evidence for someone whose catch-up is already
+recognized.
+
 The TypeScript implementation is `lib/attendance/compute.ts`. The policy-v2 RPC
-mirrors its source filtering, priority, and lateness rules. A semantic change
-must update both implementations, the tests, and this specification.
+mirrors its source filtering, priority, primary-selection, and lateness rules
+(from migration 064 for the moderator-decision and RECALL rules above; before
+064 the TypeScript side is called with `latestDecisionWins: false`, which is
+steps 4–6 alone). A semantic change must update both implementations, the
+parity tests (`compute.test.ts` and the lab check L10), and this
+specification.
 
 ### Time boundaries
 
@@ -320,6 +363,47 @@ The current app deliberately rejects attempts to create `FEEDBACK`, `RECALL`, or
 ordinary `TEACHER` evidence through `addEvidence`. Accepting a teaching
 assignment or slot changes teaching responsibility only.
 
+### Rota excusal suggestions
+
+Where rota availability is enabled (spec 14), the manage page's Attendance tab
+shows an **Expected roster** panel above the attendance list from session start
+until finalization. It lists the department's current trainees who have no
+valid presence evidence (`SELF_CHECKIN`, `GROUP_CODE`, `TEAMS`, or a
+non-assignment `TEACHER` row), which also shows people with no evidence before
+finalize materializes their `ABSENT`. A trainee the rota had unavailable reads
+`Suggested: excused (rostered unavailable) · rota as of {time} (as worked|planned)`.
+Each row has its own Confirm and Dismiss; there is no bulk action and nothing is
+pre-selected. Confirm is disabled before `date_end`, because a confirmed excusal
+outranks every live source and could otherwise hide a later check-in. The panel
+is policy-v2 and `PUBLISHED` only. A trainee with catch-up (`RECALL`) evidence
+is not listed: after a reopen, a new excusal would outrank the completed
+catch-up, which could not be redone.
+
+Confirm calls the service-only `confirm_rota_excusal_v1`, not `addEvidence`. In
+one transaction it locks the session, requires policy v2, `PUBLISHED`, not
+finalized, and `date_end <= now()`, moves the suggestion from `OPEN` to
+`CONFIRMED`, refuses when presence evidence, catch-up (`RECALL`) evidence
+(`rota:caught_up`) or any `MODERATOR_CONFIRMATION` already exists for the
+person, and calls `record_attendance_evidence_v2` with
+`MODERATOR_CONFIRMATION`, reason `Rostered unavailable (rota)`, the
+deterministic key `ROTA_EXCUSAL:<session>:<user>:<attendance_revision>`, and
+metadata:
+
+```json
+{ "status_override": "EXCUSED", "reason_code": "ROTA_UNAVAILABLE",
+  "rota_batch_id": "<uuid>", "rota_kind": "WORKED", "rota_as_of": "<timestamp>",
+  "actor_user_id": "<uuid>" }
+```
+
+It appends the activity event `ROTA_EXCUSAL_CONFIRMED`. The metadata holds no
+leave category. The batch id makes the decision traceable to the upload audit
+row, which stores counts and a keyed digest only. Two concurrent confirms write
+exactly one evidence row. Dismiss writes no evidence, only the activity event
+`ROTA_SUGGESTION_DISMISSED` (a trainee's contest writes `ROTA_FLAG_CONTESTED`).
+Finalization is unchanged and never depends on rota data; the finalize
+confirmation only warns, in the browser, how many rota suggestions are still
+undecided and will be recorded as absent.
+
 For an accepted external teacher, the Attendance management list displays the
 invitation name/email even before a computed row exists. A department moderator
 may append `MODERATOR_CONFIRMATION` evidence for that normalized email with a
@@ -335,7 +419,8 @@ that user and is never used for attendance or certificate eligibility.
 
 Passing Recall questions records learning completion and can update the Recall
 attempt state. Under policy v2, only the full governed path in spec 08—matching
-account, expected finalized absentee, completed current audio, five published
+account, expected attendee finalized `ABSENT` (or `EXCUSED` once migration 064 is
+applied), completed current audio, five published
 questions, and a perfect 5/5 attempt—creates append-only `RECALL` evidence and
 sets that same-revision result to `PRESENT`. The source is displayed as **Audio
 recap catch-up** and never as physical attendance. A quiz result alone has no

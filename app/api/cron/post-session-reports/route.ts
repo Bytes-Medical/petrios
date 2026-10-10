@@ -17,6 +17,7 @@ import * as onboardingDb from '@/lib/db/onboarding'
 import * as deliveriesDb from '@/lib/db/session-deliveries'
 import { requireCertificateEligibility } from '@/lib/certificates/eligibility'
 import { resolveTeachingCoordinatorNames } from '@/lib/certificates/coordinators'
+import * as rotaDb from '@/lib/db/rota'
 
 // Estimated subrequests reserved against the run budget. A webhook costs one
 // endpoint lookup plus a POST and a delivery row per subscribed endpoint.
@@ -29,6 +30,24 @@ const RECIPIENT_DELIVERY_COST = 20
 // cap of 10, the first of ten sessions may spend at most 8,000 - 9 * 400.
 const LATER_SESSION_RESERVE = 400
 
+/**
+ * Rota-availability retention purge (spec/14), piggybacked on this hourly
+ * cron so no new trigger is needed. Deletion-only, so it runs even with the
+ * rota kill switch off (the one rota call that does, so the retention promise
+ * holds after a switch-off). Before migration 063 it is a silent no-op, and a
+ * failure never fails the cron: it is logged without details and the next
+ * run (or the next ingest) retries.
+ */
+async function runRotaPurge(): Promise<Record<string, number> | null> {
+  try {
+    const purged = await rotaDb.purgeRotaData()
+    return purged === 'not_installed' ? null : purged
+  } catch {
+    console.error('[rota] purge failed')
+    return null
+  }
+}
+
 export async function GET(request: NextRequest) {
   const unauthorized = unauthorizedCronResponse(request)
   if (unauthorized) return unauthorized
@@ -36,7 +55,12 @@ export async function GET(request: NextRequest) {
   const sessions = await sessionsDb.listSessionsNeedingReport()
 
   if (sessions.length === 0) {
-    return NextResponse.json({ message: 'No sessions to process', processed: 0 })
+    const rotaPurged = await runRotaPurge()
+    return NextResponse.json({
+      message: 'No sessions to process',
+      processed: 0,
+      rota_purged: rotaPurged,
+    })
   }
 
   const mailer = getEmailClient()
@@ -263,11 +287,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const rotaPurged = await runRotaPurge()
+
   return NextResponse.json({
     message: `Processed ${processedCount} of ${sessions.length} sessions`,
     processed: processedCount,
     total: sessions.length,
     deferredSessions,
     deferredRecipients,
+    rota_purged: rotaPurged,
   })
 }

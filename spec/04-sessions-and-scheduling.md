@@ -50,6 +50,21 @@ Rules enforced by the server:
 - bearer API publish is idempotent when already `PUBLISHED` and blocks an ended
   session.
 
+**Rota flags follow the session's times.** Where rota availability is enabled
+(spec 14), a session can carry per-trainee "rostered unavailable" flags computed
+for its exact start and end. After a successful `updateSession`, the action
+awaits `onSessionScheduleChanged` (`lib/rota/session-hooks.ts`): when
+`date_start` or `date_end` changed, or the status became `CANCELLED`, it deletes
+that session's flags, and the next rota upload recomputes them. The hook runs
+only while `ROTA_INTEGRATION_ENABLED` is exactly `"true"`, swallows a
+not-yet-applied migration, and never fails the edit. Independently, every flag
+snapshots the session times it was computed for, and reads, confirmation, and
+the purge ignore or delete a flag whose snapshot no longer matches, so an edit
+made while the switch was off cannot surface stale flags. A moderator's
+already-confirmed rota excusal is attendance evidence and is not removed by a
+time change; it is corrected through the ordinary reopen/correction flow
+(spec 03). Deleting a session cascades to its flags.
+
 The interactive start-time picker offers quarter-hour values from 08:00 through
 17:30. A stored off-range or off-grid time remains available when editing so an
 unrelated edit never silently shifts it. Browser-entered wall times are
@@ -954,7 +969,8 @@ index. Reopening remains a separate, explicitly authorized workflow.
 - Define server-side date, duration, and status validation; UI validation alone
   is advisory.
 - Decide how edits affect already-sent reminders, invites, ICS caches, Recall,
-  and report watermarks.
+  report watermarks, and rota flags (a time change or cancellation deletes
+  them; spec 14).
 - Use `sessionMeetingUrl(session, audience)` for new outbound surfaces and
   choose the audience deliberately (external teachers cannot open session
   pages); never put a raw `8x8.vc` or token-protected room URL in a message.
