@@ -205,7 +205,12 @@ async function issueRegisteredCertificate(input: {
 
   let certificate
   try {
-    certificate = await certificatesDb.insertCertificate({
+    // Service role: the session was loaded within the caller's organisation and
+    // requireDepartmentModerator ran in every caller. The RLS-client insert
+    // failed once an RLS helper had set row_security=off for the transaction
+    // (the eligibility trigger then reads session_teachers: 42501). The
+    // database eligibility trigger stays authoritative.
+    certificate = await certificatesDb.insertCertificateAsSystem({
       orgId: session.org_id,
       departmentId: session.department_id,
       sessionId: session.id,

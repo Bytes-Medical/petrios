@@ -52,65 +52,12 @@ export async function countCertificatesForSession(
   return count ?? 0
 }
 
-export async function insertCertificate(input: {
-  orgId: string
-  departmentId: string
-  sessionId: string
-  userId: string | null
-  invitationId?: string | null
-  role: CertificateRole
-  certificateCode: string
-  recipientName?: string
-  issuedBy?: string | null
-  issuedByName?: string | null
-  recipientEmail?: string | null
-  coordinatorNames?: string[]
-  attendanceRevision?: number | null
-  issuanceSource?: string
-  recognitionBasis?: CertificateRecognitionBasis
-}): Promise<Certificate> {
-  const db = await getDb()
-
-  const row: Record<string, unknown> = {
-    org_id: input.orgId,
-    department_id: input.departmentId,
-    session_id: input.sessionId,
-    user_id: input.userId,
-    invitation_id: input.invitationId ?? null,
-    certificate_role: input.role,
-    certificate_code: input.certificateCode,
-  }
-  if (input.recipientName !== undefined) {
-    row.recipient_name = input.recipientName
-  }
-  if (input.issuedBy !== undefined) {
-    row.issued_by = input.issuedBy
-  }
-  if (input.issuedByName !== undefined) {
-    row.issued_by_name = input.issuedByName
-  }
-  if (input.recipientEmail !== undefined) row.recipient_email = input.recipientEmail
-  if (input.coordinatorNames !== undefined) row.coordinator_names = input.coordinatorNames
-  if (input.attendanceRevision !== undefined) row.attendance_revision = input.attendanceRevision
-  if (input.issuanceSource !== undefined) row.issuance_source = input.issuanceSource
-  row.recognition_basis = input.recognitionBasis ?? (
-    input.role === 'TEACHER' ? 'TEACHING_ASSIGNMENT' : 'LIVE_ATTENDANCE'
-  )
-  row.status = 'VALID'
-
-  const { data, error } = await db
-    .from('certificates')
-    .insert(row)
-    .select()
-    .single()
-
-  if (error) throw toDbError('Failed to create certificate', error)
-  return data as Certificate
-}
-
 /**
- * Service-role: used by the post-session cron and the explicitly authorized
- * moderator batch. The database eligibility trigger remains authoritative.
+ * Service-role: used by the post-session cron and by moderator issuance after
+ * the action has loaded the session in the caller's organisation and checked
+ * requireDepartmentModerator. The database eligibility trigger remains
+ * authoritative. (An RLS-client insert fails with 42501 once an RLS helper
+ * has set row_security=off for the transaction.)
  */
 export async function insertCertificateAsSystem(input: {
   orgId: string
