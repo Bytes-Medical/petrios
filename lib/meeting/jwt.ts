@@ -1,6 +1,6 @@
 /**
  * Minimal JWT signing for Petrios Meet room passes on WebCrypto
- * (globalThis.crypto.subtle), so the same code runs on Render (Node) and on
+ * (globalThis.crypto.subtle), so the same code runs on Node (Docker) and on
  * Cloudflare Workers. No jsonwebtoken, no node:crypto.
  *
  * Nothing here logs, and no error message ever contains key material.

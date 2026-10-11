@@ -92,8 +92,8 @@ function toBase64(content: Buffer | Uint8Array | string): string {
 
 /**
  * Deployment-level outbound email switch. Unset, or any value other than
- * exactly "false", leaves email unchanged (Render and self-hosting never set
- * it). "false" refuses a send before any transport is contacted, unless every
+ * exactly "false", leaves email unchanged (the production Worker sets "true";
+ * Docker/self-hosted deployments never set it). "false" refuses a send before any transport is contacted, unless every
  * recipient is listed in OUTBOUND_EMAIL_ALLOWLIST. The Cloudflare staging
  * Worker sets it because it serves the production database: mail sent from it
  * would carry the staging origin in its links and certificate QR codes, and a

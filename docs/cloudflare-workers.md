@@ -1,19 +1,21 @@
 # Running Petrios on Cloudflare Workers
 
-Petrios can also run on Cloudflare Workers through
+Petrios runs on Cloudflare Workers through
 [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare) (1.20.10) and
-wrangler (4.149). The production host is **Render** (Docker, Node 24,
-`output: 'standalone'`) until the owner runs the [Cutover](#cutover). Nothing in
-this layer changes how the Docker image is built or run: the Cloudflare files
-are excluded from the Docker context (`.dockerignore`), and the app code is the
-same on both runtimes.
+wrangler (4.149). **Production is the Worker `petrios`**, served since
+2026-10-11 through the Workers Custom Domains `petrios.uk` and
+`app.petrios.uk` ([Production](#production)). Render, the previous host, is
+retired. The Docker/Node build (`output: 'standalone'`,
+[self-hosting](self-hosting.md)) stays supported for self-hosting and is
+unchanged by this layer: the Cloudflare files are excluded from the Docker
+context (`.dockerignore`), and the app code is the same on both runtimes.
 
 Two Workers are configured. The **staging** Worker (`petrios-staging`,
 `npm run cf:deploy:staging`) uses its `workers.dev` URL and has no routes and
 no cron triggers. The **production** Worker (`petrios`,
-`npm run cf:deploy:production -- <phase>`) has a `preflight` phase on
-`workers.dev` only and a `live` phase that serves `petrios.uk` through a Workers
-route and runs every scheduled job; `rollback` returns the traffic to Render.
+`npm run cf:deploy:production -- deploy`) serves the two custom domains, runs
+every scheduled job and is the only host that emails real users; `rollback`
+restores an earlier version of its code and vars.
 
 ## Architecture
 
@@ -28,13 +30,13 @@ Browser ──► Cloudflare
 
 | File | Purpose |
 |---|---|
-| `wrangler.jsonc` | Worker config. The top level is the staging Worker (`petrios-staging`). `env.production` (live) and `env.production_preflight` are the two phases of the production Worker (`petrios`) |
+| `wrangler.jsonc` | Worker config. The top level is the staging Worker (`petrios-staging`); `env.production` is the production Worker (`petrios`) and its only other environment |
 | `open-next.config.ts` | `defineCloudflareConfig()` with no incremental cache. The root layout is `force-dynamic`, so pages are never served from an ISR/SSG cache |
 | `cfw/worker.ts` | Custom entry. It re-exports OpenNext's `fetch` and adds `scheduled()` |
 | `cfw/yoga-redirect.ts`, `cfw/yoga-install.ts` | Make react-pdf work on Workers (see [PDFs and fonts](#pdfs-and-fonts)) |
 | `cfw/cron.ts` | Pure cron-expression → `/api/cron/*` mapping and the `scheduled()` handler, with tests |
 | `scripts/cloudflare/*.mjs` | `cf:build`, `cf:preview`, `cf:deploy:staging`, `cf:deploy:production` and the secret guard |
-| `scripts/cloudflare/production-secrets.template.json` | Every production secret name with an empty value; copied and filled **outside** the repository ([Cutover](#step-1-production-secrets-first-time)) |
+| `scripts/cloudflare/production-secrets.template.json` | Every production secret name with an empty value; copied and filled **outside** the repository ([Secrets](#secrets)) |
 | `.dev.vars.example` | Variable names and placeholders for local preview |
 
 Generated, never committed: `.open-next/`, `.wrangler/`, `.dev.vars`,
@@ -51,7 +53,7 @@ Generated, never committed: `.open-next/`, `.wrangler/`, `.dev.vars`,
   in, and only `cf:deploy:staging` and `cf:deploy:production` contact
   Cloudflare. Wrangler telemetry is off
   (`"send_metrics": false` and `WRANGLER_SEND_METRICS=false` in the scripts).
-- Node 24, as on Render. The scripts need Node ≥ 20.12 for `util.parseEnv`.
+- Node 24. The scripts need Node ≥ 20.12 for `util.parseEnv`.
 
 ## Build: `npm run cf:build`
 
@@ -118,6 +120,11 @@ The script refuses to deploy when:
   `ROTA_INTEGRATION_ENABLED` other than `"false"`. The rota pin keeps the
   staging Worker from ever writing trainee rota data to the production database
   (`docs/rota.md`, spec 14).
+- the top-level `name` is the production Worker's (`petrios`, or whatever
+  `env.production.name` says), or `services` is not exactly the
+  `WORKER_SELF_REFERENCE` binding to the top-level name. Custom domains persist
+  across deploys, so the staging config deployed as `petrios` would put an
+  email-off version on `petrios.uk` and clear its cron schedules.
 - a `--secrets-file` fails the checks below.
 - `cf:build` or its guard fails.
 
@@ -137,7 +144,7 @@ APP_URL=https://petrios-staging.<sub>.workers.dev npm run cf:deploy:staging -- -
 The file (dotenv or a JSON object) should hold the four required secrets
 (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
 `CRON_SECRET`) and, if wanted, names from the optional-secrets row below.
-Write it by hand: do not copy `.dev.vars` or Render's environment. Wrangler
+Write it by hand: do not copy `.dev.vars` or the production secrets. Wrangler
 binds the file *after* the config and `--var`, with no collision check, so a
 same-named entry would silently replace a validated var. `cf:deploy:staging`
 therefore reads the file's variable **names** (never values) and refuses it if
@@ -168,10 +175,10 @@ variables are read at runtime, server-side only, by `lib/meeting/config.ts`
 
 | Kind | Names |
 |---|---|
-| `vars` in `wrangler.jsonc` | `APP_URL` (staging: empty in config, set per deploy; production: `https://petrios.uk` in both phases), `CRON_ENABLED` (`"false"` at top level and in `env.production_preflight`, `"true"` only in `env.production`), `OUTBOUND_EMAIL_ENABLED` (`"false"` at top level and in preflight, `"true"` in `env.production`; see [Outbound email on staging](#outbound-email-on-staging)), `TRUSTED_CLIENT_IP_HEADER` (`"cf-connecting-ip"` everywhere: Cloudflare overwrites it, while the first `x-forwarded-for` hop is client-supplied, so the login-link and group-code rate limits must not use it), `HOSTING_PROVIDER` (`"cloudflare-workers"` everywhere, so `/privacy` and `/subprocessors` name Cloudflare Workers as the application host), `ROTA_INTEGRATION_ENABLED` (`"false"` at top level and in `env.production_preflight`, enforced by the validators; declared `"false"` in `env.production` too until the owner's rota go-live, when only that value becomes `"true"`; see [Rota availability on Workers](#rota-availability-on-workers)) |
-| Required secrets: deploy fails without them | Staging: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`. Production (both phases) adds `RESEND_API_KEY`, `MAIL_FROM`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTACT_EMAIL` (`PRIVACY_CONTROLLER_ADDRESS`, `DATA_HOSTING_REGION` and `DATA_TRANSFER_SAFEGUARDS` are optional, as on Render, and show as not declared until set) |
+| `vars` in `wrangler.jsonc` | `APP_URL` (staging: empty in config, set per deploy; production: `https://petrios.uk`), `CRON_ENABLED` (`"false"` at top level, `"true"` only in `env.production`), `OUTBOUND_EMAIL_ENABLED` (`"false"` at top level, `"true"` in `env.production`; see [Outbound email on staging](#outbound-email-on-staging)), `TRUSTED_CLIENT_IP_HEADER` (`"cf-connecting-ip"` everywhere: Cloudflare overwrites it, while the first `x-forwarded-for` hop is client-supplied, so the login-link and group-code rate limits must not use it), `HOSTING_PROVIDER` (`"cloudflare-workers"` everywhere, so `/privacy` and `/subprocessors` name Cloudflare Workers as the application host), `ROTA_INTEGRATION_ENABLED` (`"false"` at top level, enforced by the validators; declared `"false"` in `env.production` too until the owner's rota go-live, when only that value becomes `"true"`; see [Rota availability on Workers](#rota-availability-on-workers)) |
+| Required secrets: deploy fails without them | Staging: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`. Production adds `RESEND_API_KEY`, `MAIL_FROM`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTACT_EMAIL` (`PRIVACY_CONTROLLER_ADDRESS`, `DATA_HOSTING_REGION` and `DATA_TRANSFER_SAFEGUARDS` are optional and show as not declared until set) |
 | Optional secrets (set when used) | `ATTENDANCE_RATE_LIMIT_SECRET`, `INSTANCE_SIGNING_KEY`, `RESEND_API_KEY` and `MAIL_FROM` (staging: only reach `OUTBOUND_EMAIL_ALLOWLIST` addresses), `OUTBOUND_EMAIL_ALLOWLIST` (staging only), `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_FALLBACKS`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `TTS_PROVIDER`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `OPS_ENABLED`, `OPS_ASSISTANT_ENABLED`, `ROTA_IDENTITY_SECRET` (production only, at least 32 random bytes; never needed on staging, where rota is pinned off), Petrios Meet: `JAAS_APP_ID`, `JAAS_API_KEY_ID`, `JAAS_PRIVATE_KEY` (all three or none; the private key is a critical secret), or `JITSI_DOMAIN` with optional `JITSI_APP_ID` + `JITSI_APP_SECRET` (critical secret), `JITSI_JWT_AUDIENCE`, `JITSI_JWT_SUBJECT`, `TEACHER_INVITATIONS_RLS_LOCKED` (exactly `true` only after the spec 13 database fix), `GOOGLE_SITE_VERIFICATION`, `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL`, `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` |
-| Not secret, usually unset | `APP_TIME_ZONE` (IANA zone for server-rendered dates and teaching-slot wall times; default `Europe/London`, so a UK deployment sets nothing). To change it, add it to `vars` in `wrangler.jsonc` at the top level **and** in both production environments (environments do not inherit `vars`; the production validator requires identical keys), which also lets `cf:preview` read it from `.dev.vars`; or store it as a secret like `MAIL_FROM` (the production secrets template lists it: copy it if Render sets it). `TZ` has no effect: the Workers clock is always UTC |
+| Not secret, usually unset | `APP_TIME_ZONE` (IANA zone for server-rendered dates and teaching-slot wall times; default `Europe/London`, so a UK deployment sets nothing). To change it, add it to `vars` in `wrangler.jsonc` at the top level **and** in `env.production` (environments do not inherit `vars`), which also lets `cf:preview` read it from `.dev.vars`; or store it as a secret like `MAIL_FROM` (the production secrets template lists it). `TZ` has no effect: the Workers clock is always UTC |
 | Never set on Workers | `SUPABASE_INTERNAL_URL`, `AUTH_INTERNAL_URL`, `STORAGE_INTERNAL_URL`: Docker-network hostnames, which `global_fetch_strictly_public` blocks. Also `SELF_HOSTED_SETUP`/`SETUP_TOKEN` (self-host setup depends on unapplied migration 061), `DATABASE_URL`, and `NEXTJS_ENV` |
 | Build-time only | `NODE_ENV` is inlined as `production` by `next build` |
 
@@ -183,9 +190,10 @@ secrets file and as stored secrets.
 ### Petrios Meet on Workers
 
 The meeting mode (spec 04 "Petrios Meet") is resolved per request from the
-Worker's environment, so it can differ between Render and the staging Worker.
-Store every meeting variable as a secret, like `MAIL_FROM`, because deploys
-remove dashboard-only plain variables:
+Worker's environment, so it can differ between the production and staging
+Workers. Store every meeting variable as a secret, like `MAIL_FROM`, because
+deploys remove dashboard-only plain variables. The commands below set them on
+staging (`--env=""`); for production use `--env production` instead:
 
 ```bash
 npx wrangler secret put JAAS_APP_ID --env=""
@@ -197,7 +205,7 @@ npx wrangler secret put JAAS_PRIVATE_KEY --env="" < /path/to/jaas-private-key.pe
 echo true | npx wrangler secret put TEACHER_INVITATIONS_RLS_LOCKED --env=""
 ```
 
-Full JaaS walkthrough (console, Render, verification): `docs/petrios-meet.md`.
+Full JaaS walkthrough (console, Worker secrets, verification): `docs/petrios-meet.md`.
 
 - `JAAS_PRIVATE_KEY` and `JITSI_APP_SECRET` are critical secrets. Never put them
   in `wrangler.jsonc`, `.dev.vars`, or a repository file.
@@ -219,17 +227,18 @@ Full JaaS walkthrough (console, Render, verification): `docs/petrios-meet.md`.
 The staging Worker serves the **production** database. Any email it sent would
 carry the staging origin: sign-in and invitation links, and certificate PDFs
 whose QR code and verify link point at `workers.dev`. A delivery it marked
-`SENT` is never re-sent from Render, and external teachers have no other copy
+`SENT` is never re-sent from production, and external teachers have no other copy
 of their certificate. So the top level sets `OUTBOUND_EMAIL_ENABLED="false"`,
 which `cf:deploy:staging` requires, and `lib/email.ts` then refuses every send
 before contacting any provider. A refusal is an ordinary send error, so a
 ledger-backed delivery (certificates, reminders) records a retryable failure
-that Render can send later with the production origin.
+that the production Worker can send later with the production origin.
 
 To test email on staging, set the `OUTBOUND_EMAIL_ALLOWLIST` secret to your own
 address(es), comma-separated. Only a send whose every recipient is on the list
 goes out. `OUTBOUND_EMAIL_ENABLED` unset, or any value other than exactly
-`"false"`, leaves email unchanged, so Render, which never sets it, is unaffected.
+`"false"`, leaves email unchanged: production sets `"true"`, and Docker or
+self-hosted deployments never set it.
 
 Even with email off, staging writes to the production database. Do not run real
 workflows there: generating certificates, inviting teachers, publishing slots
@@ -239,77 +248,77 @@ deliveries for everyone not on the allowlist).
 ### Rota availability on Workers
 
 Rota availability (spec 14, [docs/rota.md](rota.md)) is off unless
-`ROTA_INTEGRATION_ENABLED` is exactly `"true"`. The staging Worker and the
-production preflight both serve the production database, so `wrangler.jsonc`
-pins it to `"false"` in the top-level `vars` and in
-`env.production_preflight.vars`; `stagingConfigProblems` and
-`productionConfigProblems` (`scripts/cloudflare/lib.mjs`) refuse a deploy with
-any other value there, and the secrets checks refuse a secret named like the
-var. `env.production.vars` declares it too (`"false"` today), because
-`productionConfigProblems` requires both production phases to declare the same
-`vars` keys, and the two phases are one Worker sharing its secrets, so a secret
-of that name would shadow preflight's `"false"`. The value is the one key
-allowed to differ between the phases: preflight must be `"false"`, live must be
-`"false"` or `"true"`.
+`ROTA_INTEGRATION_ENABLED` is exactly `"true"`. The staging Worker serves the
+production database, so `wrangler.jsonc` pins it to `"false"` in the top-level
+`vars`; `stagingConfigProblems` (`scripts/cloudflare/lib.mjs`) refuses a
+staging deploy with any other value, and the secrets checks refuse a secret
+named like the var. `env.production.vars` declares it too (`"false"` today);
+`productionConfigProblems` requires it to be declared as `"false"` or
+`"true"`, and a stored secret of that name would shadow it, so the deploy
+refuses one.
 
 **Rota go-live on Workers** (owner only, after migrations 063 and 064 are
 applied and the pilot's DPIA reference exists):
 
-1. Set the `ROTA_IDENTITY_SECRET` Worker secret (copy Render's value byte for
-   byte if Render already has one; a new value orphans every identity link).
+1. Set the `ROTA_IDENTITY_SECRET` Worker secret, at least 32 random bytes
+   (`openssl rand -base64 48`), with
+   `npx wrangler secret put ROTA_IDENTITY_SECRET --env production`. If one was
+   ever set on Render, reuse that value byte for byte: a new value orphans
+   every identity link made with the old one.
 2. Edit only `env.production.vars.ROTA_INTEGRATION_ENABLED` in `wrangler.jsonc`
-   from `"false"` to `"true"`. Leave the top-level and preflight values at
-   `"false"`.
-3. Deploy with `npm run cf:deploy:production -- live --render-crons-disabled`
-   as usual; `check-secrets` and the validators run first.
+   from `"false"` to `"true"`. Leave the top-level value at `"false"`.
+3. Deploy with `npm run cf:deploy:production -- deploy --dry-run`, then
+   `npm run cf:deploy:production -- deploy`; the validators run first.
 
-To switch it off again, set the live value back to `"false"` and redeploy
-(disable each organisation in Settings first, `docs/rota.md` section 7).
-Leave `ROTA_IDENTITY_SECRET` unset on staging.
+To switch it off again, set the value back to `"false"` and deploy (disable
+each organisation in Settings first, `docs/rota.md` section 7). Leave
+`ROTA_IDENTITY_SECRET` unset on staging. A `rollback` restores the target
+version's value of the switch and says so when it differs.
 
 Even with the switch off, the deletion-only rota purge runs inside every
-`post-session-reports` cron run. Staging has no crons and preflight dispatches
-none, so on those hosts it never runs; on staging only check that the feature
-is inert (the rota pages return 404 and the actions refuse).
+`post-session-reports` cron run of the production Worker. Staging has no crons,
+so it never runs there; on staging only check that the feature is inert (the
+rota pages return 404 and the actions refuse).
 
-### Privacy register while staging serves production data
+### Privacy register
 
 A Worker processes personal data: requests, IP addresses and auth cookies, the
 application data it reads from and writes to the database, and Workers Logs
 (`observability` is enabled), which keep console output, including error lines
 that name recipient email addresses, for Cloudflare's plan-dependent retention
-period. On the Worker itself, `/privacy` and `/subprocessors` name "Cloudflare
-Workers" as the host. The register that Render serves cannot know a staging
-Worker exists, so before deploying one that uses the production database:
+period. On every Worker, `/privacy` and `/subprocessors` name "Cloudflare
+Workers" as the host (`HOSTING_PROVIDER`). Production runs on Cloudflare, so:
 
-1. add Cloudflare (Workers and Workers Logs, its region and retention) to the
-   controller's recipient register, the DPIA (`docs/compliance/dpia-template.md`)
-   and the executed DPA's subprocessor list;
-2. cover it in `DATA_TRANSFER_SAFEGUARDS` on both Render and the Worker; and
-3. remove those entries when the staging Worker is deleted, or keep them at
-   cutover when the Worker becomes the production host.
+1. record Cloudflare (Workers, Workers Logs and the custom domains' edge, its
+   regions and retention) in the controller's recipient register, the DPIA
+   (`docs/compliance/dpia-template.md`) and the executed DPA's subprocessor
+   list, and close Render's entry once the retired service and its logs are
+   deleted;
+2. make the production Worker's `DATA_HOSTING_REGION` and
+   `DATA_TRANSFER_SAFEGUARDS` secrets describe Cloudflare's network as well as
+   the Supabase region; and
+3. keep the staging Worker in the register while it exists: it serves the same
+   database, and the production pages cannot name it separately.
 
-### Parity with Render: copy, never rotate
+### Values that must stay stable
 
 `SUPABASE_SERVICE_ROLE_KEY` doubles as an HMAC key: calendar-feed URLs, Recall
 deep links, newsletter unsubscribe links, and the rate-limit pseudonym when
 `ATTENDANCE_RATE_LIMIT_SECRET` is unset. The auth cookie name
-(`sb-<host prefix>-auth-token`) is derived from `SUPABASE_URL`. For any Worker
-that serves the production database, copy these **byte for byte from Render**:
-
+(`sb-<host prefix>-auth-token`) is derived from `SUPABASE_URL`. Every Worker
+that serves the production database must therefore hold the **same** values of
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-`ATTENDANCE_RATE_LIMIT_SECRET` (if set on Render),
-`INSTANCE_SIGNING_KEY` (if set on Render).
-
-Do not rotate any of them as part of the move. That includes switching from the
-legacy JWT service key to an `sb_secret_` key. A different value invalidates every
-calendar feed, Recall link and unsubscribe link already issued. A different
-`SUPABASE_URL` signs everyone out.
+`ATTENDANCE_RATE_LIMIT_SECRET` (if set) and `INSTANCE_SIGNING_KEY` (if set);
+the cutover runbook had them copied byte for byte from Render to the
+production Worker. A different value invalidates every calendar feed, Recall link and
+unsubscribe link already issued, and a different `SUPABASE_URL` signs everyone
+out. Rotate the service-role key only deliberately, with
+[the procedure](#rotating-the-supabase-service-role-key).
 
 `CRON_SECRET` is the exception: it is only the bearer token of `/api/cron/*`
-and nothing derives from it. Staging uses its own. The production Worker gets a
-**new** value, so a forgotten external scheduler still holding Render's value is
-refused at the Worker after the cutover (see [Cutover](#step-1-production-secrets-first-time)).
+and nothing derives from it. Each Worker has its own (the cutover runbook gave
+the production Worker a new value, so a forgotten external scheduler still
+holding Render's is refused with 401).
 
 ## Secret-leak guard
 
@@ -318,7 +327,7 @@ refused at the Worker after the cutover (see [Cutover](#step-1-production-secret
 variants) into `.open-next/cloudflare/next-env.mjs`. At runtime that file fills
 any variable Cloudflare does not set (`process.env[key] ??= value`). Built in a
 folder with real `.env` files, the Worker would ship laptop secrets and silently
-fall back to them. `.dockerignore` already keeps `.env*` out of the Render image.
+fall back to them. `.dockerignore` already keeps `.env*` out of the Docker image.
 
 `cf:build` therefore:
 
@@ -388,441 +397,494 @@ which has not been applied.
 
 Each job has its own expression, so each run is a separate invocation with its
 own CPU budget. Triggers firing at least an hour apart get 15 min of CPU;
-`recall-awards` gets 30 s. **How Render schedules these jobs today is not
-recorded in the repository.** Before cutover, inventory Render's real schedule
-and make `cfw/cron.ts` `CRON_SCHEDULE` and `env.production.triggers.crons` match
-it. `cfw/cron.test.ts` fails if the two disagree.
+`recall-awards` gets 30 s. These six expressions are the production Worker's
+Cron Triggers (`env.production.triggers.crons`, scheduled since 2026-10-11);
+change `cfw/cron.ts` `CRON_SCHEDULE` and `env.production.triggers.crons`
+together. `cfw/cron.test.ts` and `scripts/cloudflare/lib.test.ts` fail if the
+two disagree.
 
-Render runs these jobs against the **same database** until the cutover, and
-the production Worker runs them after it. Running them from two schedulers
-would double-send email (not every job has a
-per-recipient ledger; for example, ops-weekly low-score notifications have no
-dedupe). The defences are layered:
+The production Worker is the **only** scheduler of these jobs against the
+production database ([One scheduler](#one-scheduler)); running them from two
+schedulers would double-send email (not every job has a per-recipient ledger;
+for example, ops-weekly low-score notifications have no dedupe). The defences
+are layered:
 
-1. The top level (staging) and `env.production_preflight` declare
-   `"triggers": { "crons": [] }` (which clears any schedule) and no routes.
-   This is enforced by `cfw/cron.test.ts`, `scripts/cloudflare/lib.test.ts`,
-   `cf:deploy:staging` and `cf:deploy:production`.
+1. The top level (staging) declares `"triggers": { "crons": [] }` (which
+   clears any schedule) and no routes, and `env.production` is the only other
+   environment. This is enforced by `cfw/cron.test.ts`,
+   `scripts/cloudflare/lib.test.ts`, `cf:deploy:staging` and
+   `cf:deploy:production` (which also refuses a reintroduced
+   `env.production_preflight`).
 2. `scheduled()` dispatches nothing unless `CRON_ENABLED` is exactly `"true"`.
-   That value is set only in `env.production`; the top level and preflight set
-   `"false"`. A same-named entry in a `--secrets-file` silently replaces the
-   var, so `cf:deploy:staging` refuses a secrets file that names any `vars`
-   key. A stored secret and a var of the same name replace each other: a
-   deploy overwrites the secret with the var (wrangler warns and asks, and
-   answers yes by itself when not interactive), and a later `wrangler secret
-   put` overwrites the var until the next deploy. `cf:deploy:production`
+   That value is set only in `env.production`; the top level sets `"false"`.
+   A same-named entry in a `--secrets-file` silently replaces the var, so
+   `cf:deploy:staging` refuses a secrets file that names any `vars` key. A
+   stored secret and a var of the same name replace each other: a deploy
+   overwrites the secret with the var (wrangler warns and asks, and answers
+   yes by itself when not interactive), and a later `wrangler secret put`
+   overwrites the var until the next deploy. `cf:deploy:production`
    therefore refuses to deploy while a stored secret has a var's name. Never
    store a secret named `CRON_ENABLED`.
 3. The routes themselves refuse: with `CRON_ENABLED` exactly `"false"`,
    `lib/cron-auth.ts` answers every authenticated `/api/cron/*` request with
    503, so nobody holding `CRON_SECRET` can run a job on staging over HTTP.
-   Render leaves `CRON_ENABLED` unset, so its routes are unaffected.
-4. `cf:deploy:production -- live` refuses without `--render-crons-disabled`,
-   the operator's attestation that Render's scheduled jobs are suspended, and
-   rollback clears the Worker's schedules before telling the operator to
-   resume Render's. After the cutover the production Worker has a new
-   `CRON_SECRET`, so an external caller still using Render's is refused.
+   Docker and self-hosted deployments leave it unset, so their routes run.
+4. `cf:deploy:production -- deploy` publishes exactly the six schedules and
+   confirms them from the API; `rollback` never touches them. The production
+   `CRON_SECRET` is the Worker's own, so any external caller is refused.
 
-## Cutover
+## Production
 
-Moving production (`petrios.uk`, today Render behind Cloudflare-proxied DNS) to
-the Worker `petrios`, together with **all** scheduled jobs. Only the account
-owner runs these steps. The move is reversible and changes **no DNS record**:
-the proxied `petrios.uk` record stays exactly as it is (and the email records
-are never touched). A Workers **route**, `petrios.uk/*`, makes the Worker
-answer instead of Render; deleting the route hands the traffic straight back to
-Render.
+Production is the Worker `petrios` (wrangler environment `env.production`,
+account `610371b5de9811b7d258c7622c23849b`, zone `petrios.uk`). It is the only
+production host, the only scheduler of the cron jobs and the only host that
+emails real users. Only the account owner deploys it, always with
+`npm run cf:deploy:production` (`scripts/cloudflare/deploy-production.mjs`);
+`productionConfigProblems()` in `scripts/cloudflare/lib.mjs` (unit-tested in
+`lib.test.ts` and `cfw/cron.test.ts`) refuses any other shape of
+`env.production`, and a reintroduced `env.production_preflight`.
 
-`www.petrios.uk` gets no route. Today Cloudflare itself answers it with a 301
-to `https://petrios.uk/...` (the response has `cf-ray` but no Render `rndr-id`;
-checked 2026-10-09), so the redirect does not depend on Render or on the
-Worker, and the cutover leaves it as it is. Before Render is decommissioned,
-check again that the `www` 301 carries no `rndr-id`.
+### Domains
 
-### Phases
+| Hostname | How it is served |
+|---|---|
+| `petrios.uk` | Workers Custom Domain of `petrios`. `APP_URL` is `https://petrios.uk`: every emailed link, certificate QR code and cron dispatch uses it |
+| `app.petrios.uk` | Workers Custom Domain of `petrios`, the same app |
+| `www.petrios.uk` | A zone-level Cloudflare 301 to `https://petrios.uk/`, not the Worker. Leave it alone |
+| `petrios.<account-subdomain>.workers.dev`, preview URLs | Off (`workers_dev: false`, `preview_urls: false`) |
 
-`wrangler.jsonc` has two environments for **one** Worker: both are named
-`petrios` and pin the same `account_id` (the account that owns `petrios.uk`),
-so they share its secrets, every step targets the same account, and each deploy
-replaces the other's shape. The script refuses a different
-`CLOUDFLARE_ACCOUNT_ID` in the shell and passes the pinned one to every wrangler
-call and API request. `scripts/cloudflare/lib.mjs` `productionConfigProblems()` (unit-tested)
-refuses any other difference.
+The Worker has **no plain Workers routes**. Cloudflare creates and manages the
+DNS records of custom domains: never edit or delete them by hand, and keep the
+email records of the zone untouched.
 
-| | `preflight` | `live` | `rollback` |
-|---|---|---|---|
-| Command | `npm run cf:deploy:production -- preflight` | `npm run cf:deploy:production -- live --render-crons-disabled` | `npm run cf:deploy:production -- rollback` |
-| wrangler env | `production_preflight` | `production` | Cloudflare API, then `production_preflight` |
-| Routes | none | `petrios.uk/*` (zone `petrios.uk`) | deleted |
-| `workers.dev` | on (`petrios.<account-subdomain>.workers.dev`) | off | off until the preflight redeploy |
-| Cron schedules | cleared (`[]`) | the six in `cfw/cron.ts` | cleared |
-| `CRON_ENABLED` / `OUTBOUND_EMAIL_ENABLED` | `"false"` / `"false"` | `"true"` / `"true"` | preflight values after the redeploy |
-| `APP_URL` | `https://petrios.uk` | `https://petrios.uk` | unchanged |
+`env.production.routes` is the **complete** set of custom domains, exactly
+`PRODUCTION_CUSTOM_DOMAINS` in `scripts/cloudflare/lib.mjs`
+(`[{ "pattern": "petrios.uk", "custom_domain": true }, { "pattern": "app.petrios.uk", "custom_domain": true }]`).
+Wrangler publishes custom domains as a replacement of the Worker's set, so a
+hostname left out of the list is detached on the next deploy and its DNS
+record deleted. To add or remove a hostname, change the list and the constant
+together (the tests compare them), and expect the deploy preview to report the
+change: a removal is refused, so detach a hostname deliberately in the
+dashboard first.
 
-Preflight serves the production database but no production traffic, runs no
-jobs and sends no email (except to `OUTBOUND_EMAIL_ALLOWLIST` addresses). Links
-it would put in email point at `petrios.uk`.
+### Commands
+
+| Command | What it does |
+|---|---|
+| `npm run cf:deploy:production -- check-secrets <file>` | Validates a filled secrets file by name and emptiness; contacts nothing |
+| `npm run cf:deploy:production -- secrets <file>` | `check-secrets`, then `wrangler secret bulk --env production`: a new version with those values goes live at once |
+| `npm run cf:deploy:production -- deploy --dry-run` | Every deploy check, the Cloudflare reads and the custom-domain preview, `cf:build` and its guard, then `wrangler deploy --dry-run --env production`. Uploads nothing and changes nothing |
+| `npm run cf:deploy:production -- deploy` | The same, then `wrangler deploy --env production`, confirmed from the Cloudflare API |
+| `npm run cf:deploy:production -- rollback [<version-id>]` | Restores an earlier version's code and vars (default: the previous one) with the deployment request `wrangler rollback` sends, never forced, so Cloudflare refuses it across a secret change. Never touches custom domains, routes or cron schedules |
+| `preflight`, `live` | Retired: refuse at once, before contacting anything |
 
 ### Wrangler behaviour this relies on (verified in wrangler 4.149.0 source)
 
-- **Routes are only ever replaced, never cleared, by `wrangler deploy`.**
-  `triggersDeploy()` (`deploy-helpers/src/triggers/deploy.ts`) calls
-  `publishRoutes()`, which `PUT`s the configured list to
-  `/accounts/<id>/workers/scripts/<name>/routes` and so replaces the Worker's
-  routes, but only `if (routesOnly.length > 0)`. A deploy with no routes leaves
-  every existing route attached. Therefore `preflight` refuses while the Worker
-  has routes, and `rollback` deletes them through the zone API
-  (`DELETE /zones/<zone>/workers/routes/<id>`). With an API token that lacks
-  "All zones", wrangler's zone fallback (`publishRoutesFallback`) also leaves
-  routes it cannot see.
-- **Routes and schedules are updated concurrently, after the upload.**
-  `triggersDeploy()` collects the route `PUT` and the schedules `PUT` and awaits
-  them together, then fails the deploy if either failed. A failed `live`
-  deploy can therefore leave the route without the schedules, or the
-  schedules without the route. The script reads both back after every deploy
-  and, on a first go-live, removes whatever was attached (see step 5).
+- **Custom domains are published as a complete set.** When the config lists at
+  least one custom domain, `triggersDeploy()` calls `publishCustomDomains()`
+  (`deploy-helpers/src/triggers/publish-routes.ts`): first
+  `POST /accounts/<id>/workers/scripts/<name>/domains/changeset?replace_state=true`
+  with the configured hostnames, which computes `added`, `removed`, `updated`
+  and `conflicting` and applies nothing, then `PUT .../domains/records` with
+  the same list. With `replace_state`, a hostname of the Worker that is not in
+  the list is detached and its DNS record deleted. A config with no custom
+  domain skips both calls (`if (customDomainsOnly.length > 0)`) and leaves
+  existing custom domains alone; production always lists both.
+- **Not interactive means no questions.** When stdout is not a terminal,
+  wrangler sets `override_existing_dns_record` and `override_existing_origin`
+  to true without prompting: a conflicting DNS record is replaced and a
+  hostname attached to another Worker is moved to this one. If the changeset
+  request itself fails, it carries on with an empty changeset. Interactively
+  it asks before either override, and throws if the changeset fails. So the
+  script sends the same changeset request itself first and refuses on any
+  removal, conflict or foreign hostname before building. A deploy run without
+  a terminal (an agent or a pipe) relies on that preview, taken seconds before
+  the upload, and says so; from a terminal wrangler still asks.
+- **A CI variable also means no questions.** Every wrangler prompt
+  (`confirm()` in `src/dialogs.ts`) takes its fallback answer, yes, when
+  ci-info detects CI, even in a terminal: `CI`, `BUILD_ID`, `BUILD_NUMBER`,
+  `RUN_ID`, `CONTINUOUS_INTEGRATION`, `CI_NAME` or a CI vendor's variable.
+  `CI=false` disables every one of those checks, so the script runs
+  `wrangler deploy` with `CI=false` and its custom-domain questions reach the
+  operator.
+- **Routes are replaced only when listed, never removed.** `publishRoutes()`
+  runs only `if (routesOnly.length > 0)`, so a deploy without plain routes
+  leaves any existing one attached. Production has none, and the script
+  refuses while one points at the Worker.
+- **Schedules follow `triggers.crons` on every deploy.** The list is `PUT` to
+  `.../schedules` (an explicit `[]` clears them; an absent key keeps them).
+- **The version goes live before the triggers are published.** `deploy()`
+  uploads and deploys the new version, then calls `triggersDeploy()`, which
+  publishes custom domains, routes and schedules concurrently and fails the
+  deploy if any of them failed ("Trigger configuration … was only partially
+  updated. Successful trigger changes were not rolled back."). So the script
+  reads all three back after every deploy, and a failure at that stage leaves
+  the new version serving.
 - **Wrangler can exit 0 without deploying.** `preUploadApiChecks()` asks
   "Would you like to continue?" when the Worker was last changed through the
-  API or dashboard, or when a var would overwrite a stored secret; answering no
-  returns `{ versionId: null }` with exit code 0. The script runs the deploy
-  with `WRANGLER_OUTPUT_FILE_PATH` and requires the `deploy` entry's
-  `version_id`, as well as the routes and schedules the API reports.
-- **An explicit empty cron list clears schedules; an absent one keeps them.**
-  `triggers.crons` is passed through as `config.triggers?.crons`; `[]` is
-  truthy, so wrangler `PUT`s `[]` to `.../schedules`. With no `triggers` key the
-  normalised default is `{ crons: undefined }` and the schedules are left alone.
-  Both production environments declare the key.
-- **Required secrets.** `addRequiredSecretsInheritBindings()`
-  (`deploy-helpers/src/deploy/helpers/secrets-validation.ts`) binds each name in
-  `secrets.required` as an `inherit` binding; the API rejects the upload if one
-  is missing. For a Worker that does not exist yet, `wrangler deploy` refuses
-  unless `--secrets-file` supplies them. `wrangler secret bulk` and
-  `wrangler secret put` against a missing Worker ask (default yes) to create an
-  empty one (`createDraftWorker()`, `src/secret/index.ts`: a stub
-  `fetch() {}` with no routes) and then store the secrets. Deploys keep stored
-  secrets (`keep_bindings: secret_text`).
-- **vars, services and secrets are not inherited** by environments
-  (`notInheritable`), so each environment declares them in full, including
-  `WORKER_SELF_REFERENCE -> petrios`. `--var` and `--secrets-file` override a
-  config var of the same name with no warning; the production script passes
-  neither and takes `APP_URL` only from `wrangler.jsonc`. A deploy overwrites a
-  stored secret that has a var's name (`checkRemoteSecretsOverride()`: a
-  warning and a prompt), and a later `secret put` overwrites the var until the
-  next deploy, so the script refuses to deploy while such a secret exists.
+  API or dashboard, or when a var would overwrite a stored secret; answering
+  no returns `{ versionId: null }` with exit code 0. The script runs the
+  deploy with `WRANGLER_OUTPUT_FILE_PATH` and requires the `deploy` entry's
+  `version_id`.
+- **Required secrets.** `secrets.required` names are bound as `inherit`
+  bindings and the API rejects an upload that lacks one. Deploys keep stored
+  secrets.
+- **vars, services and secrets are not inherited** by environments, so
+  `env.production` declares them in full, including
+  `WORKER_SELF_REFERENCE -> petrios`. `--var` and `--secrets-file` would
+  override a config var of the same name without a warning; the production
+  script passes neither and takes `APP_URL` only from `wrangler.jsonc`. A
+  deploy overwrites a stored secret that has a var's name (a warning and a
+  prompt), and a later `secret put` overwrites the var until the next deploy,
+  so the script refuses to deploy while such a secret exists.
+- **Rollback changes only which version is deployed.** `wrangler rollback`
+  (`src/versions/rollback/index.ts`) creates a deployment
+  (`POST .../workers/scripts/<name>/deployments`) that sends 100% of traffic
+  to the chosen version; it makes no route, custom-domain or schedule call, so
+  those stay as they are. Without a version id it takes the 100% version of
+  the newest earlier deployment. `--message` becomes the default of its
+  message prompt. `--yes` is accepted but not read by the 4.149 handler: when
+  stdin or stdout is not a terminal (or `CI` is set), every prompt takes its
+  fallback answer, yes. If secrets changed since the chosen version, the API
+  refuses (code 10220); wrangler then asks "The following secrets have changed
+  since version … was deployed. Please confirm you wish to continue with the
+  rollback" and retries with `force=true`, without asking when it is not
+  interactive. Wrangler also warns that a rollback does not roll back bound
+  resources. So the script does not run `wrangler rollback`: it sends the same
+  `POST .../deployments` itself (100% to the target, a `workers/message`
+  annotation) and never `force=true`, and stops on code 10220. Cloudflare
+  compares the secrets themselves, which the deployment history cannot show
+  (a secret changed with `versions secret put` + `versions deploy`, or in the
+  dashboard, leaves no "Secret Change" deployment).
+- **Secret changes deploy at once, and are refused after a rollback.**
+  `wrangler secret put` and `secret bulk` (`src/secret/index.ts`) write to the
+  Worker, which deploys a new version with the new value. While the newest
+  version is not the deployed one (after a rollback), the API refuses (codes
+  10214/10215) and wrangler suggests `wrangler versions secret put`, or
+  deploying the latest version first. **Never follow either after a
+  rollback:** `versions secret put`/`bulk` send
+  `PATCH .../workers/<name>/versions/latest`, which copies the newest
+  *uploaded* version (the code just rolled back from) with the new secret, and
+  deploying that copy, or "the latest version", puts the bad code back on both
+  hostnames.
 
-### What does not change
+### Deploy
 
-- **DNS.** No record is created, edited or deleted. Keep `petrios.uk`
-  **proxied** (orange cloud): a DNS-only record bypasses the Worker.
-- **`www.petrios.uk`.** No route; Cloudflare keeps answering it with its 301 to
-  the apex.
-- **Supabase.** Same project. The Site URL and redirect URLs stay as they are,
-  because the public origin is still `https://petrios.uk`. No migration is part
-  of the cutover. The RLS security migration in `docs/security/rls-lockdown.md`
-  is independent and recommended first.
-- **Render.** The web service keeps running, unchanged, as the warm fallback.
-
-### Prerequisites
-
-1. The [staging checklist](#staging-validation-checklist) has passed.
-2. Workers Paid, `npx wrangler login` as the account owner, Node 24.
-3. Inventory Render's schedule (step 4 says where to look). If it differs from
-   `CRON_SCHEDULE` in `cfw/cron.ts`, change `cfw/cron.ts` and
-   `env.production.triggers.crons` together (the tests compare them).
-4. Add Cloudflare to the privacy register, DPIA and DPA subprocessor list
-   ([Privacy register](#privacy-register-while-staging-serves-production-data)),
-   and write the new `DATA_HOSTING_REGION` / `DATA_TRANSFER_SAFEGUARDS` texts.
-5. Pick a window away from the daily and weekly jobs (06:30, 07:00 Monday and
-   08:00 UTC), for example a weekday between 10:00 and 15:00 UK time. A job tick
-   missed during the switch runs on the next tick; the jobs are idempotent.
-6. Deploy from a clean git checkout of the commit to ship (normally `main`).
-   The script refuses tracked or untracked changes, and a directory that is
-   not a git checkout of its own (an export or copy could hold any code), and
-   prints the commit it deploys. A separate worktree keeps your working copy
-   out of the way:
+1. Apply any database migration the release needs first (the script does not
+   check). Migrations only move forward, so the code must also work on the
+   schema it finds.
+2. Work from a clean git checkout of the commit to ship (normally `main`),
+   logged in with `npx wrangler login` as the account owner. A terminal is
+   preferred (wrangler then asks before any override; a `CI` variable in your
+   shell is overridden, wrangler runs with `CI=false`); without one, the deploy
+   relies on the script's custom-domain preview:
 
    ```bash
    git fetch origin && git worktree add --detach ../petrios-deploy origin/main && cd ../petrios-deploy && npm ci
+   npm run cf:deploy:production -- deploy --dry-run
+   npm run cf:deploy:production -- deploy
    ```
 
-   Run every `cf:deploy:production` command from there (the secrets file still
-   lives outside the repository).
-7. `wrangler.jsonc` pins `account_id` in both production environments. Check it
-   is the account that owns `petrios.uk` (`npx wrangler whoami`); with a
-   different `CLOUDFLARE_ACCOUNT_ID` in your shell the script refuses.
+Both runs refuse, with a fix for each case, unless all of the following hold:
 
-### Step 1: production secrets (first time)
+- `wrangler.jsonc` passes `productionConfigProblems()` (the shape described in
+  [Domains](#domains), the six crons of `cfw/cron.ts`, `CRON_ENABLED`,
+  `OUTBOUND_EMAIL_ENABLED`, `TRUSTED_CLIENT_IP_HEADER`, `HOSTING_PROVIDER` and
+  `ROTA_INTEGRATION_ENABLED` declared, the required secrets, no other
+  environment); `APP_URL` in your shell is unset or `https://petrios.uk`; and
+  `CLOUDFLARE_ACCOUNT_ID`, if set, is the pinned account.
+- The checkout is clean (it prints the commit, and warns if it is not `main`).
+- `wrangler secret list --env production` (read-only, names only) shows every
+  required secret and no secret that shadows a var, uses a never-set or
+  fallback name, or is `SMTP_*`.
+- The Cloudflare reads succeed, with your wrangler login (`wrangler auth token
+  --json`, never printed): the zone `petrios.uk`, the Worker's plain routes in
+  it, the account's custom domains and the Worker's cron schedules, plus the
+  custom-domain changeset preview (compute-only).
+- The preview shows no hostname that would be **detached**, no configured
+  hostname with a **conflicting DNS record**, and none that is a custom domain
+  of **another Worker**; and no plain route points at the Worker. A hostname
+  that would be attached (configured but missing) or a settings update is
+  reported, not refused, and so is any drift in the current schedules.
+- `cf:build` and its guard pass (the guard's dry run uses `--env production`).
 
-Production secrets are **separate** from staging's. Prepare them from
-`scripts/cloudflare/production-secrets.template.json`, always outside the
-repository:
+With `--dry-run` the script then runs `wrangler deploy --dry-run --env
+production`, which bundles and lists the bindings, and stops: nothing is
+uploaded and nothing on Cloudflare changes. Without it, it runs
+`wrangler deploy --env production --message "petrios deploy <commit>"`. If
+wrangler asks "Would you like to continue?" (the Worker was last changed
+through the API, for example by a secret change, or in the dashboard), answer
+yes. If it asks to point a custom domain or a DNS record at this Worker,
+answer **no**: the preview found no conflict, so something changed in between.
+
+The deploy is confirmed only when wrangler reported a version id and the API
+shows exactly the two custom domains, no plain route and exactly the six cron
+schedules. The script then prints the checklist:
+
+- `curl -s https://petrios.uk/api/health` and `curl -s https://app.petrios.uk/api/health`
+  each return `{"status":"ok","db":"ok"}`.
+- `npx wrangler tail --env production --format pretty` shows requests and no
+  new errors.
+- The next cron runs log `"<expression>" @ <time> - Ok` and
+  `[cron] ... -> /api/cron/<job>: HTTP 200`: `recall-awards` (:05, :20, :35,
+  :50), `session-reminders` (:00), `post-session-reports` (:15), then the
+  daily jobs (06:30, 08:00 UTC) and `ops-weekly` (Monday 07:00 UTC).
+
+**If the deploy is not confirmed**, the script lists what failed. Custom
+domains and cron schedules persist across deploys, so unless the listed state
+says otherwise the Worker still serves both hostnames and runs the jobs. A
+rejected upload or a declined "Would you like to continue?" deploys nothing
+and the previous version keeps serving; a failure while publishing custom
+domains or schedules happens after the new version went live. Check which
+version serves with `npx wrangler deployments status --env production`, and
+`/api/health` on both hosts. A missing custom domain or wrong schedules: rerun
+`deploy` (it publishes both from `wrangler.jsonc`) or fix them in Workers &
+Pages → `petrios` → Settings (Domains & Routes, Trigger Events). A new version
+that serves and misbehaves: `rollback`.
+
+### Rolling back production
 
 ```bash
-cp scripts/cloudflare/production-secrets.template.json ~/petrios-production-secrets.json
-chmod 600 ~/petrios-production-secrets.json
-# fill it (table below), deleting every key you leave empty
-npm run cf:deploy:production -- check-secrets ~/petrios-production-secrets.json
-npm run cf:deploy:production -- secrets ~/petrios-production-secrets.json
-rm ~/petrios-production-secrets.json
+npm run cf:deploy:production -- rollback                 # the previous version
+npm run cf:deploy:production -- rollback <version-id>    # npx wrangler deployments list --env production lists them
 ```
 
-`check-secrets` contacts nothing. It reads the file in memory and prints names
-only. It refuses a file inside the repository, a missing required name, an empty
-or non-string value (wrangler would store `""`, or delete a secret given
-`null`), a `vars` name, a never-set name, an `APP_URL` fallback, half of an
-all-or-none group (ElevenLabs key + voice, the three JaaS values, Jitsi app id +
-secret), both LLM keys plus `OPENAI_BASE_URL` without `LLM_PROVIDER`, and any
-`SMTP_*` name (`SMTP_HOST` would switch email from Resend to SMTP). It warns
-about names Petrios does not read. `secrets` repeats the check and runs
-`wrangler secret bulk <file> --env production_preflight` (the equivalent raw
-command is `npx wrangler secret bulk ~/petrios-production-secrets.json --env production_preflight`).
-The first time, wrangler asks whether to create the Worker `petrios`: answer
-yes. It creates an empty Worker with no routes, which serves nothing.
+A rollback restores an earlier version's **code and vars** on the live
+custom domains in seconds, with no rebuild. Custom domains, DNS records, routes
+and cron schedules are not part of a version and are never touched. There is
+no other host to hand traffic to.
 
-Copy values **byte for byte** from the Render web service's Environment tab
-(see [Parity](#parity-with-render-copy-never-rotate)). Multi-line values, such as
-the JaaS PEM, are JSON strings with `\n` escapes.
+Before rolling back, the script reads the deployment history and both versions
+through the Cloudflare API (read-only) and refuses, changing nothing, when:
+
+- the target is already deployed, or served 100% of traffic in none of the
+  deployments the API returns (it is not a known production version);
+- the target has a different set of secret names from the current version;
+- the target's vars are not production's (`APP_URL` `https://petrios.uk`,
+  `CRON_ENABLED` and `OUTBOUND_EMAIL_ENABLED` `"true"`,
+  `TRUSTED_CLIENT_IP_HEADER`, `HOSTING_PROVIDER`, `ROTA_INTEGRATION_ENABLED`
+  declared). This catches the versions of the retired preflight phase (crons
+  and email off) and the empty stub Worker `secret bulk` once created.
+
+It then sends the deployment request `wrangler rollback` sends
+(`POST .../workers/scripts/petrios/deployments`: the target at 100%, message
+"petrios rollback to <target> from <current>"), **never with `force=true`**.
+If any secret changed since the target served, however it was changed,
+Cloudflare refuses (code 10220, naming the secrets) and nothing changes: the
+target would run with the old values, which may have been revoked. The script
+does not run `wrangler rollback`, which would answer its own "secrets have
+changed" prompt with yes and retry forced whenever it is not interactive.
+
+It confirms from the API that the target now serves 100% of traffic and that
+the custom domains and schedules are unchanged, and prints what a rollback
+does **not** undo: database migrations (the old code runs on the current
+schema); cron triggers, custom domains and routes (unchanged); secrets (see
+[After a rollback](#after-a-rollback)); data written and email sent by the
+bad version; and the next `deploy`, which ships `HEAD` again, so revert or fix
+the bad commit on `main` first.
+
+To restore a version **and** the old values of secrets changed since (only if
+every old value is still valid), run
+`npx wrangler rollback <version-id> --env production` yourself in an
+interactive terminal with `CI` unset: it lists the changed secrets and asks
+first. If the API cannot be reached, roll back by hand: Cloudflare dashboard →
+Workers & Pages → `petrios` → Deployments → pick the last good version under
+Version History → Rollback. Leave Settings → Domains & Routes and Trigger
+Events alone.
+
+#### After a rollback
+
+While a rolled-back version serves, the newest uploaded version is the bad one
+rolled back from, so:
+
+- `wrangler secret put`/`bulk` and the `secrets` command refuse ("the latest
+  version of your Worker isn't currently deployed").
+- **Never** use `npx wrangler versions secret put`/`bulk` followed by
+  `npx wrangler versions deploy` to get around that, and never "deploy the
+  latest version first" as wrangler suggests: both copy or deploy the newest
+  uploaded version, which puts the rolled-back code back on `petrios.uk` and
+  `app.petrios.uk`.
+- Revert or fix the bad commit on `main`, ship it with
+  `npm run cf:deploy:production -- deploy` (it uploads that commit), and only
+  then change secrets with `npx wrangler secret put <NAME> --env production`
+  or `npm run cf:deploy:production -- secrets <file>`. When a secret must
+  change urgently, `git revert` the bad commit on `main` and deploy that
+  rather than wait for a fix.
+
+### Secrets
+
+Production secrets belong to the Worker `petrios`, separate from staging's.
+`scripts/cloudflare/production-secrets.template.json` lists every name
+Petrios reads. Every secret change deploys a new version with the new value at
+once, so a wrong value breaks the live site immediately: check
+`/api/health` on both hosts afterwards.
+
+- **One secret:** `npx wrangler secret put <NAME> --env production` (hidden
+  prompt, or `< file` from a file outside the repository). Delete one with
+  `npx wrangler secret delete <NAME> --env production`.
+- **Several at once:** copy the template outside the repository, fill it,
+  delete every key you leave empty, then:
+
+  ```bash
+  cp scripts/cloudflare/production-secrets.template.json ~/petrios-production-secrets.json
+  chmod 600 ~/petrios-production-secrets.json
+  npm run cf:deploy:production -- check-secrets ~/petrios-production-secrets.json
+  npm run cf:deploy:production -- secrets ~/petrios-production-secrets.json
+  rm ~/petrios-production-secrets.json
+  ```
+
+  `check-secrets` contacts nothing. It reads the file in memory and prints
+  names only. It refuses a file inside the repository, a missing required
+  name, an empty or non-string value (wrangler would store `""`, or delete a
+  secret given `null`), a `vars` name, a never-set name, an `APP_URL`
+  fallback, half of an all-or-none group (ElevenLabs key + voice, the three
+  JaaS values, Jitsi app id + secret), both LLM keys plus `OPENAI_BASE_URL`
+  without `LLM_PROVIDER`, and any `SMTP_*` name (`SMTP_HOST` would switch email
+  from Resend to SMTP). It warns about names Petrios does not read. `secrets`
+  repeats the check, confirms the Worker exists (read-only
+  `wrangler secret list`; it never lets wrangler create an empty `petrios`),
+  prints which names it replaces and adds, and runs
+  `wrangler secret bulk <file> --env production`.
+- **After a rollback** both commands are refused until a fixed `main` is
+  deployed; never work around that with `wrangler versions secret put` or
+  `versions deploy`, which would redeploy the rolled-back code
+  ([After a rollback](#after-a-rollback)).
+- Never store `APP_URL`, `CRON_ENABLED`, `OUTBOUND_EMAIL_ENABLED`,
+  `ROTA_INTEGRATION_ENABLED`, `TRUSTED_CLIENT_IP_HEADER`, `HOSTING_PROVIDER`
+  (vars), `NEXT_PUBLIC_APP_URL` or other `APP_URL` fallbacks,
+  `*_INTERNAL_URL`, `DATABASE_URL`, `NEXTJS_ENV`, `NODE_ENV`, `RENDER*` or
+  `SMTP_*` (unverified on Workers; refused).
 
 | Name | Value |
 |---|---|
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Render's `SUPABASE_URL`/`SUPABASE_ANON_KEY`, or their `NEXT_PUBLIC_*` names. A different URL signs everyone out |
-| `SUPABASE_SERVICE_ROLE_KEY` | Copy. Never rotate (feeds, Recall and unsubscribe links are HMACs of it) |
-| `CRON_SECRET` | **New** random value: `openssl rand -hex 32`. See below |
-| `RESEND_API_KEY`, `MAIL_FROM` | Copy (`MAIL_FROM`, or the legacy `RESEND_FROM_EMAIL` value). Required: production email cannot send without them |
-| `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL` | Copy. Name and contact are required (public disclosures, `lib/compliance.ts`); the address is optional, as on Render |
-| `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` | **New text**: requests are now processed on Cloudflare's global network (Workers and Workers Logs), the database stays in its Supabase region. Optional (undeclared on Render), but set them once the controller has reviewed the wording |
-| `ATTENDANCE_RATE_LIMIT_SECRET`, `INSTANCE_SIGNING_KEY` | Copy if set on Render; never generate new ones |
-| `GOOGLE_SITE_VERIFICATION`, `OPS_ENABLED`, `OPS_ASSISTANT_ENABLED` | Copy if set on Render |
-| `TEACHER_INVITATIONS_RLS_LOCKED` | `true` only after the database fix (spec 13), as on Render |
-| `ANTHROPIC_API_KEY` (+ `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_FALLBACKS`), `LLM_PROVIDER`, `OPENAI_*` | Optional. Render may not have the Anthropic key yet; add it here to enable AI on the Worker |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | The production project's URL and anon key. Changing `SUPABASE_URL` signs everyone out (the auth cookie name derives from it) |
+| `SUPABASE_SERVICE_ROLE_KEY` | The service-role key. Rotating it has consequences: see below |
+| `CRON_SECRET` | Random (`openssl rand -hex 32`). Only the bearer token of `/api/cron/*`; the Worker's `scheduled()` reads the same secret, so a new value needs nothing else |
+| `RESEND_API_KEY`, `MAIL_FROM` | Required: production email cannot send without them |
+| `PRIVACY_CONTROLLER_NAME`, `PRIVACY_CONTROLLER_ADDRESS`, `PRIVACY_CONTACT_EMAIL` | Name and contact are required (public disclosures, `lib/compliance.ts`); the address is optional |
+| `DATA_HOSTING_REGION`, `DATA_TRANSFER_SAFEGUARDS` | Must describe Cloudflare's global network (Workers, Workers Logs) as well as the Supabase region. Optional until the controller has reviewed the wording; shown as not declared until set |
+| `ATTENDANCE_RATE_LIMIT_SECRET`, `INSTANCE_SIGNING_KEY` | Optional. Once set, never replace them (rate-limit pseudonyms, signed teaching records) |
+| `GOOGLE_SITE_VERIFICATION`, `OPS_ENABLED`, `OPS_ASSISTANT_ENABLED` | Optional |
+| `TEACHER_INVITATIONS_RLS_LOCKED` | `true` only after migration 062 is applied and verified (spec 13) |
+| `ANTHROPIC_API_KEY` (+ `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_FALLBACKS`), `LLM_PROVIDER`, `OPENAI_*` | Optional; AI is off without a key |
 | `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` (+ `ELEVENLABS_MODEL_ID`), `TTS_PROVIDER` | Optional; both or neither |
-| `JAAS_APP_ID` + `JAAS_API_KEY_ID` + `JAAS_PRIVATE_KEY`, or `JITSI_DOMAIN` (Render's `NEXT_PUBLIC_JITSI_DOMAIN`) with `JITSI_APP_ID` + `JITSI_APP_SECRET`, `JITSI_JWT_*` | Optional; as on Render (`docs/petrios-meet.md`) |
-| `OUTBOUND_EMAIL_ALLOWLIST` | Optional, preflight testing only (ignored once email is on). Delete it after the cutover |
-| `APP_TIME_ZONE` | Copy if set on Render (default `Europe/London`) |
-| `ROTA_IDENTITY_SECRET` | Copy byte for byte if Render has it (a new value orphans every rota identity link, so every trainee would need re-linking). Omit until rota availability goes live |
+| `JAAS_APP_ID` + `JAAS_API_KEY_ID` + `JAAS_PRIVATE_KEY`, or `JITSI_DOMAIN` with `JITSI_APP_ID` + `JITSI_APP_SECRET`, `JITSI_JWT_*` | Optional (`docs/petrios-meet.md`). Multi-line values, such as the JaaS PEM, are JSON strings with `\n` escapes in the secrets file |
+| `OUTBOUND_EMAIL_ALLOWLIST` | Staging only; it has no effect while production email is on. Do not set it |
+| `APP_TIME_ZONE` | Optional (default `Europe/London`) |
+| `ROTA_IDENTITY_SECRET` | Set once at rota go-live ([Rota availability on Workers](#rota-availability-on-workers)); never rotate it |
 
-Never store `APP_URL`, `CRON_ENABLED`, `OUTBOUND_EMAIL_ENABLED`,
-`ROTA_INTEGRATION_ENABLED`, `TRUSTED_CLIENT_IP_HEADER`, `HOSTING_PROVIDER` (vars), `NEXT_PUBLIC_APP_URL` or
-other `APP_URL` fallbacks, `*_INTERNAL_URL`, `DATABASE_URL`, `NEXTJS_ENV`,
-`NODE_ENV`, `RENDER*` or `SMTP_*` (unverified on Workers; refused).
+#### Rotating the Supabase service-role key
 
-**Why a new `CRON_SECRET`.** Only `lib/cron-auth.ts` reads it: it is the bearer
-token for `/api/cron/*`, and nothing is derived from it. After the cutover the
-only legitimate caller is the Worker's own `scheduled()`, which reads the same
-secret. A new value therefore locks out, by construction, any forgotten
-external scheduler that still sends Render's value to `https://petrios.uk/api/cron/*`:
-it gets 401 instead of running a job twice. Render keeps its own value, so its
-suspended jobs work unchanged after a rollback.
+`SUPABASE_SERVICE_ROLE_KEY` is also the HMAC key of calendar-feed URLs, Recall
+deep links and newsletter unsubscribe links, and of the group-code rate-limit
+pseudonym while `ATTENDANCE_RATE_LIMIT_SECRET` is unset. A new value
+invalidates every feed URL, Recall link and unsubscribe link already issued:
+members must re-subscribe their calendars, and unsubscribe requests from
+newsletters already sent must be handled by hand. Rotate it after a suspected
+leak, not routinely.
 
-Later changes: `npx wrangler secret put <NAME> --env production` (the secrets
-belong to the Worker, so either environment name works; each change deploys a
-new version at once).
+1. In Supabase (Project Settings → API Keys), create the new secret key and
+   keep the old one valid until step 5. A legacy JWT `service_role` key cannot
+   be replaced on its own: that means rotating the project's JWT secret, which
+   also replaces the anon key; plan it as a separate change that updates
+   `SUPABASE_ANON_KEY` in the same window.
+2. Store it on the production Worker (a new version goes live at once):
 
-### Step 2: deploy preflight
+   ```bash
+   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env production
+   ```
 
-```bash
-npm run cf:deploy:production -- preflight
-```
+   Paste it at the hidden prompt; never put it in a repository file or the
+   shell history. If it is refused because production runs a rolled-back
+   version, deploy a fixed `main` first ([After a rollback](#after-a-rollback));
+   never use `wrangler versions secret put` here.
+3. Store it on every other deployment that serves this database, so its
+   service-role calls keep working: the staging Worker
+   (`npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env=""`).
+4. Verify: `/api/health` on both hosts, a sign-in, a certificate PDF download,
+   a newly issued calendar feed, and `npx wrangler tail --env production
+   --status error` staying quiet through the next `post-session-reports` run
+   (:15).
+5. Revoke the old key in Supabase.
 
-The script refuses, with a fix for each case, unless all of the following hold:
+Afterwards Cloudflare refuses a `rollback` to any version from before the
+rotation (code 10220, secrets changed since), because such a version would run
+with the revoked key; the script never forces it. Do not use
+`npx wrangler rollback` for those versions either: it would offer to restore
+the revoked key.
 
-- `wrangler.jsonc` passes `productionConfigProblems()` and `APP_URL` in your
-  shell is unset or equal to `https://petrios.uk`.
-- The checkout is clean (it prints the commit).
-- `wrangler secret list --env production_preflight` (read-only, names only)
-  shows every required secret, and no secret shadows a var or uses a never-set
-  or fallback name.
-- The Worker has **no routes** in `petrios.uk` and **no custom domains**. The
-  check reads the zone's routes, the account's Worker custom domains and the
-  Worker's cron schedules with your wrangler login (`wrangler auth token
-  --json`, never printed). An API token needs Zone Read, Workers Routes Edit
-  and Workers Scripts Edit.
-- `cf:build` and its guard pass (the dry run uses `--env production_preflight`).
+### Monitoring
 
-It then runs `wrangler deploy --env production_preflight` with
-`--message "petrios preflight <commit>"`. If wrangler asks "Would you like to
-continue?" (the Worker was last changed through the API, for example by
-`secret bulk`, or in the dashboard), answer yes. The script then confirms the
-deploy: wrangler must report a version id, and the API must show no route, no
-custom domain and no cron schedule. Only then does it print the checklist.
-
-### Step 3: preflight smoke tests
-
-At `https://petrios.<account-subdomain>.workers.dev`, against the **production
-database** with email off. Sign-in links and Microsoft SSO return to
-`petrios.uk` (Render), because that is the app URL and Supabase's redirect
-target, so test signed-in pages with a password sign-in. Do not create real
-rows.
-
-- [ ] `curl -s https://petrios.<sub>.workers.dev/api/health` returns `{"status":"ok","db":"ok"}`.
-- [ ] `/`, `/login`, `/privacy` return 200. `/privacy` and `/subprocessors` name Cloudflare Workers and show the new region and transfer texts, and no disclosure is shown as missing.
-- [ ] `/dashboard` signed out returns 307 to `/login`; CSP and HSTS headers are present.
-- [ ] A password sign-in (an admin) reaches the dashboard; an existing certificate PDF downloads with IBM Plex Mono; `/opengraph-image` renders.
-- [ ] `curl -s -o /dev/null -w '%{http_code}' https://petrios.<sub>.workers.dev/api/cron/session-reminders` prints 401.
-- [ ] `npx wrangler tail --env production_preflight --format pretty` shows your requests and no scheduled events.
-
-### Step 4: find and disable Render's scheduled jobs
-
-Only one scheduler may run the jobs against the database, and live starts the
-Worker's. Before going live:
-
-1. **Render dashboard → the service list.** Every service of type *Cron Job*
-   whose command calls `/api/cron/*` (or runs `scripts/self-hosting/scheduler.mjs`):
-   write down its schedule and command, then **Suspend** it (do not delete it;
-   rollback resumes it). Also check for a *Background Worker* running the
-   self-host scheduler. The web service's Docker image runs no scheduler
-   (`scripts/self-hosting/start.mjs` starts only migrations and the server).
-2. **Outside Render:** anything else that calls `https://petrios.uk/api/cron/*`
-   or `https://byte-teaching.onrender.com/api/cron/*`, such as cron-job.org, an
-   uptime monitor, a personal crontab, or Supabase `pg_cron`
-   (`select jobname, schedule, command from cron.job;` in the SQL editor). The
-   repository itself defines none: no GitHub workflow or migration calls these
-   routes. Disable each one.
-3. Wait until no Render cron run is in progress.
-4. Recommended: keep Render's certificate renewable. While the Worker serves
-   `petrios.uk/*`, a certificate authority's HTTP challenge to
-   `petrios.uk/.well-known/acme-challenge/*` would reach the Worker (404)
-   instead of Render, so Render may fail to renew its `petrios.uk` certificate,
-   and a later rollback would then fail with 526 (SSL Full (strict)). Whether
-   Render renews over HTTP here is not confirmed. In the dashboard, add a
-   Workers route `petrios.uk/.well-known/acme-challenge/*` with Worker
-   **None**: the more specific route keeps those requests on Render. It belongs
-   to no Worker, so the script's route checks, rollback and wrangler's
-   per-Worker route update all leave it alone.
-5. Optional hardening: give Render's web service a new `CRON_SECRET` as well,
-   so nothing can run a job through `byte-teaching.onrender.com`. If you do,
-   the suspended Cron Jobs need that value before they are resumed on rollback.
-
-### Step 5: go live
-
-```bash
-npm run cf:deploy:production -- live --render-crons-disabled
-```
-
-The flag is your attestation that step 4 is done; without it the script
-refuses. It repeats the step 2 checks (a route is allowed: that is a redeploy
-of a Worker already live) and runs `wrangler deploy --env production`.
-Wrangler then attaches the route, sets the six cron schedules and disables
-`workers.dev`. Traffic moves within seconds. Answer yes if wrangler asks
-"Would you like to continue?".
-
-The script confirms the result: a version id from wrangler, exactly the
-`petrios.uk/*` route, exactly the six schedules and no custom domain. If any of
-that fails:
-
-- **First go-live** (the Worker had no route before): it immediately deletes
-  whatever was attached and clears the schedules, so Render keeps serving, and
-  prints `NOT LIVE`. Render's jobs are still suspended and nothing runs the
-  jobs: fix the problem and rerun `live`, or resume Render's jobs at the time it
-  prints (straight away if the Worker never had a schedule during the attempt).
-- **Redeploy** (already live): if wrangler rejected the upload or a prompt was
-  declined, the previous version keeps serving and running the jobs; check
-  `/api/health` and run `rollback` only if the site is unhealthy. If the route
-  is gone, it tells you to run `rollback` now.
-- A refusal before the deploy (a failed build or guard, a missing secret)
-  changes nothing on Cloudflare; on a first go-live it reminds you that
-  Render's jobs are suspended.
-
-**The first cron runs on the Workers runtime happen here, in production.**
-Staging and preflight set `CRON_ENABLED="false"`, so neither `scheduled()` nor
-any `/api/cron/*` job (for example `post-session-reports` rendering
-certificate PDFs and sending email) has run on Workers before. Step 6 and the
-first hours exist to catch that; rollback is the fallback.
-
-### Step 6: verify
-
-- **Who answers.** Render responses carry `rndr-id` (and
-  `x-render-origin-server: Render`); Worker responses do not. Both carry
-  `cf-ray`:
-
-  ```bash
-  curl -sI https://petrios.uk/login | grep -iE '^(rndr-id|x-render-origin-server|cf-ray):'
-  ```
-
-  Only `cf-ray` means the Worker answered. The same request also appears in
-  `npx wrangler tail --env production --format pretty`.
-- **`www` is unchanged.** It has no route, so it must still be Cloudflare's
-  301 (the `cf-ray`-only test above would pass for it even before the
-  cutover, so it proves nothing there):
-
-  ```bash
-  curl -sI https://www.petrios.uk/login | grep -iE '^(HTTP|location|rndr-id)'
-  ```
-
-  Expect `301`, `location: https://petrios.uk/login` and no `rndr-id`.
-- `curl -s https://petrios.uk/api/health` returns `{"status":"ok","db":"ok"}`.
-- Real sign-ins: magic link, Microsoft SSO and password. Existing sessions stay
-  signed in (same `SUPABASE_URL`, same cookie name).
-- **Crons.** In the tail, scheduled events print as
-  `"5,20,35,50 * * * *" @ <time> - Ok` with a log line
-  `[cron] ... -> /api/cron/recall-awards: HTTP 200`. Watch the first
-  `recall-awards`, `session-reminders` (:00) and `post-session-reports` (:15)
-  ticks, then the next morning's daily jobs.
-- **No external callers.** `scheduled()` calls the app in-process, so a
-  *request* event for `/api/cron/*` can only come from outside:
+- Live logs: `npx wrangler tail --env production --format pretty`; errors only:
+  add `--status error`. Workers Observability (Workers & Pages → `petrios` →
+  Observability) keeps the console output, errors, exceeded CPU limits and
+  Error 1102 (memory) for its retention period.
+- Health: `curl -s https://petrios.uk/api/health` and the same on
+  `app.petrios.uk`. An uptime monitor may poll `/api/health`, never
+  `/api/cron/*`.
+- Crons: each run prints `"<expression>" @ <time> - Ok` and
+  `[cron] ... -> /api/cron/<job>: HTTP <status>`; anything other than 200 is a
+  failed job. Check 06:30 and 08:00 UTC daily and 07:00 UTC on Monday.
+- Stray schedulers: `scheduled()` calls the app in-process, so a *request*
+  event for `/api/cron/*` comes from outside:
 
   ```bash
   npx wrangler tail --env production --format pretty | grep -E '^(GET|POST|HEAD) .*/api/cron/'
   ```
 
-  Keep this running through the next hour and past 08:00 UTC. Each match is a
-  scheduler you missed in step 4: it got 401, so it ran nothing, but find and
-  disable it. Render's own logs should show no `/api/cron` requests.
-
-### Step 7: the first hours
-
-- Workers Observability: errors, exceeded CPU limits, Error 1102 (memory), and
-  `npx wrangler tail --env production --status error`.
+  Each match got 401 (the production `CRON_SECRET` is the Worker's own), so it
+  ran nothing, but find and disable it.
 - Email volume in Resend matches a normal day, and `session_deliveries` gains no
   new `FAILED` rows.
-- Every cron line reports HTTP 200; check 06:30 and 08:00 UTC the next day and
-  07:00 UTC on Monday.
-- Supabase auth logs show no wave of sign-outs or refresh failures; calendar
-  feeds, Recall and unsubscribe links already issued still work.
 
-### Rollback (seconds)
+### One scheduler
 
-```bash
-npm run cf:deploy:production -- rollback
-```
+Only one scheduler may run the cron jobs against the production database:
+the production Worker. Running them twice would double-send email (not every
+job has a per-recipient ledger; `ops-weekly` low-score notifications have no
+dedupe).
 
-1. Deletes every route of `petrios` in `petrios.uk` through the Cloudflare API
-   with your wrangler login. The proxied DNS record never changed, so Render
-   answers at once.
-2. Clears the Worker's cron schedules (`PUT .../schedules []`), then reads the
-   routes, custom domains and schedules back and checks that none remains. The
-   Worker is now unreachable: no routes, no `workers.dev`. Custom domains are
-   reported, never deleted (deleting one deletes its DNS record): remove them
-   by hand.
-3. Prints **when to resume Render's scheduled jobs**: 15 minutes after the
-   schedules were cleared, rounded up to the minute. Clearing the schedules
-   stops future triggers, not a run already in progress, and a Worker cron run
-   can last up to 15 minutes (`ops-weekly` low-score notifications have no
-   dedupe). Then resume the Cron Jobs suspended in step 4 (and anything else
-   you disabled).
-4. Redeploys the preflight shape (a rebuild, not urgent; `--skip-redeploy`
-   stops before it).
+- Render is retired (its service was suspended on 2026-10-11 and will not be
+  resumed). Never re-enable a Render Cron Job or add an external caller of
+  `/api/cron/*`.
+- The staging Worker has no cron triggers and `CRON_ENABLED="false"`, so its
+  `/api/cron/*` routes answer 503 ([Cron safety model](#cron-safety-model)).
+- A Docker or self-hosted copy pointed at the production database must set
+  `CRON_ENABLED=false` and `OUTBOUND_EMAIL_ENABLED=false`, and must not run the
+  self-host scheduler.
+- `deploy` publishes exactly the six schedules of `cfw/cron.ts`; `rollback`
+  never changes them. To pause every job in an emergency, remove the Cron
+  Triggers in Workers & Pages → `petrios` → Settings → Trigger Events (the
+  next `deploy` restores them).
 
-If the API step fails, the script prints the manual steps: Cloudflare
-dashboard → `petrios.uk` → Workers Routes → delete the routes whose Worker is
-`petrios`; Workers & Pages → `petrios` → Settings → Trigger Events → delete
-every Cron Trigger. Do not edit DNS records. Resume Render's jobs no sooner
-than 15 minutes after the last Cron Trigger is deleted.
+### API token permissions
 
-`npx wrangler rollback --env production` is **not** a rollback to Render. It
-only swaps the Worker's code version while the routes stay; use it for a bad
-Worker release when staying on Workers.
+With an API token instead of `npx wrangler login`, the token needs, for this
+script and the wrangler commands it runs: **Account**: Workers Scripts Edit
+(upload, deployments, versions, schedules, custom domains, secrets);
+**Zone `petrios.uk`**: Zone Read (the zone lookup) and Workers Routes Read (the
+plain-route check). No DNS permission: Workers Custom Domains manage their own
+DNS records, and the deploy writes no plain route.
 
-### Warm fallback
+### Cutover history
 
-Keep the Render web service running, unchanged and with its scheduled jobs
-suspended, for at least a week. Rollback is only a route removal while it is
-there. Before relying on it after a long time, confirm in Render that its
-`petrios.uk` custom domain still shows a valid certificate, because Render no
-longer receives that domain's traffic (the ACME route in step 4 is meant to
-keep renewal working). Once the week has passed without a
-rollback, decommission Render deliberately, and update `CLAUDE.md`, spec 01 and
-spec 09, which still describe Render as production until then.
+- **2026-10-09/10.** The tooling prepared a reversible move from Render: a
+  plain Workers route `petrios.uk/*` on the existing proxied DNS record, a
+  `preflight` phase on `workers.dev` with crons and email off, `live
+  --render-crons-disabled`, and a `rollback` that deleted the route and the
+  crons to hand traffic and jobs back to Render.
+- **2026-10-11.** Production moved instead to Workers Custom Domains
+  `petrios.uk` and `app.petrios.uk` on the Worker `petrios` (version
+  `0bc8e8b8-ec9c-47f1-9ae6-dc1e3f81c35e`, built from commit `f6cb184` with
+  those custom domains in `env.production.routes`). Cloudflare manages their
+  DNS records; the proxied A record `petrios.uk → 216.24.57.1` (Render) is
+  gone, and `www.petrios.uk` stayed a zone-level 301. The owner suspended the
+  Render service the same day and will not resume it: Cloudflare is the only
+  scheduler and there is no warm fallback host. The tooling was then aligned:
+  `env.production_preflight` and the `preflight`/`live`/Render `rollback`
+  commands were removed (on the live custom domains they would have deployed
+  an email-off, cron-less version, or deleted the crons), and replaced by
+  `deploy` and a code-only `rollback`.
 
 ## proxy.ts on Workers
 
@@ -846,8 +908,8 @@ every write at once and enqueues into a response stream with no `pull()`.
 `res.write()` therefore never reports backpressure, and Next reads a streamed
 body (session documents up to 25 MiB, recap and Recall audio) from upstream as
 fast as it arrives. Whatever a slow client has not read yet would queue in the
-isolate, against the 128 MB limit shared by concurrent requests. Render's Node
-response honours `drain` and is unaffected.
+isolate, against the 128 MB limit shared by concurrent requests. The Node
+response (Docker, self-hosting) honours `drain` and is unaffected.
 
 `cf:build` rewrites that writer in the bundled
 `.open-next/server-functions/default/handler.mjs`
@@ -905,7 +967,7 @@ missing from the dry-run upload, and `cf:preview` refuses an unpatched build.
 - **Abandoned uploads.** If a tab closes between prepare and finalize, the
   `UPLOADING` row (never listed) and possibly its storage object remain. There
   is no sweeper yet.
-- **Security headers.** On Render, `proxy.ts` skips `_next/static`,
+- **Security headers.** On Node (Docker), `proxy.ts` skips `_next/static`,
   `_next/image`, `favicon.ico` and image files, so those never carry the
   security headers. On Workers, every file under `public/` is also served by the
   assets layer without running the Worker, so `public/fonts/*.ttf` and
@@ -940,15 +1002,11 @@ take writes production rows. Use test sessions only, and send email only to
 
 ## Rollback
 
-DNS, the database and Render's scheduler are untouched by a staging deploy or
-by the production preflight. Render remains the origin until `live`.
-
 - **Staging:** `npx wrangler rollback --env=""` restores the previous version.
   Deleting the `petrios-staging` Worker does not undo anything it wrote to the
   production database, and links in any email it sent (only to allowlisted
   addresses) stop working. Nothing else depends on it.
-- **Production after the cutover:** `npm run cf:deploy:production -- rollback`
-  removes the Worker's route and cron schedules in seconds (DNS is never
-  changed), then you re-enable Render's scheduled jobs at the time it prints.
-  See
-  [Rollback (seconds)](#rollback-seconds).
+- **Production:** `npm run cf:deploy:production -- rollback [<version-id>]`
+  restores an earlier version's code and vars in seconds; custom domains, DNS
+  and cron schedules stay as they are, and there is no other host to fall
+  back to. See [Rolling back production](#rolling-back-production).

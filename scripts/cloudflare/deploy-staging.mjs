@@ -1,7 +1,7 @@
 // APP_URL=https://petrios-staging.<account-subdomain>.workers.dev npm run cf:deploy:staging
-// Deploys the top-level (staging) Worker only. Production (env.production and
-// env.production_preflight) deploys only through cf:deploy:production
-// (deploy-production.mjs; docs/cloudflare-workers.md, "Cutover").
+// Deploys the top-level (staging) Worker only. Production (env.production)
+// deploys only through cf:deploy:production (deploy-production.mjs;
+// docs/cloudflare-workers.md, "Production").
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, fail, log, readWranglerConfig, runBuild, runWrangler } from './tasks.mjs'

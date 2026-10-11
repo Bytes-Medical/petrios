@@ -1,9 +1,8 @@
-// Cloudflare Workers configuration (docs/cloudflare-workers.md). Render/Docker
-// ignores this file. The TOP LEVEL is the staging Worker: workers.dev only and
-// no cron triggers, because the production scheduler (Render's, or the
-// production Worker's after the cutover) runs the cron jobs against the same
-// database. Deploy it only with `npm run cf:deploy:staging`. The production
-// Worker is env.production / env.production_preflight below.
+// Cloudflare Workers configuration (docs/cloudflare-workers.md). The Docker/Node
+// build (self-hosting) ignores this file. The TOP LEVEL is the staging Worker:
+// workers.dev only and no cron triggers, because the production Worker runs the
+// cron jobs against the same database. Deploy it only with
+// `npm run cf:deploy:staging`. The production Worker is env.production below.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "petrios-staging",
@@ -52,94 +51,59 @@
   },
 
   "env": {
-    // PRODUCTION (petrios.uk). Two phases of ONE Worker, "petrios": both
-    // environments use the same name, so they share its secrets, and each
-    // deploy replaces the other's shape. Deploy ONLY with
-    // `npm run cf:deploy:production -- <phase>` (docs/cloudflare-workers.md,
-    // "Cutover"); scripts/cloudflare/lib.mjs productionConfigProblems() and its
-    // tests enforce everything below. The phases may differ only in routes,
-    // workers_dev, triggers.crons, CRON_ENABLED and OUTBOUND_EMAIL_ENABLED,
-    // plus ROTA_INTEGRATION_ENABLED: always "false" in preflight; in live the
-    // owner flips it to "true" only at rota go-live (docs/rota.md), after
-    // migrations 063/064 and the ROTA_IDENTITY_SECRET secret are in place.
-    //
-    // LIVE. A Workers route on the EXISTING proxied DNS record of petrios.uk
-    // makes the Worker serve the traffic; no DNS record is created, changed or
-    // deleted, and removing the route (the rollback phase) returns traffic to
-    // Render. Runs the six crons, so Render's scheduled jobs must be disabled
-    // first: only one scheduler per database.
+    // PRODUCTION (petrios.uk; the only production host since 2026-10-11, when
+    // Render was retired). Deploy ONLY with `npm run cf:deploy:production --
+    // deploy` (docs/cloudflare-workers.md, "Production");
+    // scripts/cloudflare/lib.mjs productionConfigProblems() and its tests
+    // enforce everything below. This is the ONLY scheduler of the cron jobs and
+    // the only host that emails real users. Add no other environment that
+    // deploys the Worker "petrios": wrangler would replace the live version
+    // with it on these custom domains (why env.production_preflight, which had
+    // email and crons off, was removed).
     "production": {
       "name": "petrios",
-      // Pinned so every step (secret upload, deploys, the route and schedule
-      // API calls) targets the one account that owns petrios.uk.
+      // Pinned so every step (secret upload, deploys, rollback and the API
+      // reads) targets the one account that owns petrios.uk.
       "account_id": "610371b5de9811b7d258c7622c23849b",
       "workers_dev": false,
       "preview_urls": false,
-      // A plain route, never custom_domain (that would rewrite DNS), on
-      // APP_URL's host only. www.petrios.uk is answered by Cloudflare itself
-      // with a 301 to the apex (no Render response), so it gets no route and
-      // the cutover leaves it untouched.
-      "routes": [{ "pattern": "petrios.uk/*", "zone_name": "petrios.uk" }],
+      // The COMPLETE set of Workers Custom Domains of this Worker (Cloudflare
+      // manages their DNS records). Wrangler publishes custom domains with
+      // replace_state=true, so a hostname dropped from this list is detached on
+      // the next deploy and its DNS record deleted; and when it is not run
+      // interactively it takes over a conflicting DNS record or another
+      // Worker's hostname without asking (cf:deploy:production previews the
+      // change and refuses both). Bare hostnames only, never a plain route.
+      // www.petrios.uk is a zone-level 301 to https://petrios.uk/, not this
+      // Worker: leave it out.
+      "routes": [
+        { "pattern": "petrios.uk", "custom_domain": true },
+        { "pattern": "app.petrios.uk", "custom_domain": true }
+      ],
       // services, vars and secrets are never inherited from the top level.
       "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "petrios" }],
-      // Must equal cfw/cron.ts CRON_SCHEDULE (cfw/cron.test.ts, lib.test.ts)
-      // and the schedule Render ran. UTC.
+      // Must equal cfw/cron.ts CRON_SCHEDULE (cfw/cron.test.ts, lib.test.ts). UTC.
       "triggers": {
         "crons": ["0 * * * *", "15 * * * *", "5,20,35,50 * * * *", "0 8 * * *", "30 6 * * *", "0 7 * * MON"]
       },
       "vars": {
-        // The public origin in every email link, certificate QR code and cron dispatch.
+        // The public origin in every email link, certificate QR code and cron
+        // dispatch. app.petrios.uk serves the same Worker; links use the apex.
         "APP_URL": "https://petrios.uk",
         "CRON_ENABLED": "true",
         "OUTBOUND_EMAIL_ENABLED": "true",
         "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip",
         "HOSTING_PROVIDER": "cloudflare-workers",
-        // Off until the owner's rota go-live (see the comment above).
+        // Rota availability (spec/14): "false" until the owner's go-live
+        // (docs/rota.md), after migrations 063/064 and the ROTA_IDENTITY_SECRET
+        // secret are in place; then only this value becomes "true".
         "ROTA_INTEGRATION_ENABLED": "false"
       },
       // Deploy fails unless these exist as secrets of the "petrios" Worker.
       // MAIL_FROM: lib/email.ts cannot send without it. PRIVACY_CONTROLLER_NAME
       // and PRIVACY_CONTACT_EMAIL: the public disclosures (lib/compliance.ts).
       // The address, DATA_HOSTING_REGION and DATA_TRANSFER_SAFEGUARDS are
-      // optional (undeclared on Render too); set them, naming Cloudflare, once
-      // the controller has them.
-      "secrets": {
-        "required": [
-          "SUPABASE_URL",
-          "SUPABASE_ANON_KEY",
-          "SUPABASE_SERVICE_ROLE_KEY",
-          "CRON_SECRET",
-          "RESEND_API_KEY",
-          "MAIL_FROM",
-          "PRIVACY_CONTROLLER_NAME",
-          "PRIVACY_CONTACT_EMAIL"
-        ]
-      }
-    },
-
-    // PREFLIGHT (and the shape rollback returns to). Same Worker and secrets,
-    // reachable only at petrios.<account-subdomain>.workers.dev: no routes, no
-    // cron schedules (an explicit [] makes wrangler clear them), no cron
-    // dispatch and no outbound email. It serves the production database with
-    // the production APP_URL, so links it would email point at petrios.uk.
-    "production_preflight": {
-      "name": "petrios",
-      "account_id": "610371b5de9811b7d258c7622c23849b",
-      "workers_dev": true,
-      "preview_urls": false,
-      // Declared empty so no route is ever inherited. Wrangler does NOT remove
-      // routes a previous live deploy attached: the rollback phase deletes them.
-      "routes": [],
-      "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "petrios" }],
-      "triggers": { "crons": [] },
-      "vars": {
-        "APP_URL": "https://petrios.uk",
-        "CRON_ENABLED": "false",
-        "OUTBOUND_EMAIL_ENABLED": "false",
-        "TRUSTED_CLIENT_IP_HEADER": "cf-connecting-ip",
-        "HOSTING_PROVIDER": "cloudflare-workers",
-        "ROTA_INTEGRATION_ENABLED": "false"
-      },
+      // optional secrets; set them, naming Cloudflare, once the controller has them.
       "secrets": {
         "required": [
           "SUPABASE_URL",

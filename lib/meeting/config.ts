@@ -10,7 +10,7 @@ import type { MeetingConfig } from './types'
  *   public       nothing set (or JITSI_DOMAIN=meet.jit.si)          → link out to meet.jit.si
  *
  * Every value is trimmed and an empty value counts as unset. Values are read
- * at REQUEST time (never baked into a bundle), so a Render or Worker env
+ * at REQUEST time (never baked into a bundle), so a Worker or Docker env
  * change needs no rebuild. A partial or contradictory configuration is a
  * configuration ERROR: meetings become unavailable with a message that names
  * variables, never secret values. There is no silent fallback to meet.jit.si.

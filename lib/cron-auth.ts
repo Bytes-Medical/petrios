@@ -20,8 +20,8 @@ export function isAuthorizedCronRequest(
 
 /**
  * True only for an explicit "false". The staging Worker sets it because it
- * shares the production database while Render still runs the jobs; Render
- * leaves it unset.
+ * shares the production database, whose jobs only the production Worker runs
+ * (it sets "true"); Docker/self-hosted deployments leave it unset.
  */
 export function cronDisabledByConfig(value: string | undefined): boolean {
   return value === 'false'

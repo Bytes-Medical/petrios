@@ -7,28 +7,41 @@ import { CRON_SCHEDULE } from '../../cfw/cron'
 import {
   ALL_OR_NONE_SECRET_GROUPS,
   EMPTY_NEXT_ENV_MODULE,
-  PREFLIGHT_ENV,
+  PRODUCTION_APP_HOST,
+  PRODUCTION_CUSTOM_DOMAINS,
   PRODUCTION_ENV,
   PRODUCTION_FORBIDDEN_SECRETS,
   PRODUCTION_OPTIONAL_SECRETS,
   PRODUCTION_REQUIRED_SECRETS,
+  PRODUCTION_WORKER_NAME,
+  PRODUCTION_ZONE,
+  RETIRED_PRODUCTION_ENVS,
+  SECRETS_CHANGED_ERROR_CODE,
   STREAMING_BACKPRESSURE_MARKER,
+  WORKER_VERSION_ID,
   cronScheduleExpressions,
+  customDomainPreviewProblems,
   deployedVersionId,
+  deploymentsNewestFirst,
   dirtyPaths,
   domainsForService,
   isLocalEnvFile,
-  liveRoutePatterns,
   parseProductionSecretsFile,
   parseSecretList,
   productionConfigProblems,
   productionSecretNameProblems,
   productionSecretsFileProblems,
   productionStateProblems,
-  renderResumeTime,
+  productionVarProblems,
+  rollbackDeploymentBody,
+  rollbackPlan,
+  rollbackProblems,
   routesForScript,
   scheduleExpressions,
+  secretsChangedError,
   validateProductionAppUrl,
+  versionPlainVars,
+  versionSecretNames,
   leakCandidates,
   namesFoundIn,
   nextEnvKeyNames,
@@ -136,6 +149,11 @@ describe('wrangler config checks', () => {
     })
   })
 
+  const stagingWorker = {
+    name: 'petrios-staging',
+    services: [{ binding: 'WORKER_SELF_REFERENCE', service: 'petrios-staging' }],
+  }
+
   it('flags staging configs that could run crons, claim routes or email real users', () => {
     const vars = {
       CRON_ENABLED: 'false',
@@ -143,7 +161,7 @@ describe('wrangler config checks', () => {
       TRUSTED_CLIENT_IP_HEADER: 'cf-connecting-ip',
       ROTA_INTEGRATION_ENABLED: 'false',
     }
-    const safe = { workers_dev: true, triggers: { crons: [] }, vars }
+    const safe = { ...stagingWorker, workers_dev: true, triggers: { crons: [] }, vars }
     expect(stagingConfigProblems(safe)).toEqual([])
     expect(stagingConfigProblems({ ...safe, triggers: { crons: ['0 * * * *'] } })).toHaveLength(1)
     expect(stagingConfigProblems({ ...safe, triggers: undefined })).toHaveLength(1)
@@ -162,7 +180,7 @@ describe('wrangler config checks', () => {
       TRUSTED_CLIENT_IP_HEADER: 'cf-connecting-ip',
       ROTA_INTEGRATION_ENABLED: 'false',
     }
-    const safe = { workers_dev: true, triggers: { crons: [] }, vars }
+    const safe = { ...stagingWorker, workers_dev: true, triggers: { crons: [] }, vars }
     expect(stagingConfigProblems({ ...safe, vars: { ...vars, ROTA_INTEGRATION_ENABLED: 'true' } })).toEqual([
       'top-level vars.ROTA_INTEGRATION_ENABLED must be "false"',
     ])
@@ -174,6 +192,27 @@ describe('wrangler config checks', () => {
   it('accepts the committed top level (staging) of wrangler.jsonc', () => {
     expect(stagingConfigProblems(wranglerConfig)).toEqual([])
     expect(wranglerConfig.env.production.vars.OUTBOUND_EMAIL_ENABLED).toBe('true')
+  })
+
+  it('never deploys the staging config as the production Worker', () => {
+    // Custom domains persist across deploys: the live site would get email off and its crons cleared.
+    const asProduction = (name: string) =>
+      stagingConfigProblems({ ...wranglerConfig, name, services: [{ binding: 'WORKER_SELF_REFERENCE', service: name }] })
+    expect(PRODUCTION_WORKER_NAME).toBe('petrios')
+    expect(asProduction('petrios')).toEqual([expect.stringMatching(/top-level name must not be the production Worker \(petrios\)/)])
+    const renamed = structuredClone(wranglerConfig)
+    renamed.env.production.name = 'petrios-live'
+    expect(
+      stagingConfigProblems({ ...renamed, name: 'petrios-live', services: [{ binding: 'WORKER_SELF_REFERENCE', service: 'petrios-live' }] })
+    ).toEqual([expect.stringMatching(/must not be the production Worker \(petrios-live\)/)])
+    expect(stagingConfigProblems({ ...wranglerConfig, name: undefined })).toEqual(
+      expect.arrayContaining(['top-level name must be set'])
+    )
+    // The self-reference binding must name the staging Worker itself, never production.
+    expect(
+      stagingConfigProblems({ ...wranglerConfig, services: [{ binding: 'WORKER_SELF_REFERENCE', service: 'petrios' }] })
+    ).toEqual([expect.stringMatching(/top-level services must be exactly/)])
+    expect(stagingConfigProblems({ ...wranglerConfig, services: undefined })).toHaveLength(1)
   })
 })
 
@@ -251,8 +290,6 @@ describe('production APP_URL', () => {
   it('accepts the public https origin', () => {
     expect(validateProductionAppUrl('https://petrios.uk')).toEqual({ origin: 'https://petrios.uk', host: 'petrios.uk' })
     expect(validateProductionAppUrl('https://petrios.uk/').origin).toBe('https://petrios.uk')
-    // www.petrios.uk is a Cloudflare 301 to the apex today: it gets no route.
-    expect(liveRoutePatterns('petrios.uk')).toEqual(['petrios.uk/*'])
   })
 
   it.each([
@@ -272,17 +309,25 @@ describe('production APP_URL', () => {
   ])('rejects %s', (value) => {
     expect(validateProductionAppUrl(value).error).toBeTruthy()
   })
+
+  it('is the apex, one of the custom domains, all in one zone; www is not a custom domain', () => {
+    expect(PRODUCTION_APP_HOST).toBe('petrios.uk')
+    expect(PRODUCTION_CUSTOM_DOMAINS).toEqual(['petrios.uk', 'app.petrios.uk'])
+    expect(PRODUCTION_CUSTOM_DOMAINS).toContain(PRODUCTION_APP_HOST)
+    expect(PRODUCTION_CUSTOM_DOMAINS.every((host) => host === PRODUCTION_ZONE || host.endsWith(`.${PRODUCTION_ZONE}`))).toBe(true)
+    // www.petrios.uk is a zone-level 301 to the apex, not the Worker.
+    expect(PRODUCTION_CUSTOM_DOMAINS).not.toContain('www.petrios.uk')
+  })
 })
 
-describe('production wrangler environments', () => {
+describe('production wrangler environment', () => {
   const expectedCrons = Object.keys(CRON_SCHEDULE)
-  const committedLive = wranglerConfig.env[PRODUCTION_ENV]
-  const committedPreflight = wranglerConfig.env[PREFLIGHT_ENV]
+  const committed = wranglerConfig.env[PRODUCTION_ENV]
 
-  /** The committed config with one environment replaced (deep copy). */
-  function withEnv(envName: string, change: (env: Record<string, any>) => void) {
+  /** The committed config with env.production changed (deep copy). */
+  function withProduction(change: (env: Record<string, any>) => void) {
     const copy = structuredClone(wranglerConfig)
-    change(copy.env[envName])
+    change(copy.env[PRODUCTION_ENV])
     return copy
   }
 
@@ -290,176 +335,197 @@ describe('production wrangler environments', () => {
     return productionConfigProblems(config, { expectedCrons })
   }
 
-  it('accepts the committed production and preflight environments', () => {
+  const routeProblems = (routes: unknown) => problemsOf(withProduction((env) => (env.routes = routes)))
+  const lacks = (hosts: string) => expect.stringMatching(new RegExp(`routes lacks the custom domain\\(s\\) ${hosts}: .*detach`))
+  const unexpected = (entries: string) => expect.stringMatching(new RegExp(`routes has unexpected entries ${entries};`))
+
+  it('accepts the committed wrangler.jsonc', () => {
     expect(problemsOf(wranglerConfig)).toEqual([])
   })
 
-  it('pins the committed values the cutover depends on', () => {
-    expect(committedLive.name).toBe('petrios')
-    expect(committedLive.vars.APP_URL).toBe('https://petrios.uk')
-    expect(committedLive.routes).toEqual([{ pattern: 'petrios.uk/*', zone_name: 'petrios.uk' }])
-    expect(committedLive.account_id).toMatch(/^[0-9a-f]{32}$/)
-    expect(committedPreflight.account_id).toBe(committedLive.account_id)
-    expect(committedLive.workers_dev).toBe(false)
-    expect(committedPreflight.workers_dev).toBe(true)
-    expect(committedLive.secrets.required).toEqual(PRODUCTION_REQUIRED_SECRETS)
-    expect(committedPreflight.secrets.required).toEqual(PRODUCTION_REQUIRED_SECRETS)
+  it('pins the live production facts (2026-10-11)', () => {
+    expect(Object.keys(wranglerConfig.env)).toEqual([PRODUCTION_ENV])
+    expect(committed.name).toBe('petrios')
+    expect(committed.account_id).toBe('610371b5de9811b7d258c7622c23849b')
+    expect(committed.routes).toEqual([
+      { pattern: 'petrios.uk', custom_domain: true },
+      { pattern: 'app.petrios.uk', custom_domain: true },
+    ])
+    expect(committed.workers_dev).toBe(false)
+    expect(committed.preview_urls).toBe(false)
+    expect(committed.vars).toEqual({
+      APP_URL: 'https://petrios.uk',
+      CRON_ENABLED: 'true',
+      OUTBOUND_EMAIL_ENABLED: 'true',
+      TRUSTED_CLIENT_IP_HEADER: 'cf-connecting-ip',
+      HOSTING_PROVIDER: 'cloudflare-workers',
+      ROTA_INTEGRATION_ENABLED: 'false',
+    })
+    expect(committed.secrets.required).toEqual(PRODUCTION_REQUIRED_SECRETS)
   })
 
-  it('requires both phases to be one Worker bound to itself', () => {
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.name = 'petrios-preflight')))).toEqual(
-      expect.arrayContaining([expect.stringMatching(/same Worker/), expect.stringMatching(/services must be exactly/)])
-    )
-    expect(
-      problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.services = [{ binding: 'WORKER_SELF_REFERENCE', service: 'petrios-staging' }])))
-    ).toEqual([expect.stringMatching(/env.production.services/)])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => delete env.services))).toEqual([
-      expect.stringMatching(/env.production.services/),
-    ])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.name = wranglerConfig.name)))).toEqual(
-      expect.arrayContaining([expect.stringMatching(/differ from the staging Worker/)])
-    )
-  })
-
-  it('pins one Cloudflare account for both phases', () => {
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => delete env.account_id))).toEqual([
-      expect.stringMatching(/production_preflight.account_id must pin/),
-      expect.stringMatching(/same account_id/),
-    ])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.account_id = 'f'.repeat(32))))).toEqual([
-      expect.stringMatching(/same account_id/),
-    ])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.account_id = 'not-an-account')))).toEqual(
-      expect.arrayContaining([expect.stringMatching(/production.account_id must pin/)])
-    )
-  })
-
-  it('requires exactly one live route, on APP_URL’s host in its zone, never a custom domain', () => {
-    const routeProblem = (routes: unknown) => problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.routes = routes)))
-    expect(
-      routeProblem([
-        { pattern: 'petrios.uk/*', zone_name: 'petrios.uk' },
-        { pattern: 'www.petrios.uk/*', zone_name: 'petrios.uk' },
-      ])
-    ).toEqual([expect.stringMatching(/must be exactly petrios.uk\/\* \(APP_URL/)])
-    expect(routeProblem([{ pattern: 'staging.petrios.uk/*', zone_name: 'petrios.uk' }])).toEqual([
-      expect.stringMatching(/must be exactly/),
-    ])
-    expect(routeProblem([{ pattern: 'petrios.uk/*', zone_name: 'example.org' }])).toEqual([
-      expect.stringMatching(/zone_name example.org does not contain petrios.uk/),
-    ])
-    expect(routeProblem([{ pattern: 'petrios.uk/*', zone_name: 'petrios.uk', custom_domain: true }])).toEqual([
-      expect.stringMatching(/custom_domain would rewrite DNS/),
-    ])
-    expect(routeProblem(['petrios.uk/*'])).toEqual(
-      expect.arrayContaining([expect.stringMatching(/\{ pattern, zone_name \} objects/)])
-    )
-    expect(routeProblem([])).toEqual([expect.stringMatching(/must list the production routes/)])
-  })
-
-  it('ties the routes to APP_URL', () => {
-    const moved = withEnv(PRODUCTION_ENV, (env) => (env.vars.APP_URL = 'https://teaching.example.nhs.uk'))
-    moved.env[PREFLIGHT_ENV].vars.APP_URL = 'https://teaching.example.nhs.uk'
-    expect(problemsOf(moved)).toEqual([
-      expect.stringMatching(/must be exactly teaching.example.nhs.uk\/\*/),
-      expect.stringMatching(/route petrios.uk\/\*: zone_name petrios.uk does not contain teaching.example.nhs.uk/),
-    ])
-    expect(
-      problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.APP_URL = 'https://petrios.fibrinlab.workers.dev')))
-    ).toEqual(expect.arrayContaining([expect.stringMatching(/workers.dev/)]))
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.APP_URL = 'https://www.petrios.uk')))).toEqual([
-      expect.stringMatching(/vars.APP_URL must be identical/),
-    ])
-  })
-
-  it('runs exactly CRON_SCHEDULE in live and clears every schedule in preflight', () => {
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => env.triggers.crons.pop()))).toEqual([
-      expect.stringMatching(/triggers.crons must equal cfw\/cron.ts CRON_SCHEDULE/),
-    ])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => env.triggers.crons.push('0 * * * *')))).toHaveLength(1)
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.triggers = { crons: [] })))).toHaveLength(1)
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.triggers = { crons: ['0 * * * *'] })))).toEqual([
-      expect.stringMatching(/production_preflight.triggers.crons must be declared as \[\]/),
-    ])
-    // Absent means "keep the Worker's current schedules": refused.
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => delete env.triggers))).toHaveLength(1)
-  })
-
-  it('switches cron dispatch and email per phase only', () => {
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.CRON_ENABLED = 'false')))).toEqual([
-      expect.stringMatching(/production.vars.CRON_ENABLED must be "true"/),
-    ])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.OUTBOUND_EMAIL_ENABLED = 'false')))).toEqual([
-      expect.stringMatching(/production.vars.OUTBOUND_EMAIL_ENABLED must be "true"/),
-    ])
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.CRON_ENABLED = 'true')))).toEqual([
-      expect.stringMatching(/production_preflight.vars.CRON_ENABLED must be "false"/),
-    ])
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.OUTBOUND_EMAIL_ENABLED = 'true')))).toEqual([
-      expect.stringMatching(/production_preflight.vars.OUTBOUND_EMAIL_ENABLED must be "false"/),
-    ])
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.TRUSTED_CLIENT_IP_HEADER = 'x-forwarded-for')))).toEqual(
-      expect.arrayContaining([expect.stringMatching(/TRUSTED_CLIENT_IP_HEADER/)])
-    )
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.APP_TIME_ZONE = 'Europe/London')))).toEqual([
-      expect.stringMatching(/same vars keys/),
-    ])
-  })
-
-  it('keeps rota availability off in preflight and an explicit choice in live', () => {
-    expect(committedPreflight.vars.ROTA_INTEGRATION_ENABLED).toBe('false')
-    expect(committedLive.vars.ROTA_INTEGRATION_ENABLED).toBe('false')
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.vars.ROTA_INTEGRATION_ENABLED = 'true')))).toEqual([
-      expect.stringMatching(/production_preflight.vars.ROTA_INTEGRATION_ENABLED must be "false"/),
-    ])
-    // Go-live flips only the live value; the phases may differ on this key.
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.ROTA_INTEGRATION_ENABLED = 'true')))).toEqual([])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.vars.ROTA_INTEGRATION_ENABLED = 'yes')))).toEqual([
-      expect.stringMatching(/production.vars.ROTA_INTEGRATION_ENABLED must be declared as "false" or "true"/),
-    ])
-    const absent = withEnv(PRODUCTION_ENV, (env) => delete env.vars.ROTA_INTEGRATION_ENABLED)
-    delete absent.env[PREFLIGHT_ENV].vars.ROTA_INTEGRATION_ENABLED
-    expect(problemsOf(absent)).toEqual([
-      expect.stringMatching(/production_preflight.vars.ROTA_INTEGRATION_ENABLED must be "false"/),
-      expect.stringMatching(/production.vars.ROTA_INTEGRATION_ENABLED must be declared/),
-    ])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => delete env.vars.ROTA_INTEGRATION_ENABLED))).toEqual(
-      expect.arrayContaining([expect.stringMatching(/same vars keys/)])
-    )
-  })
-
-  it('keeps preflight off production hostnames and live off workers.dev', () => {
-    expect(
-      problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.routes = [{ pattern: 'petrios.uk/*', zone_name: 'petrios.uk' }])))
-    ).toEqual([expect.stringMatching(/production_preflight.routes must be declared as \[\]/)])
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => delete env.routes))).toHaveLength(1)
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.route = 'petrios.uk/*')))).toEqual(
-      expect.arrayContaining([expect.stringMatching(/must not use "route"/)])
-    )
-    expect(problemsOf(withEnv(PREFLIGHT_ENV, (env) => (env.workers_dev = false)))).toEqual([
-      expect.stringMatching(/production_preflight.workers_dev must be true/),
-    ])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.workers_dev = true)))).toEqual([
-      expect.stringMatching(/production.workers_dev must be false/),
-    ])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.preview_urls = true)))).toEqual([
-      expect.stringMatching(/preview_urls must be false/),
-    ])
-  })
-
-  it('requires the full secret list in both phases and nothing outside the phase keys', () => {
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => env.secrets.required.pop()))).toEqual([
-      expect.stringMatching(/secrets.required lacks PRIVACY_CONTACT_EMAIL/),
-      expect.stringMatching(/same secrets/),
-    ])
-    expect(problemsOf(withEnv(PRODUCTION_ENV, (env) => (env.compatibility_date = '2020-01-01')))).toEqual([
-      expect.stringMatching(/declares compatibility_date/),
+  it('refuses a reintroduced production_preflight, or any other environment', () => {
+    const preflight = {
+      ...structuredClone(committed),
+      workers_dev: true,
+      routes: [],
+      triggers: { crons: [] },
+      vars: { ...committed.vars, CRON_ENABLED: 'false', OUTBOUND_EMAIL_ENABLED: 'false' },
+    }
+    expect(RETIRED_PRODUCTION_ENVS).toEqual(['production_preflight'])
+    expect(problemsOf({ ...wranglerConfig, env: { ...wranglerConfig.env, production_preflight: preflight } })).toEqual([
+      expect.stringMatching(/env.production_preflight must not exist: .*email-off, cron-less.*custom domains/),
     ])
     expect(problemsOf({ ...wranglerConfig, env: { ...wranglerConfig.env, canary: {} } })).toEqual([
       expect.stringMatching(/unexpected wrangler environments: canary/),
     ])
-    expect(problemsOf({ ...wranglerConfig, env: { [PRODUCTION_ENV]: committedLive } })).toEqual([
-      'env.production_preflight is missing',
+    expect(problemsOf({ ...wranglerConfig, env: {} })).toEqual(['env.production is missing'])
+    expect(problemsOf({ ...wranglerConfig, env: { production_preflight: preflight } })).toEqual([
+      expect.stringMatching(/env.production_preflight must not exist/),
+      'env.production is missing',
+    ])
+  })
+
+  it('refuses a plain route, alone or beside the custom domains', () => {
+    // The pre-2026-10-11 shape: a Workers route on the proxied DNS record.
+    expect(routeProblems([{ pattern: 'petrios.uk/*', zone_name: 'petrios.uk' }])).toEqual([
+      lacks('petrios.uk, app.petrios.uk'),
+      unexpected('petrios.uk/\\*'),
+      expect.stringMatching(/route petrios.uk\/\* is a plain route/),
+      expect.stringMatching(/route petrios.uk\/\* must not set zone_name/),
+      expect.stringMatching(/route petrios.uk\/\* must be a bare lowercase hostname/),
+    ])
+    expect(routeProblems([...committed.routes, { pattern: 'petrios.uk/*', zone_name: 'petrios.uk' }])).toEqual(
+      expect.arrayContaining([unexpected('petrios.uk/\\*'), expect.stringMatching(/is a plain route/)])
+    )
+    expect(routeProblems([...committed.routes, 'petrios.uk/*'])).toEqual([
+      unexpected('petrios.uk/\\*'),
+      expect.stringMatching(/routes entry petrios.uk\/\* is a plain route/),
+    ])
+    expect(routeProblems([{ pattern: 'petrios.uk', custom_domain: false }, committed.routes[1]])).toEqual([
+      expect.stringMatching(/route petrios.uk is a plain route \(custom_domain is not true\)/),
+    ])
+    expect(problemsOf(withProduction((env) => (env.route = 'petrios.uk/*')))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/must not use "route"/)])
+    )
+  })
+
+  it('refuses a missing, extra, repeated or malformed hostname', () => {
+    // Dropping a hostname would detach it and delete its DNS record on the next deploy.
+    expect(routeProblems([committed.routes[0]])).toEqual([lacks('app.petrios.uk')])
+    expect(routeProblems([committed.routes[1]])).toEqual([lacks('petrios.uk')])
+    expect(routeProblems([])).toEqual([expect.stringMatching(/routes must list exactly the custom domains petrios.uk, app.petrios.uk/)])
+    expect(routeProblems(undefined)).toHaveLength(1)
+    expect(routeProblems([...committed.routes, { pattern: 'www.petrios.uk', custom_domain: true }])).toEqual([
+      unexpected('www.petrios.uk'),
+    ])
+    expect(routeProblems([...committed.routes, committed.routes[0]])).toEqual([
+      expect.stringMatching(/lists petrios.uk more than once/),
+    ])
+    expect(routeProblems([{ pattern: '*.petrios.uk', custom_domain: true }, committed.routes[1]])).toEqual([
+      lacks('petrios.uk'),
+      unexpected('\\*.petrios.uk'),
+      expect.stringMatching(/route \*.petrios.uk must be a bare lowercase hostname/),
+    ])
+    for (const pattern of ['https://petrios.uk', 'petrios.uk/app', 'petrios.uk:443', 'Petrios.uk', 'petrios.uk.']) {
+      expect(routeProblems([{ pattern, custom_domain: true }, committed.routes[1]])).toEqual(
+        expect.arrayContaining([expect.stringMatching(/must be a bare lowercase hostname/)])
+      )
+    }
+    expect(routeProblems([{ pattern: 'petrios.uk', custom_domain: true, enabled: false }, committed.routes[1]])).toEqual([
+      expect.stringMatching(/route petrios.uk must not set enabled/),
+    ])
+    expect(routeProblems([{ pattern: 'petrios.uk', custom_domain: true, zone_name: 'petrios.uk' }, committed.routes[1]])).toEqual([
+      expect.stringMatching(/route petrios.uk must not set zone_name/),
+    ])
+  })
+
+  it('keeps APP_URL on the apex custom domain', () => {
+    const appUrl = (value: string) => problemsOf(withProduction((env) => (env.vars.APP_URL = value)))
+    for (const value of ['https://app.petrios.uk', 'https://www.petrios.uk', 'https://teaching.example.nhs.uk']) {
+      expect(appUrl(value)).toEqual([expect.stringMatching(/vars.APP_URL must be https:\/\/petrios.uk/)])
+    }
+    expect(appUrl('https://petrios.fibrinlab.workers.dev')).toEqual([expect.stringMatching(/workers.dev/)])
+    expect(appUrl('http://petrios.uk')).toEqual([expect.stringMatching(/https/)])
+    expect(problemsOf(withProduction((env) => delete env.vars.APP_URL))).toEqual([
+      expect.stringMatching(/APP_URL is not set/),
+    ])
+  })
+
+  it('runs exactly CRON_SCHEDULE', () => {
+    expect(problemsOf(withProduction((env) => env.triggers.crons.pop()))).toEqual([
+      expect.stringMatching(/triggers.crons must equal cfw\/cron.ts CRON_SCHEDULE/),
+    ])
+    expect(problemsOf(withProduction((env) => env.triggers.crons.push('0 * * * *')))).toHaveLength(1)
+    expect(problemsOf(withProduction((env) => env.triggers.crons.push('*/5 * * * *')))).toHaveLength(1)
+    // [] would stop every job; an absent key would keep whatever the Worker has.
+    expect(problemsOf(withProduction((env) => (env.triggers = { crons: [] })))).toHaveLength(1)
+    expect(problemsOf(withProduction((env) => delete env.triggers))).toHaveLength(1)
+  })
+
+  it('keeps cron dispatch, email and the Cloudflare vars on', () => {
+    const vars = (change: (vars: Record<string, string>) => void) => problemsOf(withProduction((env) => change(env.vars)))
+    expect(vars((v) => (v.CRON_ENABLED = 'false'))).toEqual([expect.stringMatching(/vars.CRON_ENABLED must be "true"/)])
+    expect(vars((v) => delete v.CRON_ENABLED)).toEqual([expect.stringMatching(/vars.CRON_ENABLED must be "true"/)])
+    expect(vars((v) => (v.OUTBOUND_EMAIL_ENABLED = 'false'))).toEqual([
+      expect.stringMatching(/vars.OUTBOUND_EMAIL_ENABLED must be "true"/),
+    ])
+    expect(vars((v) => (v.TRUSTED_CLIENT_IP_HEADER = 'x-forwarded-for'))).toEqual([
+      expect.stringMatching(/TRUSTED_CLIENT_IP_HEADER/),
+    ])
+    expect(vars((v) => delete v.HOSTING_PROVIDER)).toEqual([expect.stringMatching(/HOSTING_PROVIDER/)])
+  })
+
+  it('keeps rota availability an explicit owner choice', () => {
+    expect(committed.vars.ROTA_INTEGRATION_ENABLED).toBe('false')
+    expect(problemsOf(withProduction((env) => (env.vars.ROTA_INTEGRATION_ENABLED = 'true')))).toEqual([])
+    expect(problemsOf(withProduction((env) => (env.vars.ROTA_INTEGRATION_ENABLED = 'yes')))).toEqual([
+      expect.stringMatching(/vars.ROTA_INTEGRATION_ENABLED must be declared as "false" or "true"/),
+    ])
+    expect(problemsOf(withProduction((env) => delete env.vars.ROTA_INTEGRATION_ENABLED))).toHaveLength(1)
+  })
+
+  it('keeps workers.dev and preview URLs off', () => {
+    expect(problemsOf(withProduction((env) => (env.workers_dev = true)))).toEqual([
+      expect.stringMatching(/production.workers_dev must be false/),
+    ])
+    expect(problemsOf(withProduction((env) => delete env.workers_dev))).toHaveLength(1)
+    expect(problemsOf(withProduction((env) => (env.preview_urls = true)))).toEqual([
+      expect.stringMatching(/preview_urls must be false/),
+    ])
+  })
+
+  it('requires its own Worker on the pinned account, bound to itself', () => {
+    expect(
+      problemsOf(withProduction((env) => (env.services = [{ binding: 'WORKER_SELF_REFERENCE', service: 'petrios-staging' }])))
+    ).toEqual([expect.stringMatching(/env.production.services/)])
+    expect(problemsOf(withProduction((env) => delete env.services))).toEqual([expect.stringMatching(/env.production.services/)])
+    expect(problemsOf(withProduction((env) => (env.name = wranglerConfig.name)))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/differ from the staging Worker/)])
+    )
+    expect(
+      problemsOf(
+        withProduction((env) => {
+          env.name = 'petrios-live'
+          env.services = [{ binding: 'WORKER_SELF_REFERENCE', service: 'petrios-live' }]
+        })
+      )
+    ).toEqual([expect.stringMatching(/env.production.name must be "petrios"/)])
+    expect(problemsOf(withProduction((env) => (env.account_id = 'not-an-account')))).toEqual([
+      expect.stringMatching(/production.account_id must pin/),
+    ])
+    expect(problemsOf(withProduction((env) => delete env.account_id))).toHaveLength(1)
+  })
+
+  it('requires the full secret list and nothing outside the production keys', () => {
+    expect(problemsOf(withProduction((env) => env.secrets.required.pop()))).toEqual([
+      expect.stringMatching(/secrets.required lacks PRIVACY_CONTACT_EMAIL/),
+    ])
+    expect(problemsOf(withProduction((env) => env.secrets.required.push('APP_URL')))).toEqual([
+      expect.stringMatching(/secrets.required names vars: APP_URL/),
+    ])
+    expect(problemsOf(withProduction((env) => (env.compatibility_date = '2020-01-01')))).toEqual([
+      expect.stringMatching(/declares compatibility_date/),
     ])
   })
 })
@@ -500,7 +566,7 @@ describe('production Worker secrets (names only)', () => {
 })
 
 describe('production secrets file', () => {
-  const preflight = wranglerConfig.env[PREFLIGHT_ENV]
+  const production = wranglerConfig.env[PRODUCTION_ENV]
   const outside = { filePath: '/home/operator/petrios-production-secrets.json', root: '/home/operator/petrios' }
   const template = JSON.parse(
     fs.readFileSync(path.join(root, 'scripts', 'cloudflare', 'production-secrets.template.json'), 'utf8')
@@ -528,7 +594,7 @@ describe('production secrets file', () => {
   })
 
   it('accepts a filled file outside the repository', () => {
-    expect(productionSecretsFileProblems(filled([...PRODUCTION_REQUIRED_SECRETS, 'ANTHROPIC_API_KEY']), preflight, outside)).toEqual({
+    expect(productionSecretsFileProblems(filled([...PRODUCTION_REQUIRED_SECRETS, 'ANTHROPIC_API_KEY']), production, outside)).toEqual({
       problems: [],
       unknown: [],
     })
@@ -536,7 +602,7 @@ describe('production secrets file', () => {
 
   it('refuses the unfilled template, missing names, nulls and partial groups', () => {
     const fromTemplate = parseProductionSecretsFile(JSON.stringify(template)).entries!
-    expect(productionSecretsFileProblems(fromTemplate, preflight, outside).problems).toEqual([
+    expect(productionSecretsFileProblems(fromTemplate, production, outside).problems).toEqual([
       expect.stringMatching(/remove or fill the empty values/),
     ])
     const { problems } = productionSecretsFileProblems(
@@ -545,7 +611,7 @@ describe('production secrets file', () => {
         { name: 'OPS_ENABLED', kind: 'non-string' },
         ...filled(['ELEVENLABS_API_KEY', 'JAAS_APP_ID']),
       ],
-      preflight,
+      production,
       outside
     )
     expect(problems).toEqual([
@@ -560,7 +626,7 @@ describe('production secrets file', () => {
   it('applies the staging file rules and flags unknown names', () => {
     const { problems, unknown } = productionSecretsFileProblems(
       filled([...PRODUCTION_REQUIRED_SECRETS, 'APP_URL', 'NEXT_PUBLIC_APP_URL', 'ANTHROPIC_APIKEY']),
-      preflight,
+      production,
       { ...outside, filePath: '/home/operator/petrios/production-secrets.json' }
     )
     expect(problems).toEqual([
@@ -571,10 +637,10 @@ describe('production secrets file', () => {
     expect(unknown).toEqual(['APP_URL', 'NEXT_PUBLIC_APP_URL', 'ANTHROPIC_APIKEY'])
   })
 
-  it('refuses SMTP names copied from Render and accepts APP_TIME_ZONE', () => {
+  it('refuses SMTP names and accepts APP_TIME_ZONE', () => {
     const { problems, unknown } = productionSecretsFileProblems(
       filled([...PRODUCTION_REQUIRED_SECRETS, 'APP_TIME_ZONE', ...PRODUCTION_FORBIDDEN_SECRETS]),
-      preflight,
+      production,
       outside
     )
     expect(problems).toEqual([expect.stringMatching(/remove SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE/)])
@@ -584,10 +650,10 @@ describe('production secrets file', () => {
 
   it('refuses an ambiguous LLM configuration', () => {
     const names = [...PRODUCTION_REQUIRED_SECRETS, 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL']
-    expect(productionSecretsFileProblems(filled(names), preflight, outside).problems).toEqual([
+    expect(productionSecretsFileProblems(filled(names), production, outside).problems).toEqual([
       expect.stringMatching(/LLM_PROVIDER/),
     ])
-    expect(productionSecretsFileProblems(filled([...names, 'LLM_PROVIDER']), preflight, outside).problems).toEqual([])
+    expect(productionSecretsFileProblems(filled([...names, 'LLM_PROVIDER']), production, outside).problems).toEqual([])
   })
 })
 
@@ -630,31 +696,64 @@ describe('production deploy helpers', () => {
     expect(deployedVersionId('not json\n')).toBeNull()
   })
 
-  it('confirms the live and preflight state from the API, never a partial one', () => {
-    const live = { routePatterns: ['petrios.uk/*'], crons: Object.keys(CRON_SCHEDULE) }
-    const routes = [{ pattern: 'petrios.uk/*' }]
+  it('confirms the production state from the API: exactly the custom domains, no routes, exactly the crons', () => {
     const crons = Object.keys(CRON_SCHEDULE)
-    expect(productionStateProblems('live', { routes, domains: [], schedules: crons }, live)).toEqual([])
-    // Routes applied but schedules failed (wrangler updates them concurrently), or the reverse.
-    expect(productionStateProblems('live', { routes, domains: [], schedules: [] }, live)).toEqual([
+    const expected = { hostnames: PRODUCTION_CUSTOM_DOMAINS, crons }
+    const domains = PRODUCTION_CUSTOM_DOMAINS.map((hostname) => ({ hostname, service: 'petrios' }))
+    expect(productionStateProblems({ routes: [], domains, schedules: crons }, expected)).toEqual([])
+    expect(productionStateProblems({ routes: [], domains: domains.slice(0, 1), schedules: crons }, expected)).toEqual([
+      'custom domains are [petrios.uk], expected [petrios.uk, app.petrios.uk]',
+    ])
+    expect(
+      productionStateProblems(
+        { routes: [], domains: [...domains, { hostname: 'www.petrios.uk', service: 'petrios' }], schedules: crons },
+        expected
+      )
+    ).toEqual([expect.stringMatching(/custom domains are \[petrios.uk, app.petrios.uk, www.petrios.uk\]/)])
+    expect(productionStateProblems({ routes: [{ pattern: 'petrios.uk/*' }], domains, schedules: crons }, expected)).toEqual([
+      'plain routes point at the Worker: petrios.uk/*',
+    ])
+    // Wrangler sets domains and schedules concurrently after the upload: either can fail alone.
+    expect(productionStateProblems({ routes: [], domains, schedules: [] }, expected)).toEqual([
       expect.stringMatching(/cron schedules are \[\], expected/),
     ])
-    expect(productionStateProblems('live', { routes: [], domains: [], schedules: crons }, live)).toEqual([
-      expect.stringMatching(/routes are \[\], expected \[petrios.uk\/\*\]/),
-    ])
-    expect(productionStateProblems('preflight', { routes: [], domains: [], schedules: [] })).toEqual([])
-    expect(
-      productionStateProblems('preflight', { routes, domains: [{ hostname: 'petrios.uk' }], schedules: ['0 * * * *'] })
-    ).toEqual([
-      'custom domains are attached: petrios.uk',
-      'routes are still attached: petrios.uk/*',
-      'cron schedules remain: 0 * * * *',
-    ])
+    expect(productionStateProblems({ routes: [], domains: [], schedules: crons.slice(1) }, expected)).toHaveLength(2)
   })
 
-  it('tells the operator when Render may resume: after the longest Worker cron run', () => {
-    expect(renderResumeTime(new Date('2026-10-09T10:05:30Z'))).toBe('2026-10-09 10:21 UTC')
-    expect(renderResumeTime(new Date('2026-10-09T23:50:00Z'))).toBe('2026-10-10 00:05 UTC')
+  it('previews the custom-domain change and refuses removals, DNS conflicts and other Workers’ hostnames', () => {
+    const target = { workerName: 'petrios', hostnames: PRODUCTION_CUSTOM_DOMAINS }
+    const ours = PRODUCTION_CUSTOM_DOMAINS.map((hostname) => ({ hostname, service: 'petrios' }))
+    const unchanged = { added: [], removed: [], updated: ours.map((domain) => ({ ...domain, modified: false })), conflicting: [] }
+    expect(customDomainPreviewProblems(unchanged, ours, target)).toEqual({ problems: [], notes: [] })
+
+    const removal = { ...unchanged, removed: [{ hostname: 'app.petrios.uk' }] }
+    expect(customDomainPreviewProblems(removal, ours, target).problems).toEqual([
+      expect.stringMatching(/would DETACH app.petrios.uk from "petrios" and delete the DNS record/),
+    ])
+    const conflict = { ...unchanged, conflicting: [{ hostname: 'petrios.uk' }] }
+    expect(customDomainPreviewProblems(conflict, ours, target).problems).toEqual([
+      expect.stringMatching(/petrios.uk already has a DNS record that is not "petrios"'s custom domain/),
+    ])
+    const stolen = [{ hostname: 'petrios.uk', service: 'petrios' }, { hostname: 'app.petrios.uk', service: 'petrios-staging' }]
+    expect(customDomainPreviewProblems(unchanged, stolen, target).problems).toEqual([
+      expect.stringMatching(/app.petrios.uk \(Worker "petrios-staging"\) is a custom domain of another Worker/),
+    ])
+    // Other Workers' unrelated hostnames are not our concern.
+    expect(customDomainPreviewProblems(unchanged, [...ours, { hostname: 'docs.example.org', service: 'docs' }], target).problems).toEqual([])
+
+    const reattach = { ...unchanged, added: [{ hostname: 'app.petrios.uk' }], updated: [{ hostname: 'petrios.uk', modified: true }] }
+    expect(customDomainPreviewProblems(reattach, ours.slice(0, 1), target)).toEqual({
+      problems: [],
+      notes: [
+        'the deploy will attach app.petrios.uk (configured but not attached now)',
+        'the deploy will update the settings of petrios.uk',
+      ],
+    })
+    // Wrangler carries on with an empty changeset when its request fails; the script refuses instead.
+    expect(customDomainPreviewProblems(null, ours, target).problems).toEqual([expect.stringMatching(/unexpected API response/)])
+    expect(customDomainPreviewProblems({ added: [] }, ours, target).problems).toEqual([
+      expect.stringMatching(/lacks removed, updated, conflicting/),
+    ])
   })
 
   it('lists dirty paths from git status --porcelain', () => {
@@ -664,6 +763,168 @@ describe('production deploy helpers', () => {
       'a.ts -> b.ts',
     ])
     expect(dirtyPaths('')).toEqual([])
+  })
+})
+
+describe('production rollback', () => {
+  const v = (n: number) => `0000000${n}-0000-4000-8000-000000000000`
+  const deployment = (createdOn: string, versionId: string, triggeredBy?: string, percentage = 100) => ({
+    created_on: createdOn,
+    versions: [{ version_id: versionId, percentage }],
+    ...(triggeredBy ? { annotations: { 'workers/triggered_by': triggeredBy } } : {}),
+  })
+  const productionVars = {
+    APP_URL: 'https://petrios.uk',
+    CRON_ENABLED: 'true',
+    OUTBOUND_EMAIL_ENABLED: 'true',
+    TRUSTED_CLIENT_IP_HEADER: 'cf-connecting-ip',
+    HOSTING_PROVIDER: 'cloudflare-workers',
+    ROTA_INTEGRATION_ENABLED: 'false',
+  }
+  const version = (vars: Record<string, string>, secrets = ['CRON_SECRET', 'SUPABASE_SERVICE_ROLE_KEY']) => ({
+    resources: {
+      bindings: [
+        ...Object.entries(vars).map(([name, text]) => ({ type: 'plain_text', name, text })),
+        ...secrets.map((name) => ({ type: 'secret_text', name })),
+        { type: 'service', name: 'WORKER_SELF_REFERENCE', service: 'petrios' },
+      ],
+    },
+  })
+
+  it('accepts only lowercase UUID version ids', () => {
+    expect(WORKER_VERSION_ID.test('0bc8e8b8-ec9c-47f1-9ae6-dc1e3f81c35e')).toBe(true)
+    for (const id of ['', 'latest', '--yes', '0BC8E8B8-EC9C-47F1-9AE6-DC1E3F81C35E', '0bc8e8b8ec9c47f19ae6dc1e3f81c35e']) {
+      expect(WORKER_VERSION_ID.test(id)).toBe(false)
+    }
+  })
+
+  it('orders the deployment history newest first and rejects other shapes', () => {
+    const history = deploymentsNewestFirst({
+      deployments: [deployment('2026-10-10T09:00:00Z', v(1)), deployment('2026-10-11T09:00:00Z', v(2)), { created_on: 1 }],
+    })
+    expect(history?.map((entry: { versions: { version_id: string }[] }) => entry.versions[0].version_id)).toEqual([v(2), v(1)])
+    expect(deploymentsNewestFirst({ items: [] })).toBeNull()
+  })
+
+  it('picks the previous full-traffic version as wrangler does, and when it stopped serving', () => {
+    const history = deploymentsNewestFirst({
+      deployments: [
+        deployment('2026-10-11T12:00:00Z', v(3)),
+        deployment('2026-10-11T10:00:00Z', v(2), 'secret'),
+        deployment('2026-10-11T09:00:00Z', v(1)),
+        deployment('2026-10-10T09:00:00Z', v(9)),
+      ],
+    })
+    expect(rollbackPlan(history, undefined)).toEqual({
+      currentVersionId: v(3),
+      targetVersionId: v(2),
+      targetServedUntil: '2026-10-11T12:00:00Z',
+    })
+    expect(rollbackPlan(history, v(1))).toEqual({
+      currentVersionId: v(3),
+      targetVersionId: v(1),
+      targetServedUntil: '2026-10-11T10:00:00Z',
+    })
+    expect(rollbackPlan(history, v(7)).targetServedUntil).toBeNull()
+    expect(rollbackPlan(history, v(3))).toEqual({ error: expect.stringMatching(/already deployed/) })
+    expect(rollbackPlan([], undefined)).toEqual({ error: expect.stringMatching(/no deployment history/) })
+    expect(rollbackPlan([deployment('2026-10-11T12:00:00Z', v(3))], undefined)).toEqual({
+      error: expect.stringMatching(/pass the version id/),
+    })
+  })
+
+  it('reads plain vars and secret names from a version, never secret values', () => {
+    const withValue = { resources: { bindings: [{ type: 'secret_text', name: 'CRON_SECRET', text: 'never-read-secret-value' }] } }
+    expect(versionPlainVars(withValue)).toEqual({})
+    expect(versionSecretNames(withValue)).toEqual(['CRON_SECRET'])
+    expect(versionPlainVars(version(productionVars))).toEqual(productionVars)
+    expect(versionPlainVars({})).toBeNull()
+  })
+
+  it('allows a production version with the same secret names', () => {
+    const plan = { currentVersionId: v(3), targetVersionId: v(2), targetServedUntil: 'x' }
+    expect(rollbackProblems(plan, { targetVersion: version(productionVars), currentVersion: version(productionVars) })).toEqual([])
+    // Rota is the owner's switch: either value can be restored.
+    expect(
+      rollbackProblems(plan, {
+        targetVersion: version({ ...productionVars, ROTA_INTEGRATION_ENABLED: 'true' }),
+        currentVersion: version(productionVars),
+      })
+    ).toEqual([])
+  })
+
+  it('refuses versions that would stop the crons or email, or change secrets, on the live domains', () => {
+    const plan = { currentVersionId: v(3), targetVersionId: v(1), targetServedUntil: 'x' }
+    const current = version(productionVars)
+    // A version from the retired preflight phase.
+    expect(
+      rollbackProblems(plan, {
+        targetVersion: version({ ...productionVars, CRON_ENABLED: 'false', OUTBOUND_EMAIL_ENABLED: 'false' }),
+        currentVersion: current,
+      })
+    ).toEqual([
+      expect.stringMatching(/vars.CRON_ENABLED must be "true"/),
+      expect.stringMatching(/vars.OUTBOUND_EMAIL_ENABLED must be "true"/),
+    ])
+    // The empty stub `wrangler secret bulk` creates for a missing Worker.
+    expect(rollbackProblems(plan, { targetVersion: version({}, []), currentVersion: current })).toEqual(
+      expect.arrayContaining([expect.stringMatching(/different secrets.*lacks CRON_SECRET, SUPABASE_SERVICE_ROLE_KEY/), expect.stringMatching(/APP_URL is not set/)])
+    )
+    expect(
+      rollbackProblems(plan, { targetVersion: version({ ...productionVars, APP_URL: 'https://app.petrios.uk' }), currentVersion: current })
+    ).toEqual([expect.stringMatching(/APP_URL must be https:\/\/petrios.uk/)])
+    expect(
+      rollbackProblems(plan, { targetVersion: version(productionVars, ['CRON_SECRET']), currentVersion: current })
+    ).toEqual([expect.stringMatching(/different secrets from the current version; it lacks SUPABASE_SERVICE_ROLE_KEY/)])
+    expect(rollbackProblems({ ...plan, targetServedUntil: null }, { targetVersion: current, currentVersion: current })).toEqual([
+      expect.stringMatching(/served 100% of traffic in none of the deployments/),
+    ])
+    expect(rollbackProblems({ error: 'the Worker has no deployment history' }, { targetVersion: null, currentVersion: null })).toEqual([
+      'the Worker has no deployment history',
+    ])
+    expect(rollbackProblems(plan, { targetVersion: {}, currentVersion: current })).toEqual([
+      expect.stringMatching(/could not read the secret names/),
+      expect.stringMatching(/could not read the vars/),
+    ])
+  })
+
+  it('applies the same production var rules as the deploy validator', () => {
+    expect(productionVarProblems(productionVars, 'vars')).toEqual([])
+    expect(productionVarProblems({}, 'vars')).toHaveLength(6)
+  })
+
+  it('leaves changed secret values to Cloudflare: the deployment request is never forced', () => {
+    // A secret rotated with `versions secret put` + `versions deploy` (a promotion) or in the dashboard leaves
+    // no "secret" deployment in the history, so the history cannot be the guard.
+    const history = deploymentsNewestFirst({
+      deployments: [
+        deployment('2026-10-11T14:00:00Z', v(4), 'promotion'),
+        deployment('2026-10-11T12:00:00Z', v(1), 'rollback'),
+        deployment('2026-10-11T10:00:00Z', v(2)),
+        deployment('2026-10-11T09:00:00Z', v(1)),
+      ],
+    })
+    const plan = rollbackPlan(history, v(1))
+    expect(plan).toEqual({ currentVersionId: v(4), targetVersionId: v(1), targetServedUntil: '2026-10-11T14:00:00Z' })
+    const same = version(productionVars)
+    expect(rollbackProblems(plan, { targetVersion: same, currentVersion: same })).toEqual([])
+
+    // The request wrangler rollback sends, minus force: Cloudflare answers 10220 instead of restoring old values.
+    const message = `petrios rollback to ${v(1)} from ${v(4)}`
+    expect(rollbackDeploymentBody(v(1), message)).toEqual({
+      strategy: 'percentage',
+      versions: [{ version_id: v(1), percentage: 100 }],
+      annotations: { 'workers/message': message },
+    })
+    expect(rollbackDeploymentBody(v(1), 'x'.repeat(200)).annotations['workers/message']).toHaveLength(120)
+    expect(Object.keys(rollbackDeploymentBody(v(1), message))).not.toContain('force')
+
+    expect(SECRETS_CHANGED_ERROR_CODE).toBe(10220)
+    const refusal = { code: 10220, message: 'The following secrets have changed: SUPABASE_SERVICE_ROLE_KEY' }
+    expect(secretsChangedError([{ code: 10000, message: 'Authentication error' }, refusal])).toEqual(refusal)
+    expect(secretsChangedError([{ code: '10220', message: 'x' }])).toEqual({ code: '10220', message: 'x' })
+    expect(secretsChangedError([{ code: 10215, message: 'latest version not deployed' }])).toBeNull()
+    expect(secretsChangedError(undefined)).toBeNull()
   })
 })
 

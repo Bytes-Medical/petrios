@@ -33,8 +33,8 @@ Do all of these before switching anything on.
 | Rostering Information Asset Owner approval; licence allows the export | Trust | Doctors in training only, from 2 weeks back to 8 weeks ahead |
 | Code rules agreed (post-night rest, which codes are on duty elsewhere, which codes are nights) | DME and Guardian of Safe Working Hours | About an hour; record the agreed map |
 | Migrations `063_rota_availability.sql` **and** `064_recall_excused_catchup.sql` applied and checked, in the same release | Owner | Apply with the normal migration path (either order). Rota stays "not available" until 064 is in place: a confirmed rota excusal makes a trainee `EXCUSED`, and only 064 keeps the Audio Recap catch-up open to them. 064 widens the catch-up to every finalized `EXCUSED` expected attendee, rota or not (spec 08), re-opens still-open catch-up packages so their excused attendees are invited, and makes the latest moderator decision win (spec 03); apply it deliberately |
-| `ROTA_IDENTITY_SECRET` set | Operator | Server-only, at least 32 random bytes (`openssl rand -base64 48`). On Render as an environment variable; on Workers as a secret. **Rotating it orphans every identity link**, so every trainee must be re-linked: treat it as set-once |
-| `ROTA_INTEGRATION_ENABLED=true` | Operator | Exactly `true`, on the **production runtime only**. On Render, an environment variable. On Workers, the owner edits only `env.production.vars.ROTA_INTEGRATION_ENABLED` in `wrangler.jsonc` from `"false"` to `"true"` and deploys `live` (never a secret: it would shadow preflight's value; runbook in [docs/cloudflare-workers.md](cloudflare-workers.md#rota-availability-on-workers)). Never on the Workers staging Worker or the production preflight, which serve the production database and stay pinned to `"false"` |
+| `ROTA_IDENTITY_SECRET` set | Operator | Server-only, at least 32 random bytes (`openssl rand -base64 48`). On the production Worker a secret (`npx wrangler secret put ROTA_IDENTITY_SECRET --env production`); on Docker/self-hosting an environment variable. **Rotating it orphans every identity link**, so every trainee must be re-linked: treat it as set-once |
+| `ROTA_INTEGRATION_ENABLED=true` | Operator | Exactly `true`, on the **production runtime only**. On the production Worker, the owner edits only `env.production.vars.ROTA_INTEGRATION_ENABLED` in `wrangler.jsonc` from `"false"` to `"true"` and runs `npm run cf:deploy:production -- deploy` (never a secret: it would shadow the var; runbook in [docs/cloudflare-workers.md](cloudflare-workers.md#rota-availability-on-workers)). On Docker/self-hosting, an environment variable. Never on the Workers staging Worker, which serves the production database and stays pinned to `"false"` |
 
 Until all of these hold, every rota page returns 404 and every rota action
 answers "Rota availability is not available.". While the switch is off the
@@ -280,9 +280,9 @@ Logs never contain request bodies, identifiers, or names; rota errors are fixed
 
 ## 9. Staging stays off
 
-The Cloudflare staging Worker and the production preflight serve the
-**production database**, so both pin `ROTA_INTEGRATION_ENABLED="false"` in
-`wrangler.jsonc` and the deploy validators refuse anything else
+The Cloudflare staging Worker serves the **production database**, so it pins
+`ROTA_INTEGRATION_ENABLED="false"` in `wrangler.jsonc` and the deploy
+validator refuses anything else
 ([docs/cloudflare-workers.md](cloudflare-workers.md)). On staging only check
 that the feature is inert: the rota pages 404 and the actions refuse. Do any
 functional testing against a local database with synthetic files only

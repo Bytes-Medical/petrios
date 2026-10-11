@@ -107,10 +107,11 @@ Provider status is derived without exposing secrets:
   `cloudflare-workers` (declared in both `wrangler.jsonc` `vars` blocks) or the
   runtime's `navigator.userAgent` is `Cloudflare-Workers`; otherwise the page
   says operator-managed host. Each deployment's pages name only their own
-  host: the register rendered by Render does not mention a Workers staging
-  Worker that serves the same database, so the operator records Cloudflare
-  (including Workers Logs) in the DPA register, DPIA, and transfer safeguards
-  for as long as that staging Worker exists (docs/cloudflare-workers.md).
+  host: production runs on Cloudflare Workers and names it, but its register
+  does not separately mention the Workers staging Worker that serves the same
+  database, so the operator records Cloudflare (including Workers Logs and
+  both Workers) in the DPA register, DPIA, and transfer safeguards
+  (docs/cloudflare-workers.md, "Privacy register").
 - `SMTP_HOST` selects an operator SMTP description; otherwise a configured
   `RESEND_API_KEY` selects Resend; absence is declared.
 - `resolveLlmProvider` (the same rules the runtime uses: `LLM_PROVIDER` pin,

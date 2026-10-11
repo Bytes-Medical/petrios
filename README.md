@@ -82,8 +82,9 @@ compose file, SMTP email, an OpenAI-compatible `OPENAI_BASE_URL` (pinned with `L
 in-network text AI (or none; Audio Recap and Recall still need `/responses` file inputs and
 hosted web search, which reach public sites), self-hosted Jitsi with token auth, a plain-Postgres migration
 runner, and a health endpoint — see [docs/self-hosting.md](./docs/self-hosting.md).
-A Cloudflare Workers staging build is also available — see
-[docs/cloudflare-workers.md](./docs/cloudflare-workers.md). Embedded video
+The hosted production service runs on Cloudflare Workers (with a staging
+Worker beside it) — see [docs/cloudflare-workers.md](./docs/cloudflare-workers.md);
+the Docker image is the self-hosting build. Embedded video
 (8x8 JaaS) setup and its rollout impact are in [docs/petrios-meet.md](./docs/petrios-meet.md).
 
 Integrate anything via the **org-scoped REST API** (`/api/v1`, tokens with

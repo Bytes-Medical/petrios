@@ -10,7 +10,7 @@ import type {
  * Pure: no lib/db, no process.env, no clock. Every value (app origin, time
  * zone, names, the draft-time render snapshot) is passed in, so the stored
  * HTML the moderator previews is exactly what the executor later sends, and
- * the module runs unchanged on Node (Render) and Cloudflare Workers.
+ * the module runs unchanged on Node (Docker/self-hosting) and Cloudflare Workers.
  *
  * No images, SVG, data: URIs or web fonts. The ECG trace is the HUD
  * CalibrationStrip path rasterised into table columns for every client except

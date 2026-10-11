@@ -66,13 +66,14 @@ authored message pass; correct or reword the commit instead.
 | `lib/ai/` | General LLM and speech provider adapters |
 | `lib/ops/` | Ops inference policy, safety, jobs, assistant tools, and approval execution |
 | `supabase/migrations/` | Immutable ordered schema/RLS history |
-| `cfw/`, `wrangler.jsonc`, `open-next.config.ts`, `scripts/cloudflare/` | Cloudflare Workers entry, config, and `cf:*` build/preview/deploy scripts; excluded from the Render/Docker image (spec 09) |
+| `cfw/`, `wrangler.jsonc`, `open-next.config.ts`, `scripts/cloudflare/` | Cloudflare Workers entry, config, and `cf:*` build/preview/deploy scripts; excluded from the Docker image (spec 09) |
 | `spec/` | Detailed implemented contract and explicitly labelled RFCs |
 
-Server code runs unchanged on both Node (Render) and Cloudflare Workers. Do not
-buffer whole documents, audio, or PDFs where a stream will do (a Workers isolate
-has 128 MB shared by concurrent requests), do not read the filesystem except
-bundled `public/fonts`, and do not compile WebAssembly at runtime.
+Server code runs unchanged on both Cloudflare Workers (production) and Node
+(the Docker image, for self-hosting). Do not buffer whole documents, audio, or
+PDFs where a stream will do (a Workers isolate has 128 MB shared by concurrent
+requests), do not read the filesystem except bundled `public/fonts`, and do not
+compile WebAssembly at runtime.
 
 Do not put a convenient table query in a page/action. Do not put authorization
 inside a client component. Do not put a provider HTTP call at a feature call
@@ -313,9 +314,10 @@ logging only the HTTP status. It dispatches nothing unless `CRON_ENABLED` is
 exactly `true`, `CRON_SECRET` is set, and `APP_URL` is an HTTP(S) URL. When
 `CRON_ENABLED` is exactly `false` (the staging Worker), `lib/cron-auth.ts` also
 answers every authenticated `/api/cron/*` request with 503, so the jobs cannot
-run over HTTP there either; Render leaves it unset.
-**Invariant:** only one scheduler, Render's or the Worker's, runs these jobs
-against a given database at any time. The self-host
+run over HTTP there either; Docker/self-hosted deployments leave it unset.
+**Invariant:** only one scheduler runs these jobs against a given database at
+any time; for production that is the production Worker (Render, the previous
+scheduler, was retired on 2026-10-11). The self-host
 `/api/internal/scheduler/tick` route is not used on Workers.
 
 Newsletters are not cron routes. Moderator generation is unique per

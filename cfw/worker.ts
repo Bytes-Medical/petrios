@@ -1,5 +1,5 @@
 // Cloudflare Workers entry (wrangler.jsonc "main"). Built only by `npm run cf:build`;
-// the Render/Docker runtime never loads this file.
+// the Docker/Node runtime never loads this file.
 
 // Must stay the first import: the yoga redirect has to exist before any PDF render.
 import './yoga-install'

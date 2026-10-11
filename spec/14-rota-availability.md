@@ -88,16 +88,15 @@ departmentId?)` (`lib/rota/access.ts`), and the first failure is the reason:
 | 4 | `rota_settings.enabled` for the organisation | `org_disabled` |
 | 5 | The department is in `rota_departments` (when a department is given) | `department_not_enrolled` |
 
-The kill switch is pinned to `"false"` on the Cloudflare staging Worker and in
-the production preflight environment because both serve the production
-database; the deploy validators refuse any other value there (spec 09,
-`docs/cloudflare-workers.md`). `env.production` declares it as well (`"false"`
-until go-live), because both production phases must declare the same `vars`
-keys and share one Worker's secrets; it is the one key allowed to differ
-between them (preflight `"false"`, live `"false"` or `"true"`). At go-live the
-owner changes only the live value to `"true"` (on Render, the environment
-variable). There is no fallback for the secret: an 8-digit staff
-number is trivially brute-forced against a salt alone.
+The kill switch is pinned to `"false"` on the Cloudflare staging Worker
+because it serves the production database; the staging deploy validator
+refuses any other value there (spec 09, `docs/cloudflare-workers.md`).
+`env.production` declares it as well (`"false"` until go-live), and the
+production validator requires it to be declared as `"false"` or `"true"`. At
+go-live the owner changes only that value to `"true"` and deploys (on
+Docker/self-hosting, the environment variable). There is no fallback for the
+secret: an 8-digit staff number is trivially brute-forced against a salt
+alone.
 
 Every DAL function in `lib/db/rota.ts` maps PostgREST `PGRST205`/`PGRST202` and
 Postgres `42P01`/`42883` to `RotaNotInstalledError`. Callers treat it as

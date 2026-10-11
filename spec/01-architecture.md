@@ -17,7 +17,7 @@ generic Next.js architecture recommendation.
 | Concern | Implementation |
 |---|---|
 | Web application | Next.js 16 App Router and React 19 |
-| Hosting | Production on Render (Docker, Node, `output: 'standalone'`); a Cloudflare Workers staging build via `@opennextjs/cloudflare` with the custom entry `cfw/worker.ts` (spec 09, `docs/cloudflare-workers.md`). The same application code runs on both |
+| Hosting | Production on Cloudflare Workers via `@opennextjs/cloudflare` with the custom entry `cfw/worker.ts`: the Worker `petrios`, served only through the Workers Custom Domains `petrios.uk` and `app.petrios.uk` since 2026-10-11 (Render retired), plus a `workers.dev` staging Worker (spec 09, `docs/cloudflare-workers.md`). The Docker/Node build (`output: 'standalone'`) remains for self-hosting. The same application code runs on both runtimes |
 | Language | TypeScript with server actions and route handlers |
 | Identity | Supabase GoTrue; password, passwordless link, and Microsoft Entra OAuth |
 | Primary storage | Supabase-hosted Postgres with RLS |

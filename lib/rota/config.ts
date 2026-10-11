@@ -9,7 +9,7 @@
  *                             identity links store. Missing or short means the
  *                             feature is UNAVAILABLE, never a weaker fallback.
  *
- * Values are read at request time, so a Render or Worker env change needs
+ * Values are read at request time, so a Worker or Docker env change needs
  * no rebuild. The secret value is never logged.
  */
 

@@ -83,7 +83,7 @@ provider; cron/webhook/API flows; logs, monitoring and backups.
 | Recipient/service | Role and purpose | Data | Region/retention | Contract and transfer safeguard |
 |---|---|---|---|---|
 | Supabase project | Database/auth | *[fill in]* | *[region/backups]* | *[DPA; transfer]* |
-| Application host/CDN | Web runtime/network. List every host that serves this database, including a Cloudflare Workers staging Worker (docs/cloudflare-workers.md), which the Render-served `/subprocessors` page cannot name | *[requests, IP, cookies, app data in transit; runtime logs, which can include recipient email addresses (Workers Logs on Cloudflare)]* | *[fill in]* | *[fill in]* |
+| Application host/CDN | Web runtime/network. List every host that serves this database, including a Cloudflare Workers staging Worker (docs/cloudflare-workers.md), which the production `/subprocessors` page does not name separately | *[requests, IP, cookies, app data in transit; runtime logs, which can include recipient email addresses (Workers Logs on Cloudflare)]* | *[fill in]* | *[fill in]* |
 | SMTP or Resend | Email | *[fill in]* | *[fill in]* | *[fill in]* |
 | Meeting provider (8x8 JaaS / self-hosted Jitsi / meet.jit.si) | Optional Petrios Meet video rooms; the active mode is named on `/subprocessors`. JaaS makes 8x8 a subprocessor | *[JaaS/self-hosted: room pass with display name (never email), per-session pseudonymous id and moderator flag; room name from the session id; session title; audio/video/chat/screen share. meet.jit.si: nothing from Petrios; participants go to Jitsi directly and the room starter signs in to Jitsi]* | *[fill in]* | *[fill in]* |
 | LLM/research provider | Optional inference, private learning-document processing, and hosted research. Default Anthropic (Files API: documents uploaded per generation, one-hour expiry, deleted afterwards, daily orphan sweep; web search called directly, allow-listed); optional OpenAI-compatible endpoint | *[session metadata incl. invited teachers' names (invitee email where no name); assistant messages and tool results; purpose-limited feedback; uploaded document contents (OpenAI-compatible: original DOCX/PPTX files incl. comments and author properties; Anthropic: extracted body text and PPTX speaker notes); derived search queries; output/citations]* | *[provider logging/retention/region; whether Files API/web search fall under any zero-retention arrangement; OpenAI document requests send `store: false`, abuse-monitoring retention still applies]* | *[DPA; US transfer safeguard; search/tool subprocessors]* |
@@ -215,8 +215,8 @@ Rostering system (trust)
 ```
 
 No new subprocessors: the request travels through the existing application host
-(Render, or Cloudflare Workers including edge processing and Workers Logs) and
-Supabase. The existing `DATA_HOSTING_REGION` and `DATA_TRANSFER_SAFEGUARDS`
+(Cloudflare Workers including edge processing and Workers Logs, or a Docker
+host for a self-hosted deployment) and Supabase. The existing `DATA_HOSTING_REGION` and `DATA_TRANSFER_SAFEGUARDS`
 disclosures must cover it. Request bodies are not logged.
 
 ### 9.4 Field list
@@ -300,7 +300,7 @@ owner and cover]*.
 | Stale or wrong rota | As-worked uploads, as-of time, contest, rota-changed marker, finalize independent of rota | *[upload discipline]* |
 | Rubber-stamping | No bulk accept, per-row server checks, separate suggestion and decision records | *[moderator guidance]* |
 | Small-cohort inference from scheduling counts (R9) | **Not applicable to Phase 1**: no counts are produced. If Phase 2 ships: 5-person floor, banding, rounding to 5, no names | *[reassess before Phase 2]* |
-| Staging or preflight writing to the production database | Kill switch pinned to `"false"` there; deploy validators refuse other values | *[deployment review]* |
+| Staging writing to the production database | Kill switch pinned to `"false"` there; the staging deploy validator refuses other values | *[deployment review]* |
 
 ### 9.10 Staff privacy-notice wording
 

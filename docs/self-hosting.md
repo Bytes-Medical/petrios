@@ -15,8 +15,10 @@ Two moving parts:
    (simplest) or [Supabase's official self-host stack](https://supabase.com/docs/guides/self-hosting/docker)
    on your own server.
 
-The same app can also be built for Cloudflare Workers (currently a staging
-target only); see [cloudflare-workers.md](./cloudflare-workers.md).
+The same app also builds for Cloudflare Workers, which is how the Petrios
+production service runs (the Worker `petrios` on `petrios.uk` and
+`app.petrios.uk`); see [cloudflare-workers.md](./cloudflare-workers.md),
+"Production". The Docker image remains the supported self-hosting build.
 
 ## Quickstart (Docker)
 

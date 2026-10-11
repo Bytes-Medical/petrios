@@ -2,9 +2,11 @@
 
 Petrios Meet gives every `JITSI` ("Petrios Meet (Video)") session a video room.
 This guide covers turning on embedded rooms with 8x8 Jitsi as a Service (JaaS)
-on the production Render service and the Cloudflare Workers staging Worker, how
-to check it worked, and what happens if you deploy without it. The behaviour
-contract is spec/04 "Petrios Meet"; the privacy and security notes are spec/13.
+on the production Cloudflare Worker (`petrios`) and the staging Worker, how to
+check it worked, and what happens if you deploy without it. Docker or
+self-hosted deployments set the same variables in their environment. The
+behaviour contract is spec/04 "Petrios Meet"; the privacy and security notes
+are spec/13.
 
 ## Before you deploy: what changes for users
 
@@ -48,9 +50,17 @@ offers the room and attempts their check-in; signing in keeps the link.
 Keep `jaas-private.pem` out of the repository, tickets and chat. Delete local
 copies once it is stored as a secret.
 
-## 2. Set the variables on Render (production)
+## 2. Set the variables on the production Worker
 
-Render dashboard → the Petrios web service → **Environment** → add:
+Production runs on Cloudflare Workers (`docs/cloudflare-workers.md`,
+"Production"). Store each value as a secret of the `petrios` Worker; each
+command deploys a new version with it at once (no rebuild):
+
+```bash
+npx wrangler secret put JAAS_APP_ID --env production
+npx wrangler secret put JAAS_API_KEY_ID --env production
+npx wrangler secret put JAAS_PRIVATE_KEY --env production < jaas-private.pem
+```
 
 | Key | Value |
 |---|---|
@@ -58,18 +68,21 @@ Render dashboard → the Petrios web service → **Environment** → add:
 | `JAAS_API_KEY_ID` | the key id (`<AppID>/<suffix>`) |
 | `JAAS_PRIVATE_KEY` | the private key PEM |
 
-For `JAAS_PRIVATE_KEY`, paste the whole PEM including the `-----BEGIN …-----`
-and `-----END …-----` lines. If the field does not keep line breaks, use a
-one-line form with literal `\n` escapes, which Petrios also accepts:
+Piping the file keeps the PEM's line breaks (the interactive prompt reads one
+line). A one-line form with literal `\n` escapes also works, which Petrios
+accepts:
 
 ```bash
 awk 'NF { sub(/\r/, ""); printf "%s\\n", $0 }' jaas-private.pem
 ```
 
 PKCS#8 (`BEGIN PRIVATE KEY`) and PKCS#1 (`BEGIN RSA PRIVATE KEY`) both work.
-Leave `JITSI_DOMAIN` unset. Save and deploy (these values are read at request
-time; no rebuild of the client bundle is needed, but the service must restart
-to see them).
+Leave `JITSI_DOMAIN` unset. Set all three before relying on embedded rooms:
+until the third is stored, the partial set makes video unavailable. After a
+production `rollback`, `wrangler secret put` is refused until a fixed `main` is
+deployed; never use `wrangler versions secret put` instead, which would
+redeploy the rolled-back code (`docs/cloudflare-workers.md`, "After a
+rollback").
 
 ## 3. The staging Worker (optional)
 

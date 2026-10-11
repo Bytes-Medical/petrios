@@ -7,7 +7,7 @@ coverage
 e2e/test-results
 *.log
 tests.md
-# Cloudflare Workers build inputs/outputs are not part of the Render image
+# Cloudflare Workers build inputs/outputs are not part of the Docker image
 .open-next
 .wrangler
 .dev.vars*

@@ -7,8 +7,8 @@ This document specifies four external boundaries:
 1. the organization-scoped bearer REST API at `/api/v1`;
 2. signed outbound webhooks;
 3. user-initiated portable teaching-record federation; and
-4. deployment/provider configuration for a self-hosted instance, the Render
-   Docker image, and the Cloudflare Workers staging and production builds.
+4. deployment/provider configuration for a self-hosted instance (the Docker
+   image), and the Cloudflare Workers production and staging builds.
 
 All `/api/*` paths bypass the browser-auth proxy. Every handler owns its auth
 contract. The supported API schema is also published at `public/openapi.json` and
@@ -263,7 +263,7 @@ environment** — `NODE_ENV` no longer matters. It rejects:
 
 Delivery transport:
 
-- **Node (Render, self-host):** `node:http(s)` with a guarded `lookup`. It
+- **Node (Docker, self-host):** `node:http(s)` with a guarded `lookup`. It
   resolves the host (`dns.lookup`, all addresses), rejects the delivery when
   any address is non-public or none resolve, and hands the socket only the
   checked addresses, so the connection goes to an address that passed the
@@ -595,7 +595,7 @@ time (`lib/meeting/config.ts`; full contract in spec 04 "Petrios Meet"):
   (jaas.8x8.vc), generate or upload an API key, copy the AppID and the key id
   (it starts with `<AppID>/`), and store the private key as a server secret.
   8x8 is then a subprocessor (spec 13). Step-by-step operator guide (JaaS
-  console, Render, Workers, verification, rollout): `docs/petrios-meet.md`.
+  console, Worker secrets, verification, rollout): `docs/petrios-meet.md`.
 - **Self-hosted**: set `JITSI_DOMAIN` to your Jitsi host (optionally `:port`).
   Rooms are embedded from that origin. With `JITSI_APP_ID` + `JITSI_APP_SECRET`
   (Prosody token auth, HS256; docker-jitsi-meet `ENABLE_AUTH=1`,
@@ -637,62 +637,87 @@ GoTrue metadata, and Supabase helper behavior. A vanilla Postgres server without
 the compatible auth schema/functions is not a complete Petrios backend. Deploy
 against hosted Supabase or a self-hosted Supabase-compatible stack.
 
-### Cloudflare Workers (staging and the production cutover)
+### Cloudflare Workers (production and staging)
 
-Petrios also builds for Cloudflare Workers with `@opennextjs/cloudflare`
+Petrios builds for Cloudflare Workers with `@opennextjs/cloudflare`
 (`npm run cf:build`, `wrangler.jsonc`, custom entry `cfw/worker.ts`); the
-operator guide is `docs/cloudflare-workers.md`. Render/Docker remains
-production until the owner runs the cutover described there. `.dockerignore`
-excludes every Cloudflare file, so the Docker image never contains them, and
-the application code is identical on both runtimes.
+operator guide is `docs/cloudflare-workers.md`. Production has run on the
+Worker `petrios` since 2026-10-11, when Render was retired; the Docker image
+remains the supported self-hosting build. `.dockerignore` excludes every
+Cloudflare file, so the Docker image never contains them, and the application
+code is identical on both runtimes.
 
 - **Invariant:** the top-level wrangler environment (`petrios-staging`) is
   workers.dev only, with `triggers.crons: []`, no routes, and
   `CRON_ENABLED="false"`. Only `env.production` declares cron triggers and
-  `CRON_ENABLED="true"`. `cfw/cron.test.ts` and `npm run cf:deploy:staging`
-  enforce the top-level shape; the test also requires `env.production`
-  triggers to equal `CRON_SCHEDULE` in `cfw/cron.ts` (spec 07).
-- **Invariant:** production is one Worker (`petrios`) with two wrangler
-  environments that share its name, its pinned `account_id` and its secrets. `env.production_preflight` is
-  workers.dev only, declares `routes: []` and `triggers.crons: []`, and sets
-  `CRON_ENABLED` and `OUTBOUND_EMAIL_ENABLED` to `"false"`. `env.production`
-  (live) routes only `petrios.uk/*` in zone `petrios.uk` on the existing
-  proxied DNS record (a plain route, never a custom domain, so no DNS record
-  changes; `www.petrios.uk` is a Cloudflare 301 to the apex and gets no
-  route), disables workers.dev, runs exactly `CRON_SCHEDULE`, and
-  sets both flags to `"true"`. Both set `APP_URL=https://petrios.uk`, the same
-  vars and the same `secrets.required` (the staging four plus `RESEND_API_KEY`,
-  `MAIL_FROM`, the three `PRIVACY_*` and the two `DATA_*` disclosures).
-  `productionConfigProblems()` in `scripts/cloudflare/lib.mjs` (unit-tested)
-  enforces this, and `npm run cf:deploy:production` refuses any violation.
-- `cf:deploy:production -- preflight|live|rollback` deploys only from a clean
-  git checkout (never an export or copy), refuses a shell
-  `CLOUDFLARE_ACCOUNT_ID` other than the pinned one, checks the Worker's
-  secret names with read-only `wrangler secret list` (every required one
-  present, none shadowing a var, no `SMTP_*`), runs `cf:build` and its guard,
-  and confirms every deploy afterwards: wrangler can exit 0 without deploying
-  (a declined prompt), so the script requires the version id from
-  `WRANGLER_OUTPUT_FILE_PATH` and the routes, custom domains and cron
-  schedules the Cloudflare API reports (live: exactly its route and
-  `CRON_SCHEDULE`; preflight: none). `live` refuses without
-  `--render-crons-disabled`, the operator's attestation that Render's
-  scheduled jobs are suspended (one scheduler per database). wrangler 4.149
-  replaces a Worker's routes only when the config lists at least one and never
-  removes them otherwise, and updates routes and schedules concurrently, so
-  `preflight` refuses while the Worker still has routes or custom domains; a
-  first go-live that is not confirmed immediately deletes whatever it attached
-  and clears the schedules; and `rollback` deletes the routes and clears the
-  schedules through the Cloudflare API with the operator's wrangler login
-  (custom domains are reported, never deleted), then tells the operator to
-  resume Render's jobs only 15 minutes later (a Worker cron run in progress can
-  last that long), then redeploys preflight. `check-secrets`/`secrets`
+  `CRON_ENABLED="true"`, and it is the only other environment.
+  `cfw/cron.test.ts` and `npm run cf:deploy:staging` enforce the top-level
+  shape; the test also requires `env.production` triggers to equal
+  `CRON_SCHEDULE` in `cfw/cron.ts` (spec 07).
+- **Invariant:** production is one Worker (`petrios`, `env.production`, pinned
+  `account_id`) served only through the Workers Custom Domains `petrios.uk`
+  and `app.petrios.uk`: `routes` is exactly those two
+  `{ pattern, custom_domain: true }` entries (bare hostnames, no plain route,
+  no zone or enabled override; `PRODUCTION_CUSTOM_DOMAINS` in
+  `scripts/cloudflare/lib.mjs`). Cloudflare manages their DNS records, and
+  wrangler publishes the list as the Worker's complete custom-domain set, so a
+  hostname left out would be detached and its DNS record deleted.
+  `www.petrios.uk` is a zone-level 301 to the apex, not the Worker. workers.dev
+  and preview URLs are off; the crons are exactly `CRON_SCHEDULE`; `APP_URL`
+  is `https://petrios.uk`, `CRON_ENABLED` and `OUTBOUND_EMAIL_ENABLED` are
+  `"true"`, and `TRUSTED_CLIENT_IP_HEADER`, `HOSTING_PROVIDER` and
+  `ROTA_INTEGRATION_ENABLED` are declared; `secrets.required` is the staging
+  four plus `RESEND_API_KEY`, `MAIL_FROM`, `PRIVACY_CONTROLLER_NAME` and
+  `PRIVACY_CONTACT_EMAIL`. `productionConfigProblems()` (unit-tested) enforces
+  this and refuses a reintroduced `env.production_preflight`, whose
+  email-off, cron-less version would replace the live one on the custom
+  domains.
+- `cf:deploy:production -- deploy [--dry-run]` deploys only from a clean git
+  checkout (never an export or copy), refuses a shell `CLOUDFLARE_ACCOUNT_ID`
+  other than the pinned one, checks the Worker's secret names with read-only
+  `wrangler secret list` (every required one present, none shadowing a var, no
+  `SMTP_*`), reads the account's custom domains, the Worker's plain routes and
+  its cron schedules, and previews the custom-domain change with the
+  compute-only `POST .../domains/changeset?replace_state=true` that wrangler
+  itself sends. It refuses, before building, when a hostname would be
+  detached, a configured hostname has a conflicting DNS record or belongs to
+  another Worker (wrangler 4.149 overrides both without asking when it is not
+  interactive, and carries on if its changeset request fails), or a plain
+  route points at the Worker. `--dry-run` then runs `cf:build`, its guard and
+  `wrangler deploy --dry-run` and changes nothing. A real deploy runs wrangler
+  with `CI=false` (a CI variable would make wrangler answer its own override
+  prompts in a terminal); without a terminal it relies on that preview, taken
+  seconds before the upload, and logs that it does. It is confirmed afterwards: wrangler can exit 0 without deploying (a declined
+  prompt), so the script requires the version id from
+  `WRANGLER_OUTPUT_FILE_PATH` and exactly the configured custom domains, no
+  plain route and exactly `CRON_SCHEDULE` in the Cloudflare API.
+- `cf:deploy:production -- rollback [<version-id>]` sends the deployment
+  request `wrangler rollback` sends (`POST .../deployments`, the target at
+  100%), which restores an earlier version's code and vars and makes no route,
+  custom-domain or schedule call, but never with `force=true`: Cloudflare
+  refuses it (code 10220) when any secret changed since the target served,
+  however it was changed, where a non-interactive `wrangler rollback` would
+  retry forced. Before that it refuses, changing nothing, when the target
+  served no recent deployment to 100% of traffic, its secret names differ, or
+  its vars are not production's (for example a retired preflight version with
+  crons and email off), and it confirms afterwards that the target serves 100%
+  of traffic. While a rolled-back version serves, secrets change only after a
+  fixed `main` is deployed: `wrangler versions secret put` copies the newest
+  uploaded version (the rolled-back code), so deploying it would undo the
+  rollback. `preflight` and `live` refuse at once. `check-secrets`/`secrets`
   validate a filled copy of `scripts/cloudflare/production-secrets.template.json`
   kept outside the repository (names and emptiness only) before
-  `wrangler secret bulk`.
+  `wrangler secret bulk --env production`, which deploys a new version with
+  those values at once.
+- `cf:deploy:staging` refuses a top-level `name` equal to the production
+  Worker's (`PRODUCTION_WORKER_NAME`, `petrios`, or `env.production.name`) and
+  a self-reference binding to another Worker: custom domains persist across
+  deploys, so the staging config deployed as `petrios` would serve
+  `petrios.uk` with email off and clear its cron schedules.
 - **Invariant:** the staging Worker never emails real users. It serves the
   production database, so its links and certificate QR codes would point at
   `workers.dev`, and a delivery it marked `SENT` would never be re-sent from
-  Render. The top level sets `OUTBOUND_EMAIL_ENABLED="false"` (required by
+  production. The top level sets `OUTBOUND_EMAIL_ENABLED="false"` (required by
   `cf:deploy:staging` and its unit test); `lib/email.ts` then refuses every send
   before contacting a transport, except one whose every recipient is listed in
   the `OUTBOUND_EMAIL_ALLOWLIST` secret. A refusal is an ordinary send error,
@@ -734,14 +759,14 @@ the application code is identical on both runtimes.
   write completes only while a 64 KiB byte-sized response queue has room, and
   the client reading or cancelling releases it. The step fails unless the
   expected code matches exactly once, and the guard fails if the patch marker
-  is missing from the dry-run upload. Render is unaffected (Node honours
+  is missing from the dry-run upload. Node (Docker) is unaffected (it honours
   `drain`).
 - Current limitation: `proxy.ts` runs as OpenNext's experimental Node
-  middleware, and static assets bypass it (spec 13). Behaviour on a deployed
-  Worker (Audio Recap memory with a 50 MiB source set on a real 128 MB isolate,
-  browser-direct uploads, PDFs, cron jobs against a real database) has been
-  verified only on local workerd; the staging checklist in
-  `docs/cloudflare-workers.md` must pass before it is relied on.
+  middleware, and static assets bypass it (spec 13). The heaviest paths (Audio
+  Recap memory with a 50 MiB source set on a real 128 MB isolate, browser-direct
+  25 MiB uploads, streamed downloads to slow clients) were verified only on
+  local workerd before production moved to Workers; the staging checklist in
+  `docs/cloudflare-workers.md` is how to confirm them.
 
 ## Migration runner and upgrades
 
@@ -794,10 +819,10 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `SMTP_USER`, `SMTP_PASS` | Optional relay auth | Server secrets |
 | `RESEND_API_KEY` | Required if Resend is selected | Server secret |
 | `MAIL_DEV_REDIRECT` | Optional | Redirect every recipient to one inbox |
-| `OUTBOUND_EMAIL_ENABLED` | Unset (email on); exactly `false` refuses | Deployment kill switch read by `lib/email.ts` at send time. `false` refuses every send before any transport is contacted and returns an ordinary error. Set to `false` on the Workers staging Worker (it serves the production database); Render never sets it |
+| `OUTBOUND_EMAIL_ENABLED` | Unset (email on); exactly `false` refuses | Deployment kill switch read by `lib/email.ts` at send time. `false` refuses every send before any transport is contacted and returns an ordinary error. Set to `false` on the Workers staging Worker (it serves the production database) and `true` on the production Worker; Docker/self-hosted deployments normally leave it unset |
 | `OUTBOUND_EMAIL_ALLOWLIST` | Optional; used only while `OUTBOUND_EMAIL_ENABLED=false` | Comma-separated addresses that may still receive mail; a send goes out only if every recipient is listed. Staging test inboxes only |
 | `CRON_SECRET` | Required to run jobs | Shared Bearer secret; no query fallback |
-| `CRON_ENABLED` | Unset on Render; set in `wrangler.jsonc` on Workers | `scheduled()` in `cfw/worker.ts` dispatches cron routes only when exactly `true`. Exactly `false` also makes every `/api/cron/*` route answer 503 after authentication (`lib/cron-auth.ts`), so the staging Worker cannot run jobs over HTTP either. `false` at the top level and in `env.production_preflight`, `true` in `env.production`; unset means routes run |
+| `CRON_ENABLED` | Unset on Docker/self-hosting; set in `wrangler.jsonc` on Workers | `scheduled()` in `cfw/worker.ts` dispatches cron routes only when exactly `true`. Exactly `false` also makes every `/api/cron/*` route answer 503 after authentication (`lib/cron-auth.ts`), so the staging Worker cannot run jobs over HTTP either. `false` at the top level (staging), `true` in `env.production`; unset means routes run |
 | `TRUSTED_CLIENT_IP_HEADER` | Optional; `cf-connecting-ip` on Workers | Header `lib/rate-limit.ts` trusts for the client IP of login-link and group-code throttles. When set, only that header is read (missing = no IP). Unset keeps first `x-forwarded-for` hop, then `x-real-ip` |
 | `ATTENDANCE_RATE_LIMIT_SECRET` | Optional HMAC key pseudonymizing check-in IPs for rate limiting; falls back to the service-role key |
 | `LLM_PROVIDER` | Optional `anthropic` or `openai` | Provider pin; other values disable AI with a configuration error. Required when both keys and `OPENAI_BASE_URL` are set |
@@ -835,8 +860,7 @@ webhook delivery, disk/connection capacity, or signing-key correctness.
 | `HOSTING_PROVIDER` | `cloudflare-workers` in both `wrangler.jsonc` `vars` blocks; unset elsewhere | Names "Cloudflare Workers" as the application host on `/privacy` and `/subprocessors` (`detectHostingProvider`, spec 13). Any other value is ignored; Render/Vercel/Railway are detected from their own platform variables |
 
 Runtime: Node.js ≥ 20.12 (`package.json` engines) for Office text extraction
-(`DecompressionStream('deflate-raw')`); Docker uses Node 22, Render Node 24,
-Workers workerd.
+(`DecompressionStream('deflate-raw')`); Docker uses Node 22, Workers workerd.
 
 `NODE_ENV`, `CI`, and hosting-provided variables also influence diagnostics and
 test/development behavior. Only `NEXT_PUBLIC_*` variables may be intentionally
@@ -852,14 +876,17 @@ declares none of them, so local preview runs in public mode. The staging Worker
 serves the production database, so a JaaS app configured on both hosts counts
 monthly active users across both (docs/cloudflare-workers.md). Never set `SUPABASE_INTERNAL_URL`, `AUTH_INTERNAL_URL`, or
 `STORAGE_INTERNAL_URL` there: they name Docker-network hosts that a Worker cannot
-reach. A Worker serving the production database must use byte-for-byte copies of
-Render's `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-`ATTENDANCE_RATE_LIMIT_SECRET`, and `INSTANCE_SIGNING_KEY`.
-The calendar-feed token, Recall and unsubscribe HMACs, the rate-limit
-pseudonym, and the auth cookie name derive from these values, so a hosting move
-never rotates them. `CRON_SECRET` is only the `/api/cron/*` bearer token: each
-Worker has its own, and the production Worker gets a new one so an external
-scheduler still holding Render's value is refused after the cutover.
+reach. Every Worker serving the production database must hold the same
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`ATTENDANCE_RATE_LIMIT_SECRET`, and `INSTANCE_SIGNING_KEY` (the cutover
+runbook copied Render's byte for byte to the production Worker). The
+calendar-feed token, Recall and unsubscribe HMACs, the rate-limit pseudonym,
+and the auth cookie name derive from these values, so a hosting move never
+rotates them, and a deliberate service-role rotation invalidates every link
+already issued (docs/cloudflare-workers.md, "Rotating the Supabase
+service-role key"). `CRON_SECRET` is only the `/api/cron/*` bearer token: each
+Worker has its own, so an external scheduler holding another deployment's
+value is refused.
 
 Current `.env.example` limitation: it does not enumerate every optional/legacy
 variable above. Treat this table plus source as the current behavior until the

@@ -62,16 +62,18 @@ describe('wrangler.jsonc cron safety', () => {
   it('declares exactly the scheduled expressions, and CRON_ENABLED=true, only under env.production', () => {
     expect([...wrangler.env.production.triggers.crons].sort()).toEqual(Object.keys(CRON_SCHEDULE).sort())
     expect(wrangler.env.production.vars.CRON_ENABLED).toBe('true')
-    const otherEnvs = Object.keys(wrangler.env).filter((name) => name !== 'production')
-    expect(otherEnvs).toEqual(['production_preflight'])
+    // The production Worker is the only scheduler: no other environment (the
+    // retired production_preflight included) may deploy a Worker version.
+    expect(Object.keys(wrangler.env)).toEqual(['production'])
   })
 
-  it('gives the production preflight phase (same Worker) no cron triggers, no routes and CRON_ENABLED=false', () => {
-    const preflight = wrangler.env.production_preflight
-    expect(preflight.name).toBe(wrangler.env.production.name)
-    expect(preflight.triggers).toEqual({ crons: [] })
-    expect(preflight.routes).toEqual([])
-    expect(preflight.vars.CRON_ENABLED).toBe('false')
+  it('serves production only through its custom domains, never a plain route', () => {
+    expect(wrangler.env.production.routes).toEqual([
+      { pattern: 'petrios.uk', custom_domain: true },
+      { pattern: 'app.petrios.uk', custom_domain: true },
+    ])
+    expect(wrangler.env.production.vars.APP_URL).toBe('https://petrios.uk')
+    expect(wrangler.env.production.workers_dev).toBe(false)
   })
 })
 

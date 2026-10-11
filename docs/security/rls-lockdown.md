@@ -10,9 +10,9 @@ is applied anyone on the internet can read or change the data listed in
 [section F](#f-what-was-exposed-plain-english-summary).
 
 - **No application deploy is needed for compatibility.** Every path on `main`
-  (live on Render) and on the current branch keeps working: they use the
-  service role or read the caller's own organisation, and no user's own
-  membership rows become more or less visible, so nobody's current
+  (live on the production Worker) and on the current branch keeps working:
+  they use the service role or read the caller's own organisation, and no
+  user's own membership rows become more or less visible, so nobody's current
   organisation changes. Deploy the app before or after, in any order.
 - **062 does not close everything.** Some holes are in application code, not
   SQL, and stay open until the `lib/auth.ts` follow-up ships. See
@@ -729,9 +729,9 @@ caller.
 
 2. **Turn on the external-teacher capability on the branch build.** Set
    `TEACHER_INVITATIONS_RLS_LOCKED=true` on every deployment running the branch
-   code (Render environment, and the Workers secret as in
-   `docs/cloudflare-workers.md`), then redeploy or restart. See
-   `lib/teacher-invitation-capability.ts`. The code on `main` does not read the
+   code (the Worker secret on the production and staging Workers, as in
+   `docs/cloudflare-workers.md`; the environment on Docker/self-hosting), then
+   redeploy or restart. See `lib/teacher-invitation-capability.ts`. The code on `main` does not read the
    flag; setting it there is harmless. Do this only after C1 to C3 pass and step 1 is done.
 3. **Rotate department codes (required, or record the risk acceptance).**
    Since migrations 012/022 every signed-in user could read every
@@ -845,10 +845,11 @@ caller.
    `/rest/v1/session_feedback`, `/rest/v1/certificates`,
    `/rest/v1/departments`, `/rest/v1/organizations`,
    `/rest/v1/organization_members` and `/rest/v1/rpc/` that did not come from
-   the application's servers (Render, and the Workers staging host). The app
-   never calls these tables or RPCs from the browser, so any browser-origin
-   request to them is worth reviewing. Log retention depends on the plan; save
-   what you find to the change record.
+   the application's servers (the production and staging Workers on
+   Cloudflare, and before 2026-10-11 Render). The app never calls these tables
+   or RPCs from the browser, so any browser-origin request to them is worth
+   reviewing. Log retention depends on the plan; save what you find to the
+   change record.
 
 ## F. What was exposed (plain-English summary)
 

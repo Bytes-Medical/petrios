@@ -14,8 +14,10 @@ export type CronJob = (typeof CRON_JOBS)[number]
 
 /**
  * One expression per job, so each job runs as its own invocation with its own
- * CPU budget. Cron Triggers fire in UTC. Cadences follow docs/self-hosting.md
- * and must be reconciled with Render's real schedule before cutover.
+ * CPU budget. Cron Triggers fire in UTC. Cadences follow docs/self-hosting.md.
+ * env.production.triggers.crons in wrangler.jsonc must list exactly these keys
+ * (the production Worker is the only scheduler; cron.test.ts and
+ * scripts/cloudflare/lib.test.ts compare them).
  */
 export const CRON_SCHEDULE: Readonly<Record<string, CronJob>> = {
   '0 * * * *': 'session-reminders',
@@ -65,9 +67,10 @@ export function cronRequest(origin: string, job: CronJob, secret: string): Reque
 }
 
 /**
- * Render runs the same jobs against the same database until cutover, so a
- * Worker dispatches only when CRON_ENABLED is exactly "true" (set solely in
- * the production environment of wrangler.jsonc).
+ * Only one scheduler may run these jobs against a database (the production
+ * Worker), and the staging Worker shares its database, so a Worker dispatches
+ * only when CRON_ENABLED is exactly "true" (set solely in the production
+ * environment of wrangler.jsonc).
  */
 export function createScheduledHandler<Env extends CronEnv, Ctx extends WaitUntilContext>(
   fetchHandler: WorkerFetch<Env, Ctx>,

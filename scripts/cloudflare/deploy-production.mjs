@@ -1,30 +1,42 @@
-// Production (petrios.uk) on Cloudflare Workers. docs/cloudflare-workers.md, "Cutover".
+// Production (petrios.uk) on Cloudflare Workers. docs/cloudflare-workers.md, "Production".
 //
-//   npm run cf:deploy:production -- check-secrets <file>   validate a filled secrets file (local only)
-//   npm run cf:deploy:production -- secrets <file>         check-secrets, then wrangler secret bulk
-//   npm run cf:deploy:production -- preflight              workers.dev only: no routes, no crons, email off
-//   npm run cf:deploy:production -- live --render-crons-disabled
-//   npm run cf:deploy:production -- rollback [--skip-redeploy]
+//   npm run cf:deploy:production -- check-secrets <file>    validate a filled secrets file (local only)
+//   npm run cf:deploy:production -- secrets <file>          check-secrets, then wrangler secret bulk (live at once)
+//   npm run cf:deploy:production -- deploy [--dry-run]      check, preview, build, deploy env.production, confirm
+//   npm run cf:deploy:production -- rollback [<version-id>] restore an earlier version: code and vars only
 //
-// Both phases deploy ONE Worker (env.production and env.production_preflight
-// share its name, account and secrets). Wrangler never removes routes a
-// previous deploy attached, so preflight refuses while routes exist and
-// rollback deletes them through the Cloudflare API with the operator's own
-// wrangler credentials. Wrangler can exit 0 without deploying (a declined
-// prompt), so every deploy is confirmed afterwards from the version it
-// reported and the routes and schedules the API shows. Secret values and
-// credentials are never printed.
+// Production is ONE Worker ("petrios", env.production), served only through
+// the Workers Custom Domains listed in env.production.routes (petrios.uk and
+// app.petrios.uk) and the only scheduler of the cron jobs. Custom domains and
+// cron schedules are not part of a Worker version: a deploy publishes them
+// again from wrangler.jsonc, and a rollback never touches them. Wrangler
+// publishes custom domains as the complete set (replace_state=true) and, when
+// it is not interactive (no terminal, or a CI variable), overrides a
+// conflicting DNS record or another Worker's hostname without asking, so
+// deploy previews that change with the same compute-only API call, refuses
+// those cases before building. Wrangler runs with CI=false, so an operator in
+// a terminal still gets its prompts; a non-interactive run (an agent, a pipe)
+// relies on that preview, taken seconds before the upload. Rollback sends the deployment request `wrangler
+// rollback` sends, but never forced, so Cloudflare refuses it when secrets
+// changed since the version served. Wrangler can exit 0 without deploying (a
+// declined prompt), so every deploy and rollback is confirmed afterwards from
+// the Cloudflare API, read with the operator's own wrangler credentials.
+// Secret values and credentials are never printed. The 2026-10 cutover phases
+// (preflight, live) and everything Render-related are retired and refuse.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { ROOT, captureWrangler, fail, log, readWranglerConfig, runBuild, runWrangler } from './tasks.mjs'
 import {
-  CRON_RUN_MAX_MINUTES,
-  PREFLIGHT_ENV,
   PRODUCTION_ENV,
+  PRODUCTION_ZONE,
+  ROTA_KILL_SWITCH_VAR,
+  WORKER_VERSION_ID,
   cronScheduleExpressions,
+  customDomainPreviewProblems,
   deployedVersionId,
+  deploymentsNewestFirst,
   dirtyPaths,
   domainsForService,
   parseProductionSecretsFile,
@@ -33,26 +45,44 @@ import {
   productionSecretNameProblems,
   productionSecretsFileProblems,
   productionStateProblems,
-  renderResumeTime,
+  rollbackDeploymentBody,
+  rollbackPlan,
+  rollbackProblems,
   routesForScript,
   scheduleExpressions,
+  secretsChangedError,
   validateProductionAppUrl,
+  versionPlainVars,
 } from './lib.mjs'
 
-const LIVE_ATTESTATION = '--render-crons-disabled'
-const SKIP_REDEPLOY = '--skip-redeploy'
+const DRY_RUN = '--dry-run'
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4'
 const SECRETS_EXAMPLE = '~/petrios-production-secrets.json'
 const CLEAN_CHECKOUT =
   'git fetch origin && git worktree add --detach ../petrios-deploy origin/main && cd ../petrios-deploy && npm ci'
+/** What an API token (instead of wrangler login) needs for this script and the wrangler commands it runs. */
+const API_TOKEN_PERMISSIONS =
+  'Account: Workers Scripts Edit; Zone petrios.uk: Zone Read and Workers Routes Read. No DNS permission: ' +
+  'Workers Custom Domains manage their own DNS records'
+const RETIRED_PHASES =
+  'production moved to Cloudflare Workers Custom Domains (petrios.uk, app.petrios.uk) on 2026-10-11 and Render is ' +
+  'retired, so there is no preflight phase and no hand-over to Render any more. Deploy with ' +
+  'npm run cf:deploy:production -- deploy --dry-run, then npm run cf:deploy:production -- deploy ' +
+  '(docs/cloudflare-workers.md, "Production")'
 const USAGE = [
   'usage: npm run cf:deploy:production -- <command>',
-  '  check-secrets <file>                validate a filled secrets file (names only; contacts nothing)',
-  '  secrets <file>                      check-secrets, then upload it with wrangler secret bulk',
-  '  preflight                           deploy to workers.dev only: no routes, no crons, email off',
-  `  live ${LIVE_ATTESTATION}       serve petrios.uk and run the crons (Render's jobs disabled first)`,
-  `  rollback [${SKIP_REDEPLOY}]          remove the route and cron schedules, then redeploy preflight`,
+  '  check-secrets <file>      validate a filled secrets file (names only; contacts nothing)',
+  '  secrets <file>            check-secrets, then wrangler secret bulk to the live Worker (a new version at once)',
+  `  deploy ${DRY_RUN}          every check, the custom-domain preview and cf:build, then wrangler deploy --dry-run`,
+  '  deploy                    the same, then deploy env.production and confirm it from the Cloudflare API',
+  '  rollback [<version-id>]   restore an earlier version (default: the previous one); code and vars only',
 ].join('\n')
+/** What to do about secrets while production runs a rolled-back version. */
+const SECRETS_AFTER_ROLLBACK =
+  'Do NOT use wrangler versions secret put/bulk and wrangler versions deploy instead: they copy the newest UPLOADED ' +
+  'version, which is the code you rolled back from, and deploying that copy undoes the rollback. Ship a fixed main ' +
+  `first (npm run cf:deploy:production -- deploy), then change the secret with npx wrangler secret put <NAME> --env ` +
+  `${PRODUCTION_ENV} or npm run cf:deploy:production -- secrets <file>.`
 
 /** An expected, actionable refusal: printed without a stack trace. */
 class Refusal extends Error {}
@@ -92,16 +122,16 @@ function loadProductionConfig() {
   if (problems.length) {
     refuse(`wrangler.jsonc is not deployable to production:\n  - ${problems.join('\n  - ')}`)
   }
-  const live = config.env[PRODUCTION_ENV]
-  pinAccount(live.account_id)
+  const env = config.env[PRODUCTION_ENV]
+  pinAccount(env.account_id)
   return {
-    config,
-    workerName: live.name,
-    accountId: live.account_id,
-    zoneName: live.routes[0].zone_name,
-    appUrl: validateProductionAppUrl(live.vars.APP_URL),
-    routePatterns: live.routes.map((route) => route.pattern),
-    crons: live.triggers.crons,
+    env,
+    workerName: env.name,
+    accountId: env.account_id,
+    zoneName: PRODUCTION_ZONE,
+    appUrl: validateProductionAppUrl(env.vars.APP_URL),
+    hostnames: env.routes.map((route) => route.pattern),
+    crons: env.triggers.crons,
   }
 }
 
@@ -165,25 +195,35 @@ function checkSourceTree() {
   return { label: head.slice(0, 12) }
 }
 
-/** Read-only `wrangler secret list`: names only (the API never returns values). */
-function checkWorkerSecrets(env, envName) {
-  const listed = captureWrangler(['secret', 'list', '--format', 'json'], envName)
+/**
+ * Read-only `wrangler secret list`: names only (the API never returns values).
+ * Refuses when the Worker cannot be listed: it has existed since the cutover,
+ * so a missing Worker means the wrong account or login, and wrangler must
+ * never be allowed to create an empty "petrios".
+ */
+function storedSecretNames(env) {
+  const listed = captureWrangler(['secret', 'list', '--format', 'json'], PRODUCTION_ENV)
   if (!listed.ok) {
     refuse(
-      `could not list the secrets of the "${env.name}" Worker (read-only wrangler secret list --env ${envName}). ` +
-        `If the Worker does not exist yet, create it with its secrets first: npm run cf:deploy:production -- secrets ${SECRETS_EXAMPLE}. ` +
-        'Otherwise run npx wrangler login.'
+      `could not list the secrets of the "${env.name}" Worker (read-only wrangler secret list --env ${PRODUCTION_ENV}). ` +
+        'Run npx wrangler login, and check that npx wrangler whoami shows the account pinned in wrangler.jsonc. ' +
+        `The production Worker exists; if wrangler offers to create "${env.name}", answer no.`
     )
   }
   const parsed = parseSecretList(listed.stdout)
   if (parsed.error) refuse(parsed.error)
-  const problems = productionSecretNameProblems(parsed.names, env, envName)
+  return parsed.names
+}
+
+function checkWorkerSecrets(env) {
+  const names = storedSecretNames(env)
+  const problems = productionSecretNameProblems(names, env, PRODUCTION_ENV)
   if (problems.length) refuse(problems.join('\n  '))
-  const optional = parsed.names.filter((name) => !env.secrets.required.includes(name))
+  const optional = names.filter((name) => !env.secrets.required.includes(name))
   log(`Worker secrets (names only): all ${env.secrets.required.length} required present; optional: ${optional.join(', ') || 'none'}`)
 }
 
-function checkSecretsFile(argument, config) {
+function checkSecretsFile(argument, env) {
   if (!argument) refuse(`pass the path of your filled secrets file, for example ${SECRETS_EXAMPLE}`)
   let filePath
   let text
@@ -195,7 +235,6 @@ function checkSecretsFile(argument, config) {
   }
   const parsed = parseProductionSecretsFile(text)
   if (parsed.error) refuse(parsed.error)
-  const env = config.env[PREFLIGHT_ENV]
   const { problems, unknown } = productionSecretsFileProblems(parsed.entries, env, {
     filePath,
     root: fs.realpathSync(ROOT),
@@ -205,12 +244,14 @@ function checkSecretsFile(argument, config) {
   if (process.platform !== 'win32' && fs.statSync(filePath).mode & 0o077) {
     log(`warning: ${filePath} is readable by other users; run chmod 600 on it`)
   }
-  log(`secrets file OK: ${parsed.entries.map((entry) => entry.name).join(', ')}`)
-  return filePath
+  const names = parsed.entries.map((entry) => entry.name)
+  log(`secrets file OK: ${names.join(', ')}`)
+  return { filePath, names }
 }
 
 // ---------------------------------------------------------------------------
-// Cloudflare API (routes, custom domains, schedules), with the operator's wrangler login
+// Cloudflare API (read-only, plus the compute-only custom-domain changeset),
+// with the operator's wrangler login
 // ---------------------------------------------------------------------------
 
 /** Headers for the Cloudflare API from `wrangler auth token --json`. Never printed. */
@@ -228,6 +269,14 @@ function cloudflareAuthHeaders() {
   refuse('wrangler returned no usable credentials; run npx wrangler login and retry')
 }
 
+/** A failed Cloudflare API call, with the API's `errors` (`[{ code, message }]`; never credentials). */
+class CloudflareApiError extends Error {
+  constructor(message, errors) {
+    super(message)
+    this.errors = errors
+  }
+}
+
 async function cloudflareApi(headers, method, pathname, body) {
   const response = await fetch(`${CLOUDFLARE_API}${pathname}`, {
     method,
@@ -242,13 +291,14 @@ async function cloudflareApi(headers, method, pathname, body) {
     payload = null
   }
   if (!response.ok || !payload?.success) {
-    const detail = payload?.errors?.map((error) => `${error.code}: ${error.message}`).join('; ') || `HTTP ${response.status}`
-    throw new Error(`${method} ${pathname.split('?')[0]} failed (${detail})`)
+    const errors = Array.isArray(payload?.errors) ? payload.errors : []
+    const detail = errors.map((error) => `${error?.code}: ${error?.message}`).join('; ') || `HTTP ${response.status}`
+    throw new CloudflareApiError(`${method} ${pathname.split('?')[0]} failed (${detail})`, errors)
   }
   return payload.result
 }
 
-/** Credentials plus the zone of the live route, in the pinned account. */
+/** Credentials plus the zone that holds the custom domains, in the pinned account. */
 async function connectCloudflare({ workerName, accountId, zoneName }) {
   const headers = cloudflareAuthHeaders()
   const query = new URLSearchParams({ name: zoneName, 'account.id': accountId })
@@ -262,146 +312,112 @@ async function connectCloudflare({ workerName, accountId, zoneName }) {
   return { headers, zoneId: zones[0].id, accountId, workerName, zoneName }
 }
 
-async function workerRoutes(cf) {
-  return routesForScript(await cloudflareApi(cf.headers, 'GET', `/zones/${cf.zoneId}/workers/routes`), cf.workerName)
+async function accountCustomDomains(cf) {
+  const domains = await cloudflareApi(cf.headers, 'GET', `/accounts/${cf.accountId}/workers/domains`)
+  return Array.isArray(domains) ? domains : []
 }
 
-/** The Worker's routes in the zone, custom domains and cron schedules, as the API reports them now. */
-async function readWorkerState(cf) {
-  const routes = await workerRoutes(cf)
-  const service = new URLSearchParams({ service: cf.workerName })
-  const domains = domainsForService(
-    await cloudflareApi(cf.headers, 'GET', `/accounts/${cf.accountId}/workers/domains?${service}`),
-    cf.workerName
-  )
-  const schedules = scheduleExpressions(
+async function workerSchedules(cf) {
+  return scheduleExpressions(
     await cloudflareApi(cf.headers, 'GET', `/accounts/${cf.accountId}/workers/scripts/${cf.workerName}/schedules`)
   )
-  return { routes, domains, schedules }
 }
 
-function manualRollbackSteps({ zoneName, workerName }) {
-  return (
-    `Cloudflare dashboard -> ${zoneName} -> Workers Routes: delete every route whose Worker is "${workerName}" ` +
-    `(or Workers & Pages -> ${workerName} -> Settings -> Domains & Routes). Do not touch DNS records. ` +
-    `Then Workers & Pages -> ${workerName} -> Settings -> Trigger Events: delete every Cron Trigger.`
-  )
-}
-
-function customDomainSteps({ workerName }, domains) {
-  return (
-    `custom domains serve "${workerName}": ${domains.map((domain) => domain.hostname).join(', ')}. ` +
-    `Remove them by hand (Workers & Pages -> ${workerName} -> Settings -> Domains & Routes). Removing one deletes ` +
-    'the DNS record Cloudflare made for it: afterwards check that each hostname has its proxied record pointing at Render.'
-  )
+/** The Worker's custom domains (and the account's), its plain routes in the zone, and its cron schedules. */
+async function readWorkerState(cf) {
+  const routes = await cloudflareApi(cf.headers, 'GET', `/zones/${cf.zoneId}/workers/routes`)
+  const accountDomains = await accountCustomDomains(cf)
+  return {
+    routes: routesForScript(Array.isArray(routes) ? routes : [], cf.workerName),
+    domains: domainsForService(accountDomains, cf.workerName),
+    accountDomains,
+    schedules: await workerSchedules(cf),
+  }
 }
 
 /**
- * Takes the Worker out of production: deletes its routes (traffic returns to
- * Render through the unchanged proxied DNS record) and clears its cron
- * schedules, then confirms both. Custom domains are reported, never deleted
- * (that would delete DNS records). Never throws.
+ * The custom-domain diff a deploy would apply, from the request wrangler sends
+ * before publishing (`publishCustomDomains`): it computes the changeset and
+ * applies nothing.
  */
-async function detachWorker(cf) {
-  const outcome = { routesCleared: false, cronsCleared: false, domains: [], clearedAt: new Date(), complete: false }
-  log(`deleting the routes of "${cf.workerName}" in ${cf.zoneName} (DNS records stay as they are)`)
-  try {
-    for (const route of await workerRoutes(cf)) {
-      await cloudflareApi(cf.headers, 'DELETE', `/zones/${cf.zoneId}/workers/routes/${route.id}`)
-      log(`deleted route ${route.pattern}`)
-    }
-    outcome.routesCleared = true
-  } catch (error) {
-    fail(`could not delete the routes (${error.message})`)
-  }
-
-  log(`clearing the cron schedules of "${cf.workerName}"`)
-  try {
-    await cloudflareApi(cf.headers, 'PUT', `/accounts/${cf.accountId}/workers/scripts/${cf.workerName}/schedules`, [])
-    outcome.cronsCleared = true
-  } catch (error) {
-    fail(`could not clear the cron schedules (${error.message})`)
-  }
-  outcome.clearedAt = new Date()
-
-  try {
-    const state = await readWorkerState(cf)
-    outcome.domains = state.domains
-    outcome.routesCleared &&= state.routes.length === 0
-    outcome.cronsCleared &&= state.schedules.length === 0
-    for (const problem of productionStateProblems('preflight', { ...state, domains: [] })) fail(problem)
-  } catch (error) {
-    fail(`could not confirm the result (${error.message})`)
-    outcome.routesCleared = false
-    outcome.cronsCleared = false
-  }
-  outcome.complete = outcome.routesCleared && outcome.cronsCleared && !outcome.domains.length
-  if (outcome.routesCleared) log(`no route points at "${cf.workerName}": ${cf.zoneName} traffic is on Render`)
-  if (outcome.cronsCleared) log(`"${cf.workerName}" has no cron schedules`)
-  if (outcome.domains.length) fail(customDomainSteps(cf, outcome.domains))
-  if (!outcome.routesCleared || !outcome.cronsCleared) fail(`finish by hand now: ${manualRollbackSteps(cf)}`)
-  return outcome
-}
-
-/** When Render's suspended jobs may resume after the Worker's schedules were cleared. */
-function resumeRender(outcome) {
-  return (
-    `resume Render's scheduled jobs (the ones suspended for the cutover) at or after ${renderResumeTime(outcome.clearedAt)}: ` +
-    `a Worker cron run that started before the schedules were cleared can keep running for up to ${CRON_RUN_MAX_MINUTES} minutes, ` +
-    'and two runs of a job at once can send email twice (ops-weekly has no dedupe).'
+async function previewCustomDomains(cf, hostnames) {
+  return cloudflareApi(
+    cf.headers,
+    'POST',
+    `/accounts/${cf.accountId}/workers/scripts/${cf.workerName}/domains/changeset?replace_state=true`,
+    hostnames.map((hostname) => ({ hostname }))
   )
 }
 
 // ---------------------------------------------------------------------------
-// Commands
+// deploy [--dry-run]
 // ---------------------------------------------------------------------------
 
-function printPreflightChecklist({ workerName }, versionId) {
+function printDeployChecklist({ workerName, hostnames, crons }, versionId) {
   console.log(`
-[cf] PREFLIGHT deployed (version ${versionId}). "${workerName}" has no routes, custom domains or cron schedules;
-     Render still serves petrios.uk.
-  Its URL is the workers.dev line wrangler printed above (https://${workerName}.<account-subdomain>.workers.dev).
-  1. Health:  curl -s https://${workerName}.<account-subdomain>.workers.dev/api/health   expect {"status":"ok","db":"ok"}
-  2. Smoke:   docs/cloudflare-workers.md, "Cutover" step 3 (email is off; sign-in links lead to petrios.uk on Render)
-  3. Logs:    npx wrangler tail --env ${PREFLIGHT_ENV} --format pretty
-  4. Next:    disable Render's scheduled jobs ("Cutover" step 4), then:
-              npm run cf:deploy:production -- live ${LIVE_ATTESTATION}`)
+[cf] DEPLOYED version ${versionId} of "${workerName}": custom domains ${hostnames.join(', ')}, no plain routes,
+     ${crons.length} cron schedules (confirmed from the Cloudflare API).
+  1. Health, on every host (expect {"status":"ok","db":"ok"}):
+${hostnames.map((hostname) => `       curl -s https://${hostname}/api/health`).join('\n')}
+  2. Logs:   npx wrangler tail --env ${PRODUCTION_ENV} --format pretty   (errors only: --status error)
+  3. Crons:  the next runs print '"<expression>" @ <time> - Ok' and a '[cron] ... HTTP 200' line in the tail:
+             recall-awards (:05, :20, :35, :50), session-reminders (:00) and post-session-reports (:15), then the
+             daily jobs (06:30, 08:00 UTC) and ops-weekly (Monday 07:00 UTC).
+  4. If the new version misbehaves: npm run cf:deploy:production -- rollback   (code and vars; domains and crons stay)`)
 }
 
-function printLiveChecklist({ appUrl, routePatterns }, versionId) {
-  const host = appUrl.host
-  const www = host.startsWith('www.') ? null : `www.${host}`
-  const wwwCheck = www
-    ? `
-     ${www} has no route and must be unchanged:
-       curl -sI https://${www}/login | grep -iE '^(HTTP|location|rndr-id)'
-     expect a 301 with location: https://${host}/login and no rndr-id.`
-    : ''
-  console.log(`
-[cf] LIVE (version ${versionId ?? 'not reported'}): ${routePatterns.join(', ')} routes to the Worker and its cron schedules are set; DNS is unchanged.
-  1. Served by the Worker (repeat until it holds):
-       curl -sI https://${host}/login | grep -iE '^(rndr-id|x-render-origin-server|cf-ray):'
-     Only cf-ray: the Worker answered. rndr-id or x-render-origin-server: Render answered (retry after 30 s).${wwwCheck}
-  2. Health:   curl -s ${appUrl.origin}/api/health   expect {"status":"ok","db":"ok"}
-  3. Logs:     npx wrangler tail --env ${PRODUCTION_ENV} --format pretty
-     Crons appear as '"<expression>" @ <time> - Ok' with a '[cron] ... HTTP 200' log line. These are the first
-     cron runs on the Workers runtime (staging and preflight never run any): watch the first recall-awards,
-     session-reminders (:00) and post-session-reports (:15), then the next morning's daily jobs.
-     Stray schedulers: npx wrangler tail --env ${PRODUCTION_ENV} --format pretty | grep -E '^(GET|POST|HEAD) .*/api/cron/'
-     Any match is an external caller still running (it gets 401): find and disable it.
-  4. Rollback (seconds, no rebuild needed for traffic):  npm run cf:deploy:production -- rollback
-  5. Keep the Render service running WITHOUT its scheduled jobs for at least a week as the warm fallback.`)
+/** A deploy that is not confirmed: say what is serving and what to do. */
+function reportUnconfirmedDeploy(target, { problems, after }) {
+  fail(`the deploy is NOT confirmed:\n  - ${problems.join('\n  - ')}`)
+  const advice = [
+    'Custom domains and cron schedules persist across deploys, so unless the state above says otherwise the Worker ' +
+      `still serves ${target.hostnames.join(' and ')} and runs the jobs. A rejected upload or a declined ` +
+      '"Would you like to continue?" deploys nothing (the previous version keeps serving); wrangler deploys the new ' +
+      'version BEFORE it publishes custom domains and schedules, so a failure there leaves the new version serving.',
+    `Check which version serves: npx wrangler deployments status --env ${PRODUCTION_ENV} ; and ` +
+      target.hostnames.map((hostname) => `curl -s https://${hostname}/api/health`).join(' ; '),
+  ]
+  if (after) {
+    const attached = after.domains.map((domain) => domain.hostname)
+    const detached = target.hostnames.filter((hostname) => !attached.includes(hostname))
+    if (detached.length) {
+      advice.push(
+        `${detached.join(', ')} is NOT attached to "${target.workerName}" now: rerun deploy (it attaches every configured ` +
+          `custom domain) or add it in the dashboard (Workers & Pages -> ${target.workerName} -> Settings -> Domains & Routes).`
+      )
+    }
+    if (after.routes.length) {
+      advice.push(`delete the plain routes in the dashboard (${target.zoneName} -> Workers Routes); production uses only custom domains.`)
+    }
+    const schedules = new Set(after.schedules)
+    if (schedules.size !== target.crons.length || target.crons.some((cron) => !schedules.has(cron))) {
+      advice.push(
+        'the cron schedules differ from wrangler.jsonc: rerun deploy (it sets every schedule) or fix them in ' +
+          `Workers & Pages -> ${target.workerName} -> Settings -> Trigger Events. This Worker is the only scheduler.`
+      )
+    }
+  }
+  advice.push('If the new version is serving and unhealthy: npm run cf:deploy:production -- rollback')
+  console.log(`\n[cf] ${advice.join('\n[cf] ')}`)
 }
 
-/** Deploys one phase; returns wrangler's exit status and the version id it reported (null when it deployed nothing). */
-function wranglerDeploy(phase, envName, label) {
+/**
+ * Deploys env.production; returns wrangler's exit status and the version id it
+ * reported (null when it deployed nothing). Wrangler answers its own prompts
+ * (yes) whenever ci-info detects CI, even in a terminal: `CI`, `BUILD_NUMBER`,
+ * `RUN_ID` or a CI vendor's variable in the operator's shell would let it
+ * replace a DNS record or take another Worker's hostname that appeared after
+ * the preview. `CI=false` is ci-info's documented override (it then skips
+ * every other check), so the questions reach the operator's terminal.
+ */
+function wranglerDeploy(label) {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'petrios-cf-deploy-'))
   const outputPath = path.join(outDir, 'output.json')
   try {
     const ok = runWrangler(
-      ['deploy', '--message', `petrios ${phase} ${label}`],
-      { OPEN_NEXT_DEPLOY: 'true', WRANGLER_OUTPUT_FILE_PATH: outputPath },
-      envName
+      ['deploy', '--message', `petrios deploy ${label}`],
+      { OPEN_NEXT_DEPLOY: 'true', WRANGLER_OUTPUT_FILE_PATH: outputPath, CI: 'false' },
+      PRODUCTION_ENV
     )
     const versionId = fs.existsSync(outputPath) ? deployedVersionId(fs.readFileSync(outputPath, 'utf8')) : null
     return { ok, versionId }
@@ -410,249 +426,328 @@ function wranglerDeploy(phase, envName, label) {
   }
 }
 
-/** A live deploy that is not confirmed. Always returns false. */
-async function handleFailedLive(cf, target, { before, after, problems }) {
-  fail(`the live deploy is NOT confirmed:\n  - ${problems.join('\n  - ')}`)
-  if (before.routes.length) {
-    // A redeploy of a Worker that was already live.
-    if (after && after.routes.length === 0) {
-      console.log(`
-[cf] No route points at the Worker now: Render serves ${target.appUrl.host}, and Render's scheduled jobs are suspended.
-     Run npm run cf:deploy:production -- rollback now (it clears the Worker's schedules), then follow what it prints.`)
-    } else {
-      console.log(`
-[cf] The Worker was already live. If wrangler rejected the upload or a prompt was declined, the previous
-     version still serves ${target.appUrl.host} and runs the jobs. Check curl -s ${target.appUrl.origin}/api/health and
-     npx wrangler deployments status --env ${PRODUCTION_ENV}. Run rollback only if the site is unhealthy;
-     otherwise fix the problem and rerun live.`)
-    }
-    return false
-  }
-
-  // First go-live: return to the pre-cutover state at once, so Render keeps
-  // serving and exactly one decision (retry live, or resume Render) remains.
-  log('the first go-live is not confirmed: removing whatever it attached (route, cron schedules) so Render keeps serving')
-  const outcome = await detachWorker(cf)
-  const workerCronsMayHaveRun = !after || after.schedules.length > 0 || before.schedules.length > 0
-  if (!outcome.complete) {
-    console.log(`
-[cf] NOT LIVE, AND NOT FULLY DETACHED: finish the manual steps above. Render's scheduled jobs are suspended;
-     only after the Worker has no route and no cron schedule, ${resumeRender(outcome)}`)
-    return false
-  }
-  console.log(`
-[cf] NOT LIVE: Render serves ${target.appUrl.host}; the Worker has no route, custom domain or cron schedule.
-     Render's scheduled jobs are still suspended, so nothing runs the jobs now. Either fix the problem and rerun
-       npm run cf:deploy:production -- live ${LIVE_ATTESTATION}
-     or ${
-       workerCronsMayHaveRun
-         ? resumeRender(outcome)
-         : "resume Render's scheduled jobs now (the Worker had no cron schedule during this attempt)."
-     }`)
-  return false
-}
-
-async function deployPhase(phase, args) {
-  const attested = args.includes(LIVE_ATTESTATION)
-  expectArgs(phase, args, phase === 'live' ? [LIVE_ATTESTATION] : [])
-  if (phase === 'live' && !attested) {
-    refuse(
-      `going live starts the cron triggers against the production database, and only one scheduler may run them. ` +
-        `Disable Render's scheduled jobs first (docs/cloudflare-workers.md, "Cutover" step 4), then attest it: ` +
-        `npm run cf:deploy:production -- live ${LIVE_ATTESTATION}`
-    )
-  }
-  const progress = { before: null, deployStarted: false }
-  try {
-    return await deployAndConfirm(phase, progress)
-  } catch (error) {
-    if (progress.deployStarted) throw error
-    const message = error instanceof Error ? error.message : String(error)
-    // Nothing was deployed: say what that means for traffic and the schedulers.
-    if (phase === 'preflight') refuse(`${message}\nNothing was deployed; production is unaffected.`)
-    if (!progress.before) {
-      refuse(
-        `${message}\nNothing was deployed. If the Worker is already live, it keeps serving and running the jobs. ` +
-          "If this is the first go-live, Render's scheduled jobs are suspended and nothing runs the jobs: " +
-          "fix this and rerun live soon, or resume Render's scheduled jobs (the Worker has no cron schedule)."
-      )
-    }
-    refuse(
-      progress.before.routes.length
-        ? `${message}\nNothing was deployed; the live Worker keeps serving and running the jobs.`
-        : `${message}\nNothing was deployed: Render serves petrios.uk and its scheduled jobs are suspended, so nothing ` +
-            "runs the jobs. Fix this and rerun live soon, or resume Render's scheduled jobs now (the Worker has no cron schedule)."
-    )
-  }
-}
-
-async function deployAndConfirm(phase, progress) {
+async function deploy(args) {
+  expectArgs('deploy', args, [DRY_RUN])
+  const dryRun = args.includes(DRY_RUN)
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY)
   const target = loadProductionConfig()
-  const envName = phase === 'live' ? PRODUCTION_ENV : PREFLIGHT_ENV
-  const env = target.config.env[envName]
   checkShellAppUrl(target.appUrl)
   const source = checkSourceTree()
-  checkWorkerSecrets(env, envName)
+  checkWorkerSecrets(target.env)
 
   let cf
   let before
+  let preview
   try {
     cf = await connectCloudflare(target)
     before = await readWorkerState(cf)
+    preview = customDomainPreviewProblems(await previewCustomDomains(cf, target.hostnames), before.accountDomains, target)
   } catch (error) {
     if (error instanceof Refusal) throw error
     refuse(
-      `could not read the routes, custom domains and cron schedules of "${target.workerName}" (${error.message}). ` +
-        'With an API token instead of wrangler login, it needs Zone Read, Workers Routes Edit and Workers Scripts Edit.'
+      `could not read the custom domains, routes and cron schedules of "${target.workerName}" or preview the ` +
+        `custom-domain change (${error.message}). Nothing was changed. With an API token instead of wrangler login, ` +
+        `it needs ${API_TOKEN_PERMISSIONS}.`
     )
   }
-  if (before.domains.length) refuse(customDomainSteps(target, before.domains))
-  if (phase === 'preflight' && before.routes.length) {
-    refuse(
-      `"${target.workerName}" still has routes (${before.routes.map((route) => route.pattern).join(', ')}): it is serving production. ` +
-        'Wrangler would leave them in place, so preflight would serve real users with email and crons off. ' +
-        'To leave production, run: npm run cf:deploy:production -- rollback'
+  const blockers = [...preview.problems]
+  if (before.routes.length) {
+    blockers.push(
+      `plain routes point at "${target.workerName}" (${before.routes.map((route) => route.pattern).join(', ')}): ` +
+        `production uses only custom domains, and wrangler never removes routes. Delete them in the dashboard ` +
+        `(${target.zoneName} -> Workers Routes) first`
     )
   }
-  progress.before = before
-  if (phase === 'live') {
-    log(`Render's scheduled jobs attested disabled (${LIVE_ATTESTATION})`)
-    log(before.routes.length ? 'the Worker is already live: this is a redeploy' : 'the Worker has no routes: this is the first go-live')
-  } else {
-    log(`"${target.workerName}" has no routes or custom domains`)
-    if (before.schedules.length) log(`note: it still has cron schedules (${before.schedules.join(', ')}); preflight clears them`)
+  if (blockers.length) refuse(`nothing was changed:\n  - ${blockers.join('\n  - ')}`)
+  log(
+    `Cloudflare now: custom domains [${before.domains.map((domain) => domain.hostname).join(', ')}], no plain routes, ` +
+      `${before.schedules.length} cron schedule(s)`
+  )
+  log('custom-domain preview: no hostname would be detached, taken from another Worker or have a DNS record replaced')
+  for (const note of preview.notes) log(`note: ${note}`)
+  for (const drift of productionStateProblems(before, target)) {
+    log(`note: before this deploy, ${drift}; the deploy sets them from wrangler.jsonc`)
   }
 
-  if (!(await runBuild(envName))) refuse('cf:build or its guard failed')
+  if (!(await runBuild(PRODUCTION_ENV))) refuse('cf:build or its guard failed; nothing was deployed')
 
-  log(`deploying "${env.name}" (${phase}, wrangler env ${envName}, APP_URL ${target.appUrl.origin})`)
+  if (dryRun) {
+    log(`dry run: wrangler deploy --dry-run --env ${PRODUCTION_ENV} (bundles and lists the bindings; uploads nothing)`)
+    if (!runWrangler(['deploy', '--dry-run'], { OPEN_NEXT_DEPLOY: 'true' }, PRODUCTION_ENV)) {
+      refuse('wrangler deploy --dry-run failed; nothing was deployed')
+    }
+    log('DRY RUN complete: nothing was uploaded and nothing on Cloudflare changed (the preview only computed the diff).')
+    log('deploy for real with: npm run cf:deploy:production -- deploy')
+    return
+  }
+
+  log(
+    `deploying "${target.workerName}" (wrangler env ${PRODUCTION_ENV}, APP_URL ${target.appUrl.origin}, ` +
+      `custom domains ${target.hostnames.join(', ')})`
+  )
   log(
     'if wrangler asks "Would you like to continue?" (the Worker was last changed through the API or dashboard), ' +
-      'answer yes; answering no deploys nothing, and this script reports it'
+      'answer yes; answering no deploys nothing, and this script reports it. If it asks to point a custom domain or a ' +
+      'DNS record at this Worker, answer NO: the preview found no such conflict, so something changed in between.'
   )
-  progress.deployStarted = true
-  const deployed = wranglerDeploy(phase, envName, source.label)
+  if (!interactive) {
+    log(
+      'not an interactive terminal: wrangler will not ask before replacing a DNS record or moving a hostname, so ' +
+        'this deploy relies on the custom-domain preview above (no conflict, no removal, no foreign hostname)'
+    )
+  }
+  const deployed = wranglerDeploy(source.label)
 
   const problems = []
   let after = null
   try {
     after = await readWorkerState(cf)
   } catch (error) {
-    problems.push(`could not read the Worker's routes and schedules afterwards (${error.message})`)
+    problems.push(`could not read the Worker's custom domains, routes and schedules afterwards (${error.message})`)
   }
-  const stateProblems = after ? productionStateProblems(phase, after, target) : []
-  problems.push(...stateProblems)
-  if (!deployed.ok) {
-    problems.unshift('wrangler deploy failed')
-  } else if (!deployed.versionId) {
-    // A declined prompt exits 0 with no version. On a first go-live the
-    // API state tells the two apart (a declined deploy attaches no route);
-    // anywhere else the previous version would still match, so it fails.
-    const firstGoLive = phase === 'live' && !before.routes.length
-    if (firstGoLive && after && !stateProblems.length) {
-      log('warning: wrangler reported no version id, but the route and cron schedules match the live phase')
-    } else {
-      problems.unshift('wrangler deploy reported no new version (a prompt was declined, or it aborted)')
-    }
-  }
+  if (after) problems.push(...productionStateProblems(after, target))
+  if (!deployed.ok) problems.unshift('wrangler deploy failed')
+  else if (!deployed.versionId) problems.unshift('wrangler deploy reported no new version (a prompt was declined, or it aborted)')
 
   if (!problems.length) {
-    if (phase === 'live') printLiveChecklist(target, deployed.versionId)
-    else printPreflightChecklist(target, deployed.versionId)
-    return true
+    printDeployChecklist(target, deployed.versionId)
+    return
   }
-  if (phase === 'live') return handleFailedLive(cf, target, { before, after, problems })
-  fail(
-    `the preflight deploy is NOT confirmed:\n  - ${problems.join('\n  - ')}\n` +
-      '[cf] Production traffic is unaffected (the Worker had no routes). Fix the problem and rerun preflight; ' +
-      'if cron schedules remain, run npm run cf:deploy:production -- rollback to clear them.'
-  )
-  return false
+  reportUnconfirmedDeploy(target, { problems, after })
 }
 
-/** The Worker, account and zone from wrangler.jsonc, read leniently so rollback works with an imperfect config. */
+// ---------------------------------------------------------------------------
+// rollback [<version-id>]
+// ---------------------------------------------------------------------------
+
+function manualRollbackSteps({ workerName }) {
+  return (
+    `Cloudflare dashboard -> Workers & Pages -> ${workerName} -> Deployments: under Version History pick the last ` +
+    'good version and choose Rollback. Leave Settings -> Domains & Routes and Trigger Events alone: a rollback needs neither.'
+  )
+}
+
+/** The Worker and account from wrangler.jsonc, read leniently so rollback works with an imperfect config. */
 function rollbackTarget() {
-  const live = readWranglerConfig().env?.[PRODUCTION_ENV]
-  const target = { workerName: live?.name, accountId: live?.account_id, zoneName: live?.routes?.[0]?.zone_name }
-  if (!target.workerName || !target.zoneName || !target.accountId) {
+  let env
+  try {
+    env = readWranglerConfig().env?.[PRODUCTION_ENV]
+  } catch {
+    env = undefined
+  }
+  const target = { workerName: env?.name, accountId: env?.account_id, vars: env?.vars ?? {}, hostnames: [], crons: [] }
+  if (!target.workerName || !target.accountId) {
     refuse(
-      `wrangler.jsonc env.${PRODUCTION_ENV} lacks its name, account_id or routes. Roll back by hand: ` +
-        `${manualRollbackSteps({ zoneName: 'petrios.uk', workerName: 'petrios' })} ` +
-        `Re-enable Render's scheduled jobs no sooner than ${CRON_RUN_MAX_MINUTES} minutes after the last Cron Trigger is deleted.`
+      `wrangler.jsonc env.${PRODUCTION_ENV} lacks its name or account_id. Roll back by hand: ` +
+        manualRollbackSteps({ workerName: 'petrios' })
     )
   }
+  if (Array.isArray(env.routes)) target.hostnames = env.routes.map((route) => route?.pattern).filter(Boolean)
+  if (Array.isArray(env.triggers?.crons)) target.crons = env.triggers.crons
   pinAccount(target.accountId)
   return target
 }
 
-async function rollback(args) {
-  expectArgs('rollback', args, [SKIP_REDEPLOY])
-  const target = rollbackTarget()
-  let cf
-  try {
-    cf = await connectCloudflare(target)
-  } catch (error) {
-    refuse(
-      `${error.message}\nRoll back by hand instead: ${manualRollbackSteps(target)} ` +
-        `Re-enable Render's scheduled jobs no sooner than ${CRON_RUN_MAX_MINUTES} minutes after the last Cron Trigger is deleted.`
-    )
-  }
-  log('rollback 1-2/3: removing the route and the cron schedules')
-  const outcome = await detachWorker(cf)
-  if (!outcome.complete) {
-    console.log(`
-[cf] ROLLBACK INCOMPLETE: finish the manual steps above. Only after the Worker has no route and no cron schedule,
-     ${resumeRender(outcome)}`)
-    return
-  }
-  console.log(`
-[cf] ROLLED BACK: Render serves ${target.zoneName} again and the Worker has no route, custom domain or cron schedule.
-     NEXT: ${resumeRender(outcome)}
-     The Worker is unreachable (no routes, no workers.dev) until preflight is redeployed.`)
+async function workerDeployments(cf) {
+  const deployments = deploymentsNewestFirst(
+    await cloudflareApi(cf.headers, 'GET', `/accounts/${cf.accountId}/workers/scripts/${cf.workerName}/deployments`)
+  )
+  if (!deployments) throw new Error('the deployments response has an unexpected shape')
+  return deployments
+}
 
-  if (args.includes(SKIP_REDEPLOY)) {
-    log('skipped the preflight redeploy; run npm run cf:deploy:production -- preflight when convenient')
-    return
-  }
-  log('rollback 3/3: redeploying the preflight shape (rebuilds; traffic is already on Render)')
+function workerVersion(cf, versionId) {
+  return cloudflareApi(cf.headers, 'GET', `/accounts/${cf.accountId}/workers/scripts/${cf.workerName}/versions/${versionId}`)
+}
+
+function printRollbackLimits() {
+  console.log(`
+[cf] What a rollback does NOT undo:
+  - Database migrations: the restored code runs against the current schema (migrations only move forward).
+    If it needs the old schema, fix forward instead.
+  - Cron triggers, custom domains and routes: they are not part of a Worker version, so they are unchanged and the
+    restored code serves the next cron runs on the same schedules.
+  - Secrets: the request was never forced, so Cloudflare would have refused it if any secret had changed since the
+    restored version served; it runs with the current values. While it is deployed, wrangler secret put/bulk (and
+    the secrets command) refuse ("the latest version of your Worker isn't currently deployed"). Do NOT use wrangler
+    versions secret put/bulk and wrangler versions deploy instead: they copy the newest UPLOADED version, the code
+    you just rolled back from, and deploying that copy undoes this rollback. Ship a fixed main first
+    (npm run cf:deploy:production -- deploy), then change secrets with npx wrangler secret put <NAME> --env ${PRODUCTION_ENV}.
+  - Data and email: rows written and email sent by the bad version stay.
+  - The next deploy ships HEAD again: revert or fix the bad commit on main first.`)
+}
+
+/**
+ * Sends 100% of traffic to the target version with the deployment request
+ * `wrangler rollback` sends, never with `?force=true`. Returns
+ * `{ refusedForSecrets }` when Cloudflare refused because secrets changed
+ * since the version served (nothing changed), `{ error }` for any other
+ * failure (the confirmation read then shows what serves), or `{}`.
+ */
+async function requestRollback(cf, versionId, message) {
   try {
-    if (!(await deployPhase('preflight', []))) {
-      log('the preflight redeploy is not confirmed; production is unaffected. Fix it and run the preflight command again.')
-    }
+    await cloudflareApi(
+      cf.headers,
+      'POST',
+      `/accounts/${cf.accountId}/workers/scripts/${cf.workerName}/deployments`,
+      rollbackDeploymentBody(versionId, message)
+    )
+    return {}
   } catch (error) {
-    if (!(error instanceof Refusal)) throw error
-    fail(`preflight redeploy refused: ${error.message}`)
-    log('production is unaffected (traffic is on Render). Fix the above, then run: npm run cf:deploy:production -- preflight')
+    const secrets = error instanceof CloudflareApiError ? secretsChangedError(error.errors) : null
+    if (secrets) return { refusedForSecrets: secrets }
+    return { error }
   }
 }
+
+async function rollback(args) {
+  const flags = args.filter((arg) => arg.startsWith('-'))
+  const positional = args.filter((arg) => !arg.startsWith('-'))
+  if (flags.length) {
+    refuse(
+      `rollback does not accept ${flags.join(' ')}: it only restores a version's code and vars, never removes ` +
+        `custom domains, routes or cron schedules, and never redeploys\n${USAGE}`
+    )
+  }
+  if (positional.length > 1) refuse(`rollback takes at most one version id\n${USAGE}`)
+  const requested = positional[0]
+  if (requested && !WORKER_VERSION_ID.test(requested)) {
+    refuse(`${requested} is not a Worker version id (a lowercase UUID; npx wrangler deployments list --env ${PRODUCTION_ENV} lists them)`)
+  }
+  const target = rollbackTarget()
+
+  let cf
+  let plan
+  let targetVersion
+  let currentVersion
+  try {
+    cf = { headers: cloudflareAuthHeaders(), accountId: target.accountId, workerName: target.workerName }
+    plan = rollbackPlan(await workerDeployments(cf), requested)
+    if (!plan.error) {
+      ;[targetVersion, currentVersion] = await Promise.all([
+        workerVersion(cf, plan.targetVersionId),
+        workerVersion(cf, plan.currentVersionId),
+      ])
+    }
+  } catch (error) {
+    if (error instanceof Refusal) throw error
+    refuse(
+      `could not read the deployment history of "${target.workerName}" (${error.message}). Nothing was changed. ` +
+        `Roll back by hand instead: ${manualRollbackSteps(target)}`
+    )
+  }
+  const pickAnother =
+    `Pick another version (npx wrangler deployments list --env ${PRODUCTION_ENV} lists them) and pass its id: ` +
+    'npm run cf:deploy:production -- rollback <version-id>.'
+  const problems = rollbackProblems(plan, { targetVersion, currentVersion })
+  if (problems.length) refuse(`not rolling back; nothing was changed:\n  - ${problems.join('\n  - ')}\n${pickAnother}`)
+
+  const rotaThen = versionPlainVars(targetVersion)[ROTA_KILL_SWITCH_VAR]
+  const rotaNow = target.vars[ROTA_KILL_SWITCH_VAR]
+  if (rotaNow !== undefined && rotaThen !== rotaNow) {
+    log(`note: version ${plan.targetVersionId} has ${ROTA_KILL_SWITCH_VAR}="${rotaThen}" (wrangler.jsonc: "${rotaNow}"); the rollback restores the version's value`)
+  }
+  log(
+    `rolling back "${target.workerName}" from version ${plan.currentVersionId} to ${plan.targetVersionId} ` +
+      `(served until ${plan.targetServedUntil}; same secret names and production vars). Code and vars only: custom ` +
+      'domains, routes and cron schedules are not part of a version and stay as they are. The request is never ' +
+      'forced, so Cloudflare refuses it if a secret changed since that version served.'
+  )
+  const message = `petrios rollback to ${plan.targetVersionId} from ${plan.currentVersionId}`
+  const request = await requestRollback(cf, plan.targetVersionId, message)
+  if (request.refusedForSecrets) {
+    refuse(
+      `Cloudflare refused the rollback; nothing was changed. Secrets changed since version ${plan.targetVersionId} ` +
+        `served (${request.refusedForSecrets.message ?? `code ${request.refusedForSecrets.code}`}), so it would run ` +
+        `with the old values, which may be revoked (a rotated SUPABASE_SERVICE_ROLE_KEY breaks every service-role ` +
+        `call). ${pickAnother} Choose one deployed after the secret change, or fix forward with ` +
+        'npm run cf:deploy:production -- deploy. Only if every old value is still valid and you mean to restore it, ' +
+        `run npx wrangler rollback ${plan.targetVersionId} --env ${PRODUCTION_ENV} yourself in an interactive terminal ` +
+        'with CI unset: it lists the changed secrets and asks before reverting them.'
+    )
+  }
+  if (request.error) fail(`the rollback request failed (${request.error.message}); checking what is deployed now`)
+
+  let serving = null
+  try {
+    serving = (await workerDeployments(cf))[0]?.versions ?? null
+  } catch (error) {
+    fail(`could not read what is deployed now (${error.message}); check npx wrangler deployments status --env ${PRODUCTION_ENV}`)
+  }
+  const confirmed =
+    Array.isArray(serving) &&
+    serving.length === 1 &&
+    serving[0]?.version_id === plan.targetVersionId &&
+    serving[0]?.percentage === 100
+  if (confirmed) {
+    log(`ROLLED BACK: version ${plan.targetVersionId} serves 100% of traffic (confirmed from the Cloudflare API)`)
+  } else {
+    const now = Array.isArray(serving)
+      ? serving.map((version) => `${version?.version_id} (${version?.percentage}%)`).join(', ')
+      : 'unknown'
+    fail(
+      `the rollback is NOT confirmed (${request.error ? 'the request failed' : 'the request succeeded'}); deployed now: ${now}. ` +
+        `Check npx wrangler deployments status --env ${PRODUCTION_ENV}; by hand: ${manualRollbackSteps(target)}`
+    )
+  }
+
+  try {
+    const domains = domainsForService(await accountCustomDomains(cf), target.workerName).map((domain) => domain.hostname)
+    const schedules = await workerSchedules(cf)
+    log(`custom domains of "${target.workerName}": ${domains.join(', ') || 'none'}; cron schedules: ${schedules.length}`)
+    const missing = target.hostnames.filter((hostname) => !domains.includes(hostname))
+    if (missing.length) fail(`${missing.join(', ')} is not attached to "${target.workerName}" (a rollback does not change custom domains; investigate)`)
+    if (target.crons.length && (schedules.length !== target.crons.length || target.crons.some((cron) => !schedules.includes(cron)))) {
+      fail('the cron schedules differ from wrangler.jsonc (a rollback does not change them; investigate)')
+    }
+  } catch (error) {
+    log(`could not read the custom domains and cron schedules (${error.message}); check them in the dashboard`)
+  }
+  printRollbackLimits()
+}
+
+// ---------------------------------------------------------------------------
 
 async function main() {
   const [command, ...args] = process.argv.slice(2)
   switch (command) {
     case 'check-secrets': {
       expectArgs(command, args.slice(1), [])
-      checkSecretsFile(args[0], loadProductionConfig().config)
+      checkSecretsFile(args[0], loadProductionConfig().env)
       log(`next: npm run cf:deploy:production -- secrets ${args[0]}`)
       return
     }
     case 'secrets': {
       expectArgs(command, args.slice(1), [])
-      const filePath = checkSecretsFile(args[0], loadProductionConfig().config)
-      log(`uploading the secrets to the production Worker (wrangler secret bulk --env ${PREFLIGHT_ENV})`)
-      log('if the Worker does not exist yet, wrangler offers to create an empty one: answer yes (no routes, no traffic)')
-      if (!runWrangler(['secret', 'bulk', filePath], {}, PREFLIGHT_ENV)) {
-        refuse('wrangler secret bulk failed; nothing else was changed')
+      const target = loadProductionConfig()
+      const file = checkSecretsFile(args[0], target.env)
+      const stored = storedSecretNames(target.env)
+      const replaced = file.names.filter((name) => stored.includes(name))
+      const added = file.names.filter((name) => !stored.includes(name))
+      log(
+        `uploading to the LIVE Worker "${target.workerName}" (wrangler secret bulk --env ${PRODUCTION_ENV}): ` +
+          `replaces ${replaced.join(', ') || 'nothing'}; adds ${added.join(', ') || 'nothing'}`
+      )
+      log('wrangler deploys a new version with these values at once (custom domains and crons are unaffected): a wrong value breaks the live site')
+      if (!runWrangler(['secret', 'bulk', file.filePath], {}, PRODUCTION_ENV)) {
+        refuse(
+          "wrangler secret bulk failed. If it says the latest version of your Worker isn't currently deployed, " +
+            `production runs a rolled-back version. ${SECRETS_AFTER_ROLLBACK}`
+        )
       }
-      log(`done. Delete the file now: rm ${filePath}`)
-      log('next: npm run cf:deploy:production -- preflight')
+      log(`done. Delete the file now: rm ${file.filePath}`)
+      log(`next: ${target.hostnames.map((hostname) => `curl -s https://${hostname}/api/health`).join(' ; ')}`)
       return
     }
-    case 'preflight':
-    case 'live':
-      await deployPhase(command, args)
+    case 'deploy':
+      await deploy(args)
       return
     case 'rollback':
       await rollback(args)
+      return
+    case 'preflight':
+    case 'live':
+      refuse(`"${command}" is retired: ${RETIRED_PHASES}`)
       return
     default:
       refuse(command ? `unknown command ${command}\n${USAGE}` : USAGE)

@@ -68,8 +68,8 @@ export function wranglerEnv(extra = {}) {
 
 /**
  * argv for wrangler against one wrangler.jsonc environment: the top level
- * (staging) by default, or a named one (`production`, `production_preflight`).
- * Always explicit, so CLOUDFLARE_ENV from the shell never selects one.
+ * (staging) by default, or `production`. Always explicit, so CLOUDFLARE_ENV
+ * from the shell never selects one.
  */
 export function wranglerArgv(args, envName = '') {
   return [packageBin('wrangler', 'wrangler'), ...args, '--config', WRANGLER_CONFIG_PATH, `--env=${envName}`]
